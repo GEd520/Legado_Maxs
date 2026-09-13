@@ -2245,7 +2245,9 @@ class TextChapterLayout(
         var applied = false
         segments.forEach { segment ->
             val bitmap = TextLine.getBgBitmap(segment.bgImage) ?: return@forEach
-            val sides = TextLine.nineSliceSideWidth(bitmap, segment.npLeft, segment.npRight)
+            val sides = TextLine.nineSliceSideWidth(
+                bitmap, segment.npLeft, segment.npRight, textSize,
+            )
             val spacing = segment.spacingH * textSize
             // 左侧：把匹配区连同背景一起往右挪，邻字不动
             if (segment.start > 0) {

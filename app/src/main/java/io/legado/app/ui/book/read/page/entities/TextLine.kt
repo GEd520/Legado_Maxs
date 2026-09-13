@@ -773,6 +773,7 @@ data class TextLine(
                 leftBlankWidth = blankNeighborWidth(startIndex - 1),
                 rightBlankWidth = blankNeighborWidth(endIndex + 1),
                 verticalBlankSpace = halfLineGap(),
+                maxBleedX = textSize,
                 spacingH = first.bgSpacingH * textSize,
                 spacingV = first.bgSpacingV * textSize,
             )
@@ -892,15 +893,26 @@ data class TextLine(
         }
 
         /**
-         * 按分割比例换算出的左右四角厚度（位图像素，返回 `[左, 右]`）。
-         * 与 [drawNineSlice] 的切分口径一致，供排版阶段估算"强制"策略要给邻字让出多少空间。
+         * 按分割比例换算出的左右四角厚度（位图像素，返回 `[左, 右]`），并按 [limit] 夹一次。
+         *
+         * 与 [drawNineSlice] 的切分口径一致（含"强制模式按可用空间夹一次"这一步），
+         * 供排版阶段估算"强制"策略要给邻字让出多少空间——两边用量必须一致，否则推开的
+         * 距离与背景实际外扩量对不上。
          */
-        fun nineSliceSideWidth(bitmap: Bitmap, npLeft: Float, npRight: Float): FloatArray {
+        fun nineSliceSideWidth(
+            bitmap: Bitmap,
+            npLeft: Float,
+            npRight: Float,
+            limit: Float,
+        ): FloatArray {
             val bw = bitmap.width
             if (bw <= 0) return floatArrayOf(0f, 0f)
             val rightCutX = bw - (bw * npRight.coerceIn(0f, 1f)).roundToInt()
             val leftCutX = (bw * npLeft.coerceIn(0f, 1f)).roundToInt().coerceAtMost(rightCutX)
-            return floatArrayOf(leftCutX.toFloat(), (bw - rightCutX).toFloat())
+            return floatArrayOf(
+                leftCutX.toFloat().coerceAtMost(limit),
+                (bw - rightCutX).toFloat().coerceAtMost(limit),
+            )
         }
 
         /**
@@ -931,6 +943,7 @@ data class TextLine(
             leftBlankWidth: Float,
             rightBlankWidth: Float,
             verticalBlankSpace: Float,
+            maxBleedX: Float,
             spacingH: Float,
             spacingV: Float,
         ) {
@@ -948,7 +961,31 @@ data class TextLine(
             var rightW = (bw - srcX[2]).toFloat()
             var topH = srcY[1].toFloat()
             var bottomH = (bh - srcY[2]).toFloat()
-            // 自动外扩量：按策略决定。强制模式用四角厚度，与原来的"向外包裹"完全等价
+            // 强制模式的外扩量取四角厚度，但必须先按可用空间夹一次：四角厚度是**位图原始像素**，
+            // 与字号无关（1024px 宽的图、npTop=0.1 就是上下各 100px），不夹会铺满整行并压到上下行。
+            // 水平上限 [maxBleedX]（一个字宽）、垂直上限 [verticalBlankSpace]（半格行距）。
+            if (bleedMode == HighlightRule.BLEED_FORCE) {
+                leftW = leftW.coerceAtMost(maxBleedX)
+                rightW = rightW.coerceAtMost(maxBleedX)
+                topH = topH.coerceAtMost(verticalBlankSpace)
+                bottomH = bottomH.coerceAtMost(verticalBlankSpace)
+            }
+            // 两侧厚度之和超过匹配区时按比例收缩（与拆分前的口径一致，短匹配 / 大图时不失控）
+            val matchW = right - left
+            val matchH = bottom - top
+            val horizontalFixed = leftW + rightW
+            if (horizontalFixed > matchW && horizontalFixed > 0f) {
+                val ratio = matchW / horizontalFixed
+                leftW *= ratio
+                rightW *= ratio
+            }
+            val verticalFixed = topH + bottomH
+            if (verticalFixed > matchH && verticalFixed > 0f) {
+                val ratio = matchH / verticalFixed
+                topH *= ratio
+                bottomH *= ratio
+            }
+            // 自动外扩量：按策略决定
             val bleedLeft: Float
             val bleedRight: Float
             val bleedTop: Float
@@ -979,21 +1016,7 @@ data class TextLine(
             val frameRight = right + bleedRight + spacingH
             val frameTop = top - bleedTop - spacingV
             val frameBottom = bottom + bleedBottom + spacingV
-            val frameW = frameRight - frameLeft
-            val frameH = frameBottom - frameTop
-            if (frameW <= 0f || frameH <= 0f) return
-            val horizontalFixed = leftW + rightW
-            if (horizontalFixed > frameW && horizontalFixed > 0f) {
-                val ratio = frameW / horizontalFixed
-                leftW *= ratio
-                rightW *= ratio
-            }
-            val verticalFixed = topH + bottomH
-            if (verticalFixed > frameH && verticalFixed > 0f) {
-                val ratio = frameH / verticalFixed
-                topH *= ratio
-                bottomH *= ratio
-            }
+            if (frameRight - frameLeft <= 0f || frameBottom - frameTop <= 0f) return
             val dstX = floatArrayOf(frameLeft, frameLeft + leftW, frameRight - rightW, frameRight)
             val dstY = floatArrayOf(frameTop, frameTop + topH, frameBottom - bottomH, frameBottom)
             val paint = PaintPool.obtain()
