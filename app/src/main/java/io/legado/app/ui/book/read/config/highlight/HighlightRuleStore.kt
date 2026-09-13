@@ -26,9 +26,9 @@ object HighlightRuleStore {
     /** 九宫格分割比例的默认值，与实体字段默认值保持一致 */
     const val DEFAULT_NP_RATIO = 0.1f
 
-    /** 背景图间距（em）的合法区间，超出视为未设置。负值下限给到 -1em，
-     *  这样"强制"模式最多 1em 的外扩量可以用间距完全收回来 */
-    const val MIN_BG_SPACING = -1f
+    /** 背景图间距（em）的合法区间，超出视为未设置。下限 -0.5em：
+     *  再往下（如 -1em）会把整段背景连同文字一起收没，看不出任何效果 */
+    const val MIN_BG_SPACING = -0.5f
     const val MAX_BG_SPACING = 0.5f
 
     /**
