@@ -17,6 +17,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.entities.TextPage.Companion.emptyTextPage
+import io.legado.app.ui.book.read.config.highlight.HighlightRule
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
@@ -429,8 +430,8 @@ data class TextLine(
     }
 
     private fun drawBgImageSegments(canvas: Canvas) {
-        var rangeStart = 0f
-        var rangeEnd = 0f
+        var rangeStartIndex = 0
+        var rangeEndIndex = 0
         var currentBgImage = ""
         var currentBgImageFit = 0
         var currentBgImageScale = 1f
@@ -438,6 +439,9 @@ data class TextLine(
         var currentNpTop = 0.1f
         var currentNpRight = 0.1f
         var currentNpBottom = 0.1f
+        var currentBleedMode = HighlightRule.BLEED_SMART
+        var currentSpacingH = 0f
+        var currentSpacingV = 0f
         var active = false
         fun sameStyle(
             bgImage: String,
@@ -447,9 +451,16 @@ data class TextLine(
             npTop: Float,
             npRight: Float,
             npBottom: Float,
+            bleedMode: Int,
+            spacingH: Float,
+            spacingV: Float,
         ) = bgImage == currentBgImage && bgImageFit == currentBgImageFit &&
             bgImageScale == currentBgImageScale && npLeft == currentNpLeft &&
-            npTop == currentNpTop && npRight == currentNpRight && npBottom == currentNpBottom
+            npTop == currentNpTop && npRight == currentNpRight && npBottom == currentNpBottom &&
+            bleedMode == currentBleedMode && spacingH == currentSpacingH &&
+            spacingV == currentSpacingV
+        // 段的首尾列下标决定"邻字是谁"，智能策略要靠它判断能否借用邻接空白
+        fun flush() = drawBgImageSegment(canvas, rangeStartIndex, rangeEndIndex)
         columns.forEachIndexed { index, column ->
             val textColumn = column as? TextBaseColumn
             val bgImage = textColumn?.bgImage ?: ""
@@ -459,18 +470,17 @@ data class TextLine(
             val npTop = textColumn?.npTop ?: 0.1f
             val npRight = textColumn?.npRight ?: 0.1f
             val npBottom = textColumn?.npBottom ?: 0.1f
+            val bleedMode = textColumn?.bgBleedMode ?: HighlightRule.BLEED_SMART
+            val spacingH = textColumn?.bgSpacingH ?: 0f
+            val spacingV = textColumn?.bgSpacingV ?: 0f
             when {
                 bgImage.isEmpty() && active -> {
-                    drawBgImageSegment(
-                        canvas, rangeStart, rangeEnd, currentBgImage,
-                        currentBgImageFit, currentBgImageScale,
-                        currentNpLeft, currentNpTop, currentNpRight, currentNpBottom,
-                    )
+                    flush()
                     active = false
                 }
                 bgImage.isNotEmpty() && !active -> {
-                    rangeStart = textColumn!!.start
-                    rangeEnd = textColumn.end
+                    rangeStartIndex = index
+                    rangeEndIndex = index
                     currentBgImage = bgImage
                     currentBgImageFit = bgImageFit
                     currentBgImageScale = bgImageScale
@@ -478,19 +488,21 @@ data class TextLine(
                     currentNpTop = npTop
                     currentNpRight = npRight
                     currentNpBottom = npBottom
+                    currentBleedMode = bleedMode
+                    currentSpacingH = spacingH
+                    currentSpacingV = spacingV
                     active = true
                 }
-                bgImage.isNotEmpty() && sameStyle(bgImage, bgImageFit, bgImageScale, npLeft, npTop, npRight, npBottom) -> {
-                    rangeEnd = textColumn!!.end
+                bgImage.isNotEmpty() && sameStyle(
+                    bgImage, bgImageFit, bgImageScale, npLeft, npTop, npRight, npBottom,
+                    bleedMode, spacingH, spacingV,
+                ) -> {
+                    rangeEndIndex = index
                 }
                 bgImage.isNotEmpty() -> {
-                    drawBgImageSegment(
-                        canvas, rangeStart, rangeEnd, currentBgImage,
-                        currentBgImageFit, currentBgImageScale,
-                        currentNpLeft, currentNpTop, currentNpRight, currentNpBottom,
-                    )
-                    rangeStart = textColumn!!.start
-                    rangeEnd = textColumn.end
+                    flush()
+                    rangeStartIndex = index
+                    rangeEndIndex = index
                     currentBgImage = bgImage
                     currentBgImageFit = bgImageFit
                     currentBgImageScale = bgImageScale
@@ -498,14 +510,13 @@ data class TextLine(
                     currentNpTop = npTop
                     currentNpRight = npRight
                     currentNpBottom = npBottom
+                    currentBleedMode = bleedMode
+                    currentSpacingH = spacingH
+                    currentSpacingV = spacingV
                 }
             }
             if (active && index == columns.lastIndex) {
-                drawBgImageSegment(
-                    canvas, rangeStart, rangeEnd, currentBgImage,
-                    currentBgImageFit, currentBgImageScale,
-                    currentNpLeft, currentNpTop, currentNpRight, currentNpBottom,
-                )
+                flush()
             }
         }
     }
@@ -704,37 +715,78 @@ data class TextLine(
         canvas.restore()
     }
 
-    private fun drawBgImageSegment(
-        canvas: Canvas,
-        startX: Float,
-        endX: Float,
-        bgImage: String,
-        bgImageFit: Int,
-        bgImageScale: Float,
-        npLeft: Float,
-        npTop: Float,
-        npRight: Float,
-        npBottom: Float,
-    ) {
-        val top = bgPaddingTop
-        val bottom = height - bgPaddingBottom
-        val bitmap = getBgBitmap(bgImage) ?: return
-        if (bgImageFit == 3) {
-            // 九宫格：按用户调整的分割比例切图拉伸，可见边框向外包裹匹配区域
+    /**
+     * 当前行正文/标题字号，用于把背景图间距（em）换算成像素。
+     */
+    private val styleTextSize: Float
+        get() = if (isTitle) ChapterProvider.titlePaint.textSize else ChapterProvider.contentPaint.textSize
+
+    /**
+     * 当前行正文/标题的字体度量：九宫格上下范围以文字上下界为基准，不能用行盒内缩——
+     * 文字基线贴着行盒底部，按行盒内缩会把字身上下各切掉一段（表现为背景包不住文字）。
+     */
+    private val styleFontMetrics: Paint.FontMetrics
+        get() = if (isTitle) ChapterProvider.titlePaint.fontMetrics else ChapterProvider.contentPaint.fontMetrics
+
+    /**
+     * 邻接空白字符的宽度：邻字是无字形的空白（空格/制表符等）时返回其推进宽度，否则返回 0。
+     * 智能策略只借用这份空白向外扩，邻字有字形时绝不外扩。
+     */
+    private fun blankNeighborWidth(index: Int): Float {
+        val neighbor = columns.getOrNull(index) as? TextBaseColumn ?: return 0f
+        val char = neighbor.charData
+        if (char.isEmpty() || !char.isBlank()) return 0f
+        return neighbor.end - neighbor.start
+    }
+
+    /**
+     * 行与行之间空白（行距）的一半：智能策略用它把背景上下撑开，正好填满行距段、
+     * 与相邻行的背景相接，又不会压到上下行的字形。
+     */
+    private fun halfLineGap(): Float {
+        val lineGap = height * (ChapterProvider.lineSpacingExtra - 1f)
+        return if (lineGap > 0f) lineGap / 2f else 0f
+    }
+
+    /**
+     * 绘制一段连续的背景图。[startIndex]..[endIndex] 为同一套样式的连续列，
+     * 两端之外的第一列就是"邻字"，智能策略据此判断能否借用空白。
+     */
+    private fun drawBgImageSegment(canvas: Canvas, startIndex: Int, endIndex: Int) {
+        val first = columns.getOrNull(startIndex) as? TextBaseColumn ?: return
+        val last = columns.getOrNull(endIndex) as? TextBaseColumn ?: return
+        val bitmap = getBgBitmap(first.bgImage) ?: return
+        val startX = first.start
+        val endX = last.end
+        if (first.bgImageFit == 3) {
+            // 九宫格：按用户调整的分割比例与外扩策略切图拉伸；上下以文字上下界为基准
+            val textSize = styleTextSize
+            val baseline = lineBase - lineTop
+            val fontMetrics = styleFontMetrics
             drawNineSlice(
-                bitmap, canvas, startX, top, endX, bottom,
-                npLeft, npTop, npRight, npBottom,
+                bitmap, canvas, startX, baseline + fontMetrics.ascent, endX,
+                baseline + fontMetrics.descent,
+                first.npLeft, first.npTop, first.npRight, first.npBottom,
+                first.bgBleedMode,
+                leftBlankWidth = blankNeighborWidth(startIndex - 1),
+                rightBlankWidth = blankNeighborWidth(endIndex + 1),
+                verticalBlankSpace = halfLineGap(),
+                spacingH = first.bgSpacingH * textSize,
+                spacingV = first.bgSpacingV * textSize,
             )
             return
         }
+        // 其余适配方式保持原有绘制范围
+        val top = bgPaddingTop
+        val bottom = height - bgPaddingBottom
         val paint = PaintPool.obtain()
         paint.style = android.graphics.Paint.Style.FILL
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         val rectWidth = endX - startX
         val rectHeight = bottom - top
-        val scale = bgImageScale.coerceIn(0.1f, 5f)
-        when (bgImageFit) {
+        val scale = first.bgImageScale.coerceIn(0.1f, 5f)
+        when (first.bgImageFit) {
             1 -> {
                 val sw = rectWidth * scale
                 val sh = rectHeight * scale
@@ -762,7 +814,7 @@ data class TextLine(
                 val tileBitmap = if (scale != 1f) {
                     val sw = (bitmap.width * scale).toInt().coerceAtLeast(1)
                     val sh = (bitmap.height * scale).toInt().coerceAtLeast(1)
-                    getScaledBitmap("${bgImage}_s$scale", bitmap, sw, sh)
+                    getScaledBitmap("${first.bgImage}_s$scale", bitmap, sw, sh)
                 } else {
                     bitmap
                 }
@@ -819,6 +871,9 @@ data class TextLine(
         private val einkUnderlineWidth = 1.dpToPx().toFloat()
         private val bgBitmapCache = android.util.LruCache<String, Bitmap>(16 * 1024 * 1024)
         private val bgScaledBitmapCache = android.util.LruCache<String, Bitmap>(8 * 1024 * 1024)
+
+        /** 智能策略借用邻接空白时只取其中的一部分，给后面那个字留出余量 */
+        private const val SMART_BLANK_RATIO = 0.8f
         private val bgSampleWidth by lazy {
             appCtx.resources.displayMetrics.widthPixels
         }
@@ -836,10 +891,16 @@ data class TextLine(
 
         /**
          * 手动九宫格绘制：按 [npLeft]/[npTop]/[npRight]/[npBottom]（占位图宽高比例，0-1，
-         * 左右相加、上下相加不超过 1）把位图切成 3×3，四个角保持原始尺寸画在
-         * [left, top, right, bottom] 匹配区域外四角，四条边与中心分别拉伸，
-         * 可见边框向外包裹匹配区域。
-         * 匹配区域放不下两侧边框时按比例收缩，避免短匹配时绘制区域失控。
+         * 左右相加、上下相加不超过 1）把位图切成 3×3，四个角保持原始尺寸，四条边与中心分别拉伸。
+         *
+         * 四角一律画在目标矩形内部（对齐 .9.png 语义），目标矩形 = 匹配区 + 自动外扩 + 手动间距：
+         * - [bleedMode] 决定**自动外扩**量：[HighlightRule.BLEED_STRICT] 不外扩；
+         *   [HighlightRule.BLEED_SMART] 只占用邻接空白（水平借 [leftBlankWidth]/[rightBlankWidth]，
+         *   垂直借 [verticalBlankSpace]，即一半行距）；[HighlightRule.BLEED_FORCE] 按四角厚度外扩，
+         *   即原来的"向外包裹文字"行为，可能压到相邻未匹配文字。
+         * - [spacingH]/[spacingV] 为手动微调（调用方已换算成像素）：正数把背景向外撑大、离文字更远，
+         *   负数向内收；与自动外扩叠加，所以"严格 + 正间距"也仍是用户主动往外撑。
+         * 目标矩形放不下两侧边框时按比例收缩，避免短匹配 / 大间距时绘制区域失控。
          */
         fun drawNineSlice(
             bitmap: Bitmap,
@@ -852,6 +913,12 @@ data class TextLine(
             npTop: Float,
             npRight: Float,
             npBottom: Float,
+            bleedMode: Int,
+            leftBlankWidth: Float,
+            rightBlankWidth: Float,
+            verticalBlankSpace: Float,
+            spacingH: Float,
+            spacingV: Float,
         ) {
             val bw = bitmap.width
             val bh = bitmap.height
@@ -867,22 +934,53 @@ data class TextLine(
             var rightW = (bw - srcX[2]).toFloat()
             var topH = srcY[1].toFloat()
             var bottomH = (bh - srcY[2]).toFloat()
-            val matchW = right - left
-            val matchH = bottom - top
+            // 自动外扩量：按策略决定。强制模式用四角厚度，与原来的"向外包裹"完全等价
+            val bleedLeft: Float
+            val bleedRight: Float
+            val bleedTop: Float
+            val bleedBottom: Float
+            when (bleedMode) {
+                HighlightRule.BLEED_FORCE -> {
+                    bleedLeft = leftW
+                    bleedRight = rightW
+                    bleedTop = topH
+                    bleedBottom = bottomH
+                }
+                HighlightRule.BLEED_STRICT -> {
+                    bleedLeft = 0f
+                    bleedRight = 0f
+                    bleedTop = 0f
+                    bleedBottom = 0f
+                }
+                else -> {
+                    bleedLeft = leftBlankWidth * SMART_BLANK_RATIO
+                    bleedRight = rightBlankWidth * SMART_BLANK_RATIO
+                    bleedTop = verticalBlankSpace
+                    bleedBottom = verticalBlankSpace
+                }
+            }
+            // 目标矩形 = 匹配区 + 自动外扩 + 手动间距（正数向外撑、负数向内收）
+            val frameLeft = left - bleedLeft - spacingH
+            val frameRight = right + bleedRight + spacingH
+            val frameTop = top - bleedTop - spacingV
+            val frameBottom = bottom + bleedBottom + spacingV
+            val frameW = frameRight - frameLeft
+            val frameH = frameBottom - frameTop
+            if (frameW <= 0f || frameH <= 0f) return
             val horizontalFixed = leftW + rightW
-            if (horizontalFixed > matchW && horizontalFixed > 0f) {
-                val ratio = matchW / horizontalFixed
+            if (horizontalFixed > frameW && horizontalFixed > 0f) {
+                val ratio = frameW / horizontalFixed
                 leftW *= ratio
                 rightW *= ratio
             }
             val verticalFixed = topH + bottomH
-            if (verticalFixed > matchH && verticalFixed > 0f) {
-                val ratio = matchH / verticalFixed
+            if (verticalFixed > frameH && verticalFixed > 0f) {
+                val ratio = frameH / verticalFixed
                 topH *= ratio
                 bottomH *= ratio
             }
-            val dstX = floatArrayOf(left - leftW, left, right, right + rightW)
-            val dstY = floatArrayOf(top - topH, top, bottom, bottom + bottomH)
+            val dstX = floatArrayOf(frameLeft, frameLeft + leftW, frameRight - rightW, frameRight)
+            val dstY = floatArrayOf(frameTop, frameTop + topH, frameBottom - bottomH, frameBottom)
             val paint = PaintPool.obtain()
             paint.style = android.graphics.Paint.Style.FILL
             paint.isAntiAlias = true

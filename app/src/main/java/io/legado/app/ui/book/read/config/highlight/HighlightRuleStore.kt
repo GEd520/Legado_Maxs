@@ -26,6 +26,10 @@ object HighlightRuleStore {
     /** 九宫格分割比例的默认值，与实体字段默认值保持一致 */
     const val DEFAULT_NP_RATIO = 0.1f
 
+    /** 背景图间距（em）的合法区间，超出视为未设置 */
+    const val MIN_BG_SPACING = -0.35f
+    const val MAX_BG_SPACING = 0.35f
+
     /**
      * 高亮规则备份文件的完整数据结构。
      */
@@ -114,6 +118,15 @@ object HighlightRuleStore {
         npTop = rule.npTop.takeIf { it in 0f..1f } ?: DEFAULT_NP_RATIO,
         npRight = rule.npRight.takeIf { it in 0f..1f } ?: DEFAULT_NP_RATIO,
         npBottom = rule.npBottom.takeIf { it in 0f..1f } ?: DEFAULT_NP_RATIO,
+        // 间距越界视为未设置，回落到 0（紧贴文字）
+        bgSpacingH = rule.bgSpacingH.takeIf { it in MIN_BG_SPACING..MAX_BG_SPACING } ?: 0f,
+        bgSpacingV = rule.bgSpacingV.takeIf { it in MIN_BG_SPACING..MAX_BG_SPACING } ?: 0f,
+        // 外扩策略只认三个枚举值，其余（含老规则缺字段得到的 0 以外的值）回落到 null 表示智能
+        bgBleedMode = rule.bgBleedMode?.takeIf {
+            it == HighlightRule.BLEED_STRICT ||
+                it == HighlightRule.BLEED_SMART ||
+                it == HighlightRule.BLEED_FORCE
+        },
     )
 
     fun backupData(context: Context): BackupData {

@@ -1019,6 +1019,9 @@ class TextChapterLayout(
                 val npTop = highlightStyle?.npTop ?: 0.1f
                 val npRight = highlightStyle?.npRight ?: 0.1f
                 val npBottom = highlightStyle?.npBottom ?: 0.1f
+                val bgBleedMode = highlightStyle?.bgBleedMode ?: HighlightRule.BLEED_SMART
+                val bgSpacingH = highlightStyle?.bgSpacingH ?: 0f
+                val bgSpacingV = highlightStyle?.bgSpacingV ?: 0f
                 val highlightFontPath = extractFontPath(spanned, charIndex)
                 val charRight = if (charIndex + 1 < lineEnd) {
                     staticLayout.getPrimaryHorizontal(charIndex + 1)
@@ -1157,6 +1160,9 @@ class TextChapterLayout(
                                 npTop = npTop,
                                 npRight = npRight,
                                 npBottom = npBottom,
+                                bgBleedMode = bgBleedMode,
+                                bgSpacingH = bgSpacingH,
+                                bgSpacingV = bgSpacingV,
                                 fontPath = highlightFontPath,
                             ),
                         )
@@ -1182,6 +1188,9 @@ class TextChapterLayout(
                             npTop = npTop,
                             npRight = npRight,
                             npBottom = npBottom,
+                            bgBleedMode = bgBleedMode,
+                            bgSpacingH = bgSpacingH,
+                            bgSpacingV = bgSpacingV,
                             fontPath = highlightFontPath,
                         ),
                     )
@@ -1390,6 +1399,9 @@ class TextChapterLayout(
         var npTop = 0.1f
         var npRight = 0.1f
         var npBottom = 0.1f
+        var bgBleedMode = HighlightRule.BLEED_SMART
+        var bgSpacingH = 0f
+        var bgSpacingV = 0f
         var hasUnderline = false
         var hasBgImage = false
         var hasBgColor = false
@@ -1410,6 +1422,9 @@ class TextChapterLayout(
                 npTop = span.npTop
                 npRight = span.npRight
                 npBottom = span.npBottom
+                bgBleedMode = span.bgBleedMode
+                bgSpacingH = span.bgSpacingH
+                bgSpacingV = span.bgSpacingV
                 hasBgImage = true
             }
             if (span.bgColor != null) {
@@ -1432,6 +1447,9 @@ class TextChapterLayout(
             npTop = if (hasBgImage) npTop else 0.1f,
             npRight = if (hasBgImage) npRight else 0.1f,
             npBottom = if (hasBgImage) npBottom else 0.1f,
+            bgBleedMode = bgBleedMode,
+            bgSpacingH = bgSpacingH,
+            bgSpacingV = bgSpacingV,
         )
     }
 
@@ -1941,6 +1959,9 @@ class TextChapterLayout(
         val npTop = style?.npTop ?: 0.1f
         val npRight = style?.npRight ?: 0.1f
         val npBottom = style?.npBottom ?: 0.1f
+        val bgBleedMode = style?.bgBleedMode ?: HighlightRule.BLEED_SMART
+        val bgSpacingH = style?.bgSpacingH ?: 0f
+        val bgSpacingV = style?.bgSpacingV ?: 0f
         val fontPath = style?.font.orEmpty()
         val column = when {
             !srcList.isNullOrEmpty() && (char == srcReplaceStr || char == reviewStr) -> {
@@ -1986,6 +2007,9 @@ class TextChapterLayout(
                     npTop = npTop,
                     npRight = npRight,
                     npBottom = npBottom,
+                    bgBleedMode = bgBleedMode,
+                    bgSpacingH = bgSpacingH,
+                    bgSpacingV = bgSpacingV,
                     fontPath = fontPath,
                 )
             }
@@ -2112,6 +2136,9 @@ class TextChapterLayout(
                 npTop = style.npTop,
                 npRight = style.npRight,
                 npBottom = style.npBottom,
+                bgBleedMode = style.bgBleedMode,
+                bgSpacingH = style.bgSpacingH,
+                bgSpacingV = style.bgSpacingV,
                 font = style.font,
             )
         }

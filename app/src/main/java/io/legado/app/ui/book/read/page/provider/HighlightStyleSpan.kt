@@ -25,6 +25,9 @@ class HighlightStyleSpan(
     val npTop: Float = 0.1f,
     val npRight: Float = 0.1f,
     val npBottom: Float = 0.1f,
+    val bgBleedMode: Int = 1,
+    val bgSpacingH: Float = 0f,
+    val bgSpacingV: Float = 0f,
 ) : CharacterStyle(), UpdateAppearance {
 
     constructor(style: HighlightRuleStyle) : this(
@@ -41,6 +44,9 @@ class HighlightStyleSpan(
         npTop = style.npTop,
         npRight = style.npRight,
         npBottom = style.npBottom,
+        bgBleedMode = style.bgBleedMode,
+        bgSpacingH = style.bgSpacingH,
+        bgSpacingV = style.bgSpacingV,
     )
 
     override fun updateDrawState(tp: TextPaint) = Unit

@@ -848,15 +848,27 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
 
     private fun formatNpSummary(): String {
         fun Float.percent() = "${(this * 100).roundToInt()}%"
+        val strategy = when (HighlightRule.resolvedBleedMode(editingRule.bgBleedMode)) {
+            HighlightRule.BLEED_STRICT -> "严格"
+            HighlightRule.BLEED_FORCE -> "强制"
+            else -> "智能"
+        }
         return "左${editingRule.npLeft.percent()} 上${editingRule.npTop.percent()} " +
-            "右${editingRule.npRight.percent()} 下${editingRule.npBottom.percent()}"
+            "右${editingRule.npRight.percent()} 下${editingRule.npBottom.percent()}\n" +
+            "$strategy 间距 ${formatEm(editingRule.bgSpacingH)}/${formatEm(editingRule.bgSpacingV)}"
     }
 
+    /** 间距的展示格式：固定两位小数并带 em 单位 */
+    private fun formatEm(value: Float): String = String.format(java.util.Locale.US, "%.2fem", value)
+
     /**
-     * 九宫格调整弹窗：上方预览图叠加四条红色分割线，下方左/上/右/下四行滑条按百分比微调。
-     * 滑条组件样式与底栏透明度调整一致（−/+ 按钮夹住 SeekBar），比例含义与 MD3-main
-     * 的九宫格编辑器相同：分割线一侧为固定不拉伸的边框区。
-     * 左右两侧相加、上下两侧相加均不超过 100%，拖动超限时压回当前滑条自身。
+     * 九宫格调整弹窗：上方预览图叠加四条红色分割线，下方为调整区。
+     *
+     * 四条分割比例滑条（左/上/右/下）含义与 .9.png 的拉伸标记一致：分割线一侧为固定不拉伸的
+     * 边框区；左右两侧相加、上下两侧相加均不超过 100%，拖动超限时压回当前滑条自身。
+     *
+     * 另有「外扩策略」开关（严格/智能/强制）与左右/上下间距两条滑条：策略决定自动外扩量
+     * （严格不外扩、智能只占用邻接空白、强制按四角厚度外扩），间距为正表示把背景向外撑大、为负向内收。
      */
     private fun showNineSliceAdjustDialog() {
         val bgImage = editingRule.bgImage?.takeIf { it.isNotBlank() } ?: return
@@ -866,6 +878,9 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         var npTop = editingRule.npTop.coerceIn(0f, 1f)
         var npRight = editingRule.npRight.coerceIn(0f, 1f)
         var npBottom = editingRule.npBottom.coerceIn(0f, 1f)
+        var bleedMode = HighlightRule.resolvedBleedMode(editingRule.bgBleedMode)
+        var spacingH = editingRule.bgSpacingH
+        var spacingV = editingRule.bgSpacingV
 
         val preview = NineSlicePreviewView(requireContext(), bitmap, npLeft, npTop, npRight, npBottom).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -955,14 +970,149 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         sliderRow("上", "top", "bottom", npTop) { npTop = it; preview.npTop = it }
         sliderRow("下", "bottom", "top", npBottom) { npBottom = it; preview.npBottom = it }
 
+        // 间距（em，可正可负）：正数把背景向外撑大、离文字更远，负数向内收。
+        // 滑条以 0.01em 为一格，进度 35 对应 0em（范围 -0.35em ~ +0.35em）
+        val spacingOffset = 0.35f
+        val spacingSliderMax = 70
+        fun toSpacingProgress(value: Float) = ((value + spacingOffset) * 100).roundToInt()
+        fun toSpacingValue(progress: Int) = progress / 100f - spacingOffset
+        fun spacingSliderRow(label: String, initial: Float, onValue: (Float) -> Unit) {
+            val valueText = TextView(requireContext()).apply {
+                text = formatEm(initial)
+                textSize = 13f
+                setTextColor(primaryTextColor)
+            }
+            val seekBar = SeekBar(requireContext()).apply {
+                max = spacingSliderMax
+                progress = toSpacingProgress(initial).coerceIn(0, max)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { marginStart = (6 * density).toInt() }
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                        val value = toSpacingValue(progress)
+                        onValue(value)
+                        valueText.text = formatEm(value)
+                    }
+
+                    override fun onStartTrackingTouch(sb: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(sb: SeekBar?) = Unit
+                })
+            }
+            fun adjustButton(text: String, delta: Int) = TextView(requireContext()).apply {
+                this.text = text
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTextColor(primaryTextColor)
+                setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+                setOnClickListener {
+                    seekBar.progress = (seekBar.progress + delta).coerceIn(0, seekBar.max)
+                }
+            }
+            container.addView(LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, (8 * density).toInt(), 0, (8 * density).toInt())
+                addView(
+                    TextView(requireContext()).apply {
+                        text = label
+                        textSize = 13f
+                        setTextColor(primaryTextColor)
+                    },
+                    LinearLayout.LayoutParams(
+                        (60 * density).toInt(),
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+                addView(adjustButton("−", -1))
+                addView(seekBar)
+                addView(adjustButton("+", 1))
+                addView(valueText.apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { width = (52 * density).toInt(); gravity = Gravity.CENTER }
+                })
+            })
+        }
+
+        // 外扩策略：严格 / 智能 / 强制，用 −/+ 循环切换，切换时同步刷新下面的一行说明
+        val strategyNames = arrayOf("严格", "智能", "强制")
+        val strategyHints = arrayOf(
+            "严格：背景只覆盖匹配到的文字，绝不向外扩。",
+            "智能（默认）：只占用邻接的空白——左右借用空格，上下吃掉一半行距，不会压到相邻文字。",
+            "强制：按四边分割比例向外扩展，即原来的“包裹文字”效果，可能盖住相邻的未匹配文字。",
+        )
+        val strategyText = TextView(requireContext()).apply {
+            text = strategyNames[bleedMode]
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(primaryTextColor)
+        }
+        val strategyHint = TextView(requireContext()).apply {
+            text = strategyHints[bleedMode]
+            textSize = 11f
+            setTextColor(primaryTextColor)
+        }
+        fun strategyButton(text: String, delta: Int) = TextView(requireContext()).apply {
+            this.text = text
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setTextColor(primaryTextColor)
+            setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+            setOnClickListener {
+                bleedMode = (bleedMode + delta + strategyNames.size) % strategyNames.size
+                strategyText.text = strategyNames[bleedMode]
+                strategyHint.text = strategyHints[bleedMode]
+            }
+        }
+        container.addView(LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, (8 * density).toInt(), 0, 0)
+            addView(
+                TextView(requireContext()).apply {
+                    text = "外扩策略"
+                    textSize = 13f
+                    setTextColor(primaryTextColor)
+                },
+                LinearLayout.LayoutParams(
+                    (60 * density).toInt(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(strategyButton("−", -1))
+            addView(
+                strategyText,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            addView(strategyButton("+", 1))
+        })
+        container.addView(strategyHint.apply {
+            setPadding(0, (4 * density).toInt(), 0, (8 * density).toInt())
+        })
+
+        container.addView(TextView(requireContext()).apply {
+            text = "间距：正数把背景向外撑大、离文字更远，负数让背景向内收，0 表示紧贴文字边界。" +
+                "间距与策略的外扩量叠加，可用它补偿图片自带的透明留白。"
+            textSize = 11f
+            setTextColor(primaryTextColor)
+            setPadding(0, (8 * density).toInt(), 0, 0)
+        })
+        spacingSliderRow("左右间距", spacingH) { spacingH = it }
+        spacingSliderRow("上下间距", spacingV) { spacingV = it }
+
         android.app.AlertDialog.Builder(requireContext())
             .setTitle("九宫格调整")
-            .setView(container)
+            // 行数较多，套一层滚动容器，小屏上不会挤掉确定/取消按钮
+            .setView(android.widget.ScrollView(requireContext()).apply { addView(container) })
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 editingRule.npLeft = npLeft
                 editingRule.npTop = npTop
                 editingRule.npRight = npRight
                 editingRule.npBottom = npBottom
+                editingRule.bgBleedMode = bleedMode
+                editingRule.bgSpacingH = spacingH
+                editingRule.bgSpacingV = spacingV
                 updateNpAdjustRow()
                 updatePreview()
             }

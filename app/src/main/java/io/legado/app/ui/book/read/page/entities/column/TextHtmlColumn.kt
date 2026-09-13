@@ -36,6 +36,9 @@ data class TextHtmlColumn(
     override val npTop: Float = 0.1f,
     override val npRight: Float = 0.1f,
     override val npBottom: Float = 0.1f,
+    override val bgBleedMode: Int = 1,
+    override val bgSpacingH: Float = 0f,
+    override val bgSpacingV: Float = 0f,
     override val fontPath: String = "",
 ) : TextBaseColumn {
 

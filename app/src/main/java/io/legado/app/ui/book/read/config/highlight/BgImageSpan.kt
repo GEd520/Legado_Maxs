@@ -9,6 +9,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.text.style.ReplacementSpan
 import io.legado.app.ui.book.read.page.entities.TextLine
+import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.utils.dpToPx
 
 /**
@@ -33,6 +34,9 @@ class BgImageSpan(
     private val npTop: Float = 0.1f,
     private val npRight: Float = 0.1f,
     private val npBottom: Float = 0.1f,
+    private val bgBleedMode: Int = HighlightRule.BLEED_SMART,
+    private val bgSpacingH: Float = 0f,
+    private val bgSpacingV: Float = 0f,
     private val underlineMode: Int = 0,
     private val underlineColor: Int = 0,
     private val underlineWidth: Float = 1f,
@@ -75,6 +79,16 @@ class BgImageSpan(
         val rectWidth = width
         val rectHeight = (bottom - top).toFloat()
         val scale = bgImageScale.coerceIn(0.1f, 5f)
+        val textSize = paint.textSize
+        val fontMetrics = paint.fontMetrics
+        val spacingH = bgSpacingH * textSize
+        val spacingV = bgSpacingV * textSize
+        // 与正文渲染保持同一规则：上下以文字上下界为基准，不能用行盒内缩
+        val sliceTop = y + fontMetrics.ascent
+        val sliceBottom = y + fontMetrics.descent
+        // 预览文本自身的行距余量，供智能策略上下外扩
+        val lineGap = (bottom - top) * (ChapterProvider.lineSpacingExtra - 1f)
+        val verticalBlankSpace = if (lineGap > 0f) lineGap / 2f else 0f
 
         val bitmap = TextLine.getBgBitmap(bgImagePath)
         if (bitmap != null) {
@@ -84,10 +98,16 @@ class BgImageSpan(
                 isFilterBitmap = true
             }
             if (bgImageFit == 3) {
-                // 九宫格：与正文渲染一致，按用户分割比例切图并向外包裹文字区域
+                // 九宫格：与正文渲染一致，按用户分割比例与外扩策略切图
                 TextLine.drawNineSlice(
-                    bitmap, canvas, x, top.toFloat(), x + width, bottom.toFloat(),
+                    bitmap, canvas, x, sliceTop, x + width, sliceBottom,
                     npLeft, npTop, npRight, npBottom,
+                    bgBleedMode,
+                    leftBlankWidth = if (start > 0) measureBlankWidth(paint, text, start - 1) else 0f,
+                    rightBlankWidth = if (end < text.length) measureBlankWidth(paint, text, end) else 0f,
+                    verticalBlankSpace = verticalBlankSpace,
+                    spacingH = spacingH,
+                    spacingV = spacingV,
                 )
             } else when (bgImageFit) {
                 1 -> {
@@ -145,6 +165,13 @@ class BgImageSpan(
         if (underlineMode != 0 && underlineMode != 7) {
             drawDecoration(canvas, x, x + width, y, paint)
         }
+    }
+
+    /** 邻接字符为空白时返回其宽度，供智能策略借用；有字形或越界时返回 0 */
+    private fun measureBlankWidth(paint: Paint, text: CharSequence, index: Int): Float {
+        if (index < 0 || index >= text.length) return 0f
+        if (!text[index].isWhitespace()) return 0f
+        return paint.measureText(text, index, index + 1)
     }
 
     private fun drawDecoration(canvas: Canvas, startX: Float, endX: Float, y: Int, paint: Paint) {
