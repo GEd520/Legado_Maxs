@@ -868,7 +868,8 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
      * 边框区；左右两侧相加、上下两侧相加均不超过 100%，拖动超限时压回当前滑条自身。
      *
      * 另有「外扩策略」开关（严格/智能/强制）与左右/上下间距两条滑条：策略决定自动外扩量
-     * （严格不外扩、智能只占用邻接空白、强制按四角厚度外扩），间距为正表示把背景向外撑大、为负向内收。
+     * （严格不外扩、智能只占用邻接空白、强制按四角厚度外扩并推开邻字），
+     * 间距为正表示把背景向外撑大、为负向内收。
      */
     private fun showNineSliceAdjustDialog() {
         val bgImage = editingRule.bgImage?.takeIf { it.isNotBlank() } ?: return
@@ -970,26 +971,29 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         sliderRow("上", "top", "bottom", npTop) { npTop = it; preview.npTop = it }
         sliderRow("下", "bottom", "top", npBottom) { npBottom = it; preview.npBottom = it }
 
-        // 间距（em，可正可负）：正数把背景向外撑大、离文字更远，负数向内收。
-        // 滑条以 0.01em 为一格，进度 35 对应 0em（范围 -0.35em ~ +0.35em）
-        val spacingOffset = 0.35f
-        val spacingSliderMax = 70
-        fun toSpacingProgress(value: Float) = ((value + spacingOffset) * 100).roundToInt()
-        fun toSpacingValue(progress: Int) = progress / 100f - spacingOffset
-        fun spacingSliderRow(label: String, initial: Float, onValue: (Float) -> Unit) {
+        // em 滑条：以 0.01em 为一格，[rangeMin, rangeMax] 为可调区间
+        fun emSliderRow(
+            label: String,
+            initial: Float,
+            rangeMin: Float,
+            rangeMax: Float,
+            onValue: (Float) -> Unit,
+        ) {
+            fun toProgress(value: Float) = ((value - rangeMin) * 100).roundToInt()
+            fun toValue(progress: Int) = progress / 100f + rangeMin
             val valueText = TextView(requireContext()).apply {
                 text = formatEm(initial)
                 textSize = 13f
                 setTextColor(primaryTextColor)
             }
             val seekBar = SeekBar(requireContext()).apply {
-                max = spacingSliderMax
-                progress = toSpacingProgress(initial).coerceIn(0, max)
+                max = ((rangeMax - rangeMin) * 100).roundToInt()
+                progress = toProgress(initial).coerceIn(0, max)
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                     .apply { marginStart = (6 * density).toInt() }
                 setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                     override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
-                        val value = toSpacingValue(progress)
+                        val value = toValue(progress)
                         onValue(value)
                         valueText.text = formatEm(value)
                     }
@@ -1040,7 +1044,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         val strategyHints = arrayOf(
             "严格：背景只覆盖匹配到的文字，绝不向外扩。",
             "智能（默认）：只占用邻接的空白——左右借用空格，上下吃掉一半行距，不会压到相邻文字。",
-            "强制：按四边分割比例向外扩展，即原来的“包裹文字”效果，可能盖住相邻的未匹配文字。",
+            "强制：按四边分割比例向外扩展，并把左右邻字自动推开一个正文字距，文字会整体仍保持两端对齐。",
         )
         val strategyText = TextView(requireContext()).apply {
             text = strategyNames[bleedMode]
@@ -1098,8 +1102,8 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
             setTextColor(primaryTextColor)
             setPadding(0, (8 * density).toInt(), 0, 0)
         })
-        spacingSliderRow("左右间距", spacingH) { spacingH = it }
-        spacingSliderRow("上下间距", spacingV) { spacingV = it }
+        emSliderRow("左右间距", spacingH, -0.35f, 0.35f) { spacingH = it }
+        emSliderRow("上下间距", spacingV, -0.35f, 0.35f) { spacingV = it }
 
         android.app.AlertDialog.Builder(requireContext())
             .setTitle("九宫格调整")

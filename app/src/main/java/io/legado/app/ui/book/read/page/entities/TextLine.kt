@@ -716,17 +716,19 @@ data class TextLine(
     }
 
     /**
-     * 当前行正文/标题字号，用于把背景图间距（em）换算成像素。
+     * 当前行正文/标题实际使用的画笔，用于把间距（em）换算成像素、以及量取邻字墨迹。
      */
-    private val styleTextSize: Float
-        get() = if (isTitle) ChapterProvider.titlePaint.textSize else ChapterProvider.contentPaint.textSize
+    private val stylePaint: Paint
+        get() = if (isTitle) ChapterProvider.titlePaint else ChapterProvider.contentPaint
+
+    /** 当前行字号，用于把背景图间距（em）换算成像素 */
+    private val styleTextSize: Float get() = stylePaint.textSize
 
     /**
      * 当前行正文/标题的字体度量：九宫格上下范围以文字上下界为基准，不能用行盒内缩——
      * 文字基线贴着行盒底部，按行盒内缩会把字身上下各切掉一段（表现为背景包不住文字）。
      */
-    private val styleFontMetrics: Paint.FontMetrics
-        get() = if (isTitle) ChapterProvider.titlePaint.fontMetrics else ChapterProvider.contentPaint.fontMetrics
+    private val styleFontMetrics: Paint.FontMetrics get() = stylePaint.fontMetrics
 
     /**
      * 邻接空白字符的宽度：邻字是无字形的空白（空格/制表符等）时返回其推进宽度，否则返回 0。
@@ -890,6 +892,18 @@ data class TextLine(
         }
 
         /**
+         * 按分割比例换算出的左右四角厚度（位图像素，返回 `[左, 右]`）。
+         * 与 [drawNineSlice] 的切分口径一致，供排版阶段估算"强制"策略要给邻字让出多少空间。
+         */
+        fun nineSliceSideWidth(bitmap: Bitmap, npLeft: Float, npRight: Float): FloatArray {
+            val bw = bitmap.width
+            if (bw <= 0) return floatArrayOf(0f, 0f)
+            val rightCutX = bw - (bw * npRight.coerceIn(0f, 1f)).roundToInt()
+            val leftCutX = (bw * npLeft.coerceIn(0f, 1f)).roundToInt().coerceAtMost(rightCutX)
+            return floatArrayOf(leftCutX.toFloat(), (bw - rightCutX).toFloat())
+        }
+
+        /**
          * 手动九宫格绘制：按 [npLeft]/[npTop]/[npRight]/[npBottom]（占位图宽高比例，0-1，
          * 左右相加、上下相加不超过 1）把位图切成 3×3，四个角保持原始尺寸，四条边与中心分别拉伸。
          *
@@ -959,7 +973,8 @@ data class TextLine(
                     bleedBottom = verticalBlankSpace
                 }
             }
-            // 目标矩形 = 匹配区 + 自动外扩 + 手动间距（正数向外撑、负数向内收）
+            // 目标矩形 = 匹配区 + 自动外扩 + 手动间距（正数向外撑、负数向内收）。
+            // 强制模式会外扩到邻字上方，排版阶段已把邻字推开（见 TextChapterLayout.computeNeighborPush）
             val frameLeft = left - bleedLeft - spacingH
             val frameRight = right + bleedRight + spacingH
             val frameTop = top - bleedTop - spacingV
