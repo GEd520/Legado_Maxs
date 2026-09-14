@@ -26,10 +26,15 @@ object HighlightRuleStore {
     /** 九宫格分割比例的默认值，与实体字段默认值保持一致 */
     const val DEFAULT_NP_RATIO = 0.1f
 
-    /** 背景图间距（em）的合法区间，超出视为未设置。负值下限给到 -1em，
-     *  这样"强制"模式最多 1em 的外扩量可以用间距完全收回来 */
-    const val MIN_BG_SPACING = -1f
-    const val MAX_BG_SPACING = 0.5f
+    /** 背景图左右间距（em）的合法区间，超出视为未设置。
+     *  水平方向文字左右有邻字可让位，放宽到 ±1em，能抵消"强制"模式的外扩 */
+    const val MIN_BG_SPACING_H = -1f
+    const val MAX_BG_SPACING_H = 1f
+
+    /** 背景图上下间距（em）的合法区间，超出视为未设置。
+     *  垂直方向空间受行距限制，收得太狠会把背景连同文字一起收没，故只给 ±0.5em */
+    const val MIN_BG_SPACING_V = -0.5f
+    const val MAX_BG_SPACING_V = 0.5f
 
     /**
      * 高亮规则备份文件的完整数据结构。
@@ -119,9 +124,9 @@ object HighlightRuleStore {
         npTop = rule.npTop.takeIf { it in 0f..1f } ?: DEFAULT_NP_RATIO,
         npRight = rule.npRight.takeIf { it in 0f..1f } ?: DEFAULT_NP_RATIO,
         npBottom = rule.npBottom.takeIf { it in 0f..1f } ?: DEFAULT_NP_RATIO,
-        // 间距越界视为未设置，回落到 0（紧贴文字）
-        bgSpacingH = rule.bgSpacingH.takeIf { it in MIN_BG_SPACING..MAX_BG_SPACING } ?: 0f,
-        bgSpacingV = rule.bgSpacingV.takeIf { it in MIN_BG_SPACING..MAX_BG_SPACING } ?: 0f,
+        // 间距越界视为未设置，回落到 0（紧贴文字）；左右与上下的区间不同
+        bgSpacingH = rule.bgSpacingH.takeIf { it in MIN_BG_SPACING_H..MAX_BG_SPACING_H } ?: 0f,
+        bgSpacingV = rule.bgSpacingV.takeIf { it in MIN_BG_SPACING_V..MAX_BG_SPACING_V } ?: 0f,
         // 外扩策略只认三个枚举值，其余（含老规则缺字段得到的 0 以外的值）回落到 null 表示智能
         bgBleedMode = rule.bgBleedMode?.takeIf {
             it == HighlightRule.BLEED_STRICT ||
