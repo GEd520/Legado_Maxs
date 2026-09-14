@@ -299,6 +299,7 @@ object PreferKey {
     const val highlightRuleCurrentGroup = "highlightRuleCurrentGroup"
 
     const val blockRuleItems = "exploreBlockRuleItems"
+
     /** 混淆版本遗留的屏蔽规则原始 JSON 备份（恢复失败时保留，避免数据彻底丢失） */
     const val blockRuleItemsLegacyBackup = "exploreBlockRuleItemsLegacyBackup"
     const val blockRuleGroups = "exploreBlockRuleGroups"
@@ -371,4 +372,10 @@ object PreferKey {
 
     /** 书架分组隐藏的标签，JSON Map<groupId, Set<tag>> */
     const val bookshelfHiddenTags = "bookshelfHiddenTags"
+
+    /** 智能标签总开关 */
+    const val smartTagsEnabled = "smartTagsEnabled"
+
+    /** 被关闭的智能标签规则 id 集合（黑名单，未记录即开启） */
+    const val smartTagsDisabledRules = "smartTagsDisabledRules"
 }

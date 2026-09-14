@@ -10,7 +10,7 @@ import io.legado.app.data.dao.BookTagInfo
 data class BookshelfTagItemUi(
     val name: String,
     val assignedCount: Int,
-    val visible: Boolean
+    val visible: Boolean,
 )
 
 /**
@@ -21,7 +21,19 @@ data class BookshelfTagGroupUi(
     val groupId: Long,
     val groupName: String,
     val books: List<BookTagInfo>,
-    val tags: List<BookshelfTagItemUi>
+    val tags: List<BookshelfTagItemUi>,
+)
+
+/**
+ * 智能标签（子标签）项的 UI 状态。
+ */
+@Immutable
+data class SmartTagItemUi(
+    val id: String,
+    val name: String,
+    val description: String,
+    val assignedCount: Int,
+    val enabled: Boolean,
 )
 
 /**
@@ -33,7 +45,7 @@ data class BookTagAssignmentUi(
     val groupName: String,
     val tag: String,
     val books: List<BookTagInfo>,
-    val initiallySelectedUrls: Set<String>
+    val initiallySelectedUrls: Set<String>,
 )
 
 /**
@@ -46,13 +58,16 @@ sealed interface BookshelfTagDialogState {
         val groupId: Long,
         val groupName: String,
         val tag: String,
-        val books: List<BookTagInfo>
+        val books: List<BookTagInfo>,
     ) : BookshelfTagDialogState
     data class RenameTag(
         val groupId: Long,
         val groupName: String,
-        val oldTag: String
+        val oldTag: String,
     ) : BookshelfTagDialogState
+
+    /** 智能标签管理对话框。 */
+    data object SmartTags : BookshelfTagDialogState
 }
 
 /**
@@ -62,5 +77,7 @@ data class BookshelfTagManageUiState(
     val loading: Boolean = true,
     val focusGroupId: Long = -1L,
     val groups: List<BookshelfTagGroupUi> = emptyList(),
-    val dialog: BookshelfTagDialogState? = null
+    val smartTags: List<SmartTagItemUi> = emptyList(),
+    val smartTagsEnabled: Boolean = true,
+    val dialog: BookshelfTagDialogState? = null,
 )

@@ -465,7 +465,10 @@ interface BookDao {
     @get:Query("SELECT bookUrl FROM books")
     val allBookUrls: List<String>
 
-    @get:Query("SELECT bookUrl, name, author, customTag, type, `group` FROM books")
+    @get:Query(
+        "SELECT bookUrl, name, author, customTag, type, `group`, origin, " +
+            "totalChapterNum, durChapterIndex, durChapterPos, lastCheckCount, canUpdate FROM books",
+    )
     val allTagInfos: List<BookTagInfo>
 
     @get:Query("SELECT COUNT(*) FROM books")
@@ -524,7 +527,7 @@ interface BookDao {
 }
 
 /**
- * 轻量标签查询数据类，仅包含标签管理所需字段。
+ * 轻量标签查询数据类，仅包含标签管理与智能标签判定所需字段。
  */
 data class BookTagInfo(
     val bookUrl: String,
@@ -533,4 +536,10 @@ data class BookTagInfo(
     val customTag: String?,
     val type: Int,
     val group: Long,
+    val origin: String,
+    val totalChapterNum: Int,
+    val durChapterIndex: Int,
+    val durChapterPos: Int,
+    val lastCheckCount: Int,
+    val canUpdate: Boolean,
 )

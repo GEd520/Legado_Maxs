@@ -671,6 +671,45 @@
     <string name="bookshelf_tag_rename_group">Rename tag in "%1$s"</string>
     <string name="bookshelf_tag_rename_label">Tag name</string>
     <string name="bookshelf_tag_all">All</string>
+
+    <!-- Smart tags -->
+    <string name="smart_tag_manage">Smart tag management</string>
+    <string name="smart_tag_enable">Smart tags</string>
+    <string name="smart_tag_enable_summary">Auto match tags by book type, reading progress, chapter count and update status</string>
+    <string name="smart_tag_sub_title">Sub tags</string>
+    <string name="smart_tag_sub_summary">Available only when smart tags are enabled</string>
+    <string name="smart_tag_book_count">%1$d books</string>
+    <string name="smart_tag_rule_audio">Audio</string>
+    <string name="smart_tag_rule_audio_desc">Audio books</string>
+    <string name="smart_tag_rule_image">Manga</string>
+    <string name="smart_tag_rule_image_desc">Image or manga books</string>
+    <string name="smart_tag_rule_video">Video</string>
+    <string name="smart_tag_rule_video_desc">Video books</string>
+    <string name="smart_tag_rule_local">Local</string>
+    <string name="smart_tag_rule_local_desc">Local books</string>
+    <string name="smart_tag_rule_online">Online</string>
+    <string name="smart_tag_rule_online_desc">From online book sources</string>
+    <string name="smart_tag_rule_update_error">Update error</string>
+    <string name="smart_tag_rule_update_error_desc">Last update failed</string>
+    <string name="smart_tag_rule_finished">Finished</string>
+    <string name="smart_tag_rule_finished_desc">Read to the last chapter</string>
+    <string name="smart_tag_rule_reading">Reading</string>
+    <string name="smart_tag_rule_reading_desc">In progress and not finished</string>
+    <string name="smart_tag_rule_unread">Not started</string>
+    <string name="smart_tag_rule_unread_desc">No reading progress yet</string>
+    <string name="smart_tag_rule_very_long">Super long</string>
+    <string name="smart_tag_rule_very_long_desc">1000 chapters or more</string>
+    <string name="smart_tag_rule_long">Long</string>
+    <string name="smart_tag_rule_long_desc">500 to 999 chapters</string>
+    <string name="smart_tag_rule_medium">Medium length</string>
+    <string name="smart_tag_rule_medium_desc">200 to 499 chapters</string>
+    <string name="smart_tag_rule_short">Short</string>
+    <string name="smart_tag_rule_short_desc">Fewer than 50 chapters</string>
+    <string name="smart_tag_rule_has_update">Has update</string>
+    <string name="smart_tag_rule_has_update_desc">New chapters found on last check</string>
+    <string name="smart_tag_rule_cannot_update">Not updatable</string>
+    <string name="smart_tag_rule_cannot_update_desc">Auto update disabled</string>
+
     <string name="show_bookshelf_tag_bar">Show tag bar</string>
     <string name="group_edit">Group editing</string>
     <string name="move_to_group">Move to group</string>

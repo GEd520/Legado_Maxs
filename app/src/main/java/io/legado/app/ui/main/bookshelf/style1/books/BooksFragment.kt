@@ -25,7 +25,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBooksBinding
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.book.BookTagHelper
+import io.legado.app.help.book.BookTagMatcher
+import io.legado.app.help.book.toSmartTagSnapshot
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.info.BookInfoActivity
@@ -52,7 +53,8 @@ import kotlin.math.max
 /**
  * 书架界面
  */
-class BooksFragment() : BaseFragment(R.layout.fragment_books),
+class BooksFragment() :
+    BaseFragment(R.layout.fragment_books),
     BaseBooksAdapter.CallBack {
 
     constructor(position: Int, group: BookGroup) : this() {
@@ -83,12 +85,10 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
     private var itemCount = 0
     private var tagFilter: String? = null
 
-    private fun createBooksAdapter(): BaseBooksAdapter<*> {
-        return when (AppConfig.bookLayout) {
-            0 -> BooksAdapterList(requireContext(), this, this, viewLifecycleOwner.lifecycle)
-            1 -> BooksAdapterList2(requireContext(), this, this, viewLifecycleOwner.lifecycle)
-            else -> BooksAdapterGrid(requireContext(), this)
-        }
+    private fun createBooksAdapter(): BaseBooksAdapter<*> = when (AppConfig.bookLayout) {
+        0 -> BooksAdapterList(requireContext(), this, this, viewLifecycleOwner.lifecycle)
+        1 -> BooksAdapterList2(requireContext(), this, this, viewLifecycleOwner.lifecycle)
+        else -> BooksAdapterGrid(requireContext(), this)
     }
 
     /**
@@ -186,35 +186,39 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         binding.rvBookshelf.addItemDecoration(object : RecyclerView.ItemDecoration() {
             private val marginFirst = bookshelfMargin + 24
             private val marginNormal = bookshelfMargin
-            
+
             override fun getItemOffsets(
                 outRect: Rect,
                 view: View,
                 parent: RecyclerView,
-                state: RecyclerView.State
+                state: RecyclerView.State,
             ) {
                 val position = parent.getChildAdapterPosition(view)
                 if (position == RecyclerView.NO_POSITION) return
-                
+
                 if (bookLayout >= 2) {
                     val rowIndex = position / bookLayout
                     val lastRowIndex = if (itemCount > 0) (itemCount - 1) / bookLayout else 0
                     // 处理单行情况：既是第一行也是最后一行
                     if (rowIndex == 0 && rowIndex == lastRowIndex) {
                         outRect.set(bookshelfMargin, marginFirst, bookshelfMargin, marginFirst)
-                    } else when (rowIndex) {
-                        0 -> outRect.set(bookshelfMargin, marginFirst, bookshelfMargin, bookshelfMargin)
-                        lastRowIndex -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, marginFirst)
-                        else -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, bookshelfMargin)
+                    } else {
+                        when (rowIndex) {
+                            0 -> outRect.set(bookshelfMargin, marginFirst, bookshelfMargin, bookshelfMargin)
+                            lastRowIndex -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, marginFirst)
+                            else -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, bookshelfMargin)
+                        }
                     }
                 } else {
                     // 处理单行情况：既是第一行也是最后一行
                     if (position == 0 && position == itemCount - 1) {
                         outRect.set(0, marginFirst, 0, marginFirst)
-                    } else when (position) {
-                        0 -> outRect.set(0, marginFirst, 0, marginNormal)
-                        itemCount - 1 -> outRect.set(0, marginNormal, 0, marginFirst)
-                        else -> outRect.set(0, marginNormal, 0, marginNormal)
+                    } else {
+                        when (position) {
+                            0 -> outRect.set(0, marginFirst, 0, marginNormal)
+                            itemCount - 1 -> outRect.set(0, marginNormal, 0, marginFirst)
+                            else -> outRect.set(0, marginNormal, 0, marginNormal)
+                        }
                     }
                 }
             }
@@ -263,7 +267,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         booksFlowJob?.cancel()
         booksFlowJob = viewLifecycleOwner.lifecycleScope.launch {
             appDb.bookDao.flowShelfByGroup(groupId).map { list ->
-                //排序
+                // 排序
                 when (bookSort) {
                     1 -> list.sortedByDescending { it.latestChapterTime }
                     2 -> list.sortedWith { o1, o2 ->
@@ -286,12 +290,24 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.STARTED,
-                AppDatabase.BOOK_TABLE_NAME
+                AppDatabase.BOOK_TABLE_NAME,
             ).catch {
                 AppLog.put("书架更新出错", it)
             }.conflate().flowOn(Dispatchers.Default).collect { list ->
-                val filtered = if (tagFilter == null) list else list.filter {
-                    BookTagHelper.has(it.customTag, tagFilter!!)
+                // 注意 flowOn 只影响上游，collect 仍运行在主线程，可安全取 context
+                val filtered = if (tagFilter == null) {
+                    list
+                } else {
+                    val filterTag = tagFilter!!
+                    val smartRules = BookTagMatcher.enabledRules(requireContext())
+                    list.filter {
+                        BookTagMatcher.matches(
+                            filterTag,
+                            it.customTag,
+                            it.toSmartTagSnapshot(),
+                            smartRules,
+                        )
+                    }
                 }
                 itemCount = filtered.size
                 binding.tvEmptyMsg.isGone = itemCount > 0
@@ -316,9 +332,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
     }
 
-    fun getBooks(): List<Book> {
-        return booksAdapter.getItems().map { it.toMinimalBook() }
-    }
+    fun getBooks(): List<Book> = booksAdapter.getItems().map { it.toMinimalBook() }
 
     fun gotoTop() {
         if (AppConfig.isEInkMode) {
@@ -328,9 +342,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
     }
 
-    fun getBooksCount(): Int {
-        return booksAdapter.itemCount
-    }
+    fun getBooksCount(): Int = booksAdapter.itemCount
 
     /**
      * 按标签筛选书籍。传 null 表示清除筛选。
@@ -360,9 +372,7 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books),
         }
     }
 
-    override fun isUpdate(bookUrl: String): Boolean {
-        return activityViewModel.isUpdate(bookUrl)
-    }
+    override fun isUpdate(bookUrl: String): Boolean = activityViewModel.isUpdate(bookUrl)
 
     @SuppressLint("NotifyDataSetChanged")
     override fun observeLiveBus() {
