@@ -1102,8 +1102,8 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
             setTextColor(primaryTextColor)
             setPadding(0, (8 * density).toInt(), 0, 0)
         })
-        emSliderRow("左右间距", spacingH, -0.5f, 0.5f) { spacingH = it }
-        emSliderRow("上下间距", spacingV, -0.5f, 0.5f) { spacingV = it }
+        emSliderRow("左右间距", spacingH, -1f, 0.5f) { spacingH = it }
+        emSliderRow("上下间距", spacingV, -1f, 0.5f) { spacingV = it }
 
         android.app.AlertDialog.Builder(requireContext())
             .setTitle("九宫格调整")

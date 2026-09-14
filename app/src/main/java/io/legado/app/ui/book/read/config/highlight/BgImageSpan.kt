@@ -106,7 +106,7 @@ class BgImageSpan(
                     leftBlankWidth = if (start > 0) measureBlankWidth(paint, text, start - 1) else 0f,
                     rightBlankWidth = if (end < text.length) measureBlankWidth(paint, text, end) else 0f,
                     verticalBlankSpace = verticalBlankSpace,
-                    fontSize = textSize,
+                    maxBleedX = textSize,
                     spacingH = spacingH,
                     spacingV = spacingV,
                 )

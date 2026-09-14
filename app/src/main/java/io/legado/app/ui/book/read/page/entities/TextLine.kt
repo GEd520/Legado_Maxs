@@ -773,7 +773,7 @@ data class TextLine(
                 leftBlankWidth = blankNeighborWidth(startIndex - 1),
                 rightBlankWidth = blankNeighborWidth(endIndex + 1),
                 verticalBlankSpace = halfLineGap(),
-                fontSize = textSize,
+                maxBleedX = textSize,
                 spacingH = first.bgSpacingH * textSize,
                 spacingV = first.bgSpacingV * textSize,
             )
@@ -893,43 +893,40 @@ data class TextLine(
         }
 
         /**
-         * 按分割比例换算出的左右四角**绘制尺寸**（像素，返回 `[左, 右]`）。
+         * 按分割比例换算出的左右四角厚度（位图像素，返回 `[左, 右]`），并按 [limit] 夹一次。
          *
-         * 与 [drawNineSlice] 的口径完全一致（含"按字号等比缩放"这一步），供排版阶段估算
-         * "强制"策略要给邻字让出多少空间——两边用量必须一致，否则推开的距离与实际外扩量对不上。
+         * 与 [drawNineSlice] 的切分口径一致（含"强制模式按可用空间夹一次"这一步），
+         * 供排版阶段估算"强制"策略要给邻字让出多少空间——两边用量必须一致，否则推开的
+         * 距离与背景实际外扩量对不上。
          */
         fun nineSliceSideWidth(
             bitmap: Bitmap,
             npLeft: Float,
             npRight: Float,
-            fontSize: Float,
+            limit: Float,
         ): FloatArray {
             val bw = bitmap.width
-            val bh = bitmap.height
-            if (bw <= 0 || bh <= 0 || fontSize <= 0f) return floatArrayOf(0f, 0f)
-            val fitScale = fontSize / bh
+            if (bw <= 0) return floatArrayOf(0f, 0f)
             val rightCutX = bw - (bw * npRight.coerceIn(0f, 1f)).roundToInt()
             val leftCutX = (bw * npLeft.coerceIn(0f, 1f)).roundToInt().coerceAtMost(rightCutX)
             return floatArrayOf(
-                leftCutX * fitScale,
-                (bw - rightCutX) * fitScale,
+                leftCutX.toFloat().coerceAtMost(limit),
+                (bw - rightCutX).toFloat().coerceAtMost(limit),
             )
         }
 
         /**
          * 手动九宫格绘制：按 [npLeft]/[npTop]/[npRight]/[npBottom]（占位图宽高比例，0-1，
-         * 左右相加、上下相加不超过 1）把位图切成 3×3，四条边与中心分别拉伸。
+         * 左右相加、上下相加不超过 1）把位图切成 3×3，四个角保持原始尺寸，四条边与中心分别拉伸。
          *
-         * **四角尺寸按字号等比缩放**（见 [fontSize]），不用位图原始像素，所以与图片自身分辨率无关；
          * 四角一律画在目标矩形内部（对齐 .9.png 语义），目标矩形 = 匹配区 + 自动外扩 + 手动间距：
          * - [bleedMode] 决定**自动外扩**量：[HighlightRule.BLEED_STRICT] 不外扩；
          *   [HighlightRule.BLEED_SMART] 只占用邻接空白（水平借 [leftBlankWidth]/[rightBlankWidth]，
-         *   垂直借 [verticalBlankSpace]，即一半行距）；[HighlightRule.BLEED_FORCE] 按四角尺寸外扩，
+         *   垂直借 [verticalBlankSpace]，即一半行距）；[HighlightRule.BLEED_FORCE] 按四角厚度外扩，
          *   即原来的"向外包裹文字"行为，可能压到相邻未匹配文字。
          * - [spacingH]/[spacingV] 为手动微调（调用方已换算成像素）：正数把背景向外撑大、离文字更远，
          *   负数向内收；与自动外扩叠加，所以"严格 + 正间距"也仍是用户主动往外撑。
-         * 目标矩形放不下两侧边框时**按同一比例整体收缩**（只缩一个方向会把角压扁、样式全糊），
-         * 避免短匹配 / 长条图时绘制区域失控。
+         * 目标矩形放不下两侧边框时按比例收缩，避免短匹配 / 大间距时绘制区域失控。
          */
         fun drawNineSlice(
             bitmap: Bitmap,
@@ -946,7 +943,7 @@ data class TextLine(
             leftBlankWidth: Float,
             rightBlankWidth: Float,
             verticalBlankSpace: Float,
-            fontSize: Float,
+            maxBleedX: Float,
             spacingH: Float,
             spacingV: Float,
         ) {
@@ -960,27 +957,31 @@ data class TextLine(
             val leftCutY = (bh * npTop.coerceIn(0f, 1f)).roundToInt().coerceAtMost(rightCutY)
             val srcX = intArrayOf(0, leftCutX, rightCutX, bw)
             val srcY = intArrayOf(0, leftCutY, rightCutY, bh)
-            // 四角尺寸：把源图四角区域**等比缩放**到字号高度，即"分割比例 × 字号"（水平方向再乘图片宽高比）。
-            // 关键：不能用位图原始像素——图越大角越大（1024px 宽的图 npLeft=0.1 就是 102px，比整行还高）；
-            // 也不能按方向各自夹一次（水平给 1em、垂直给半格行距，会把角压成又宽又扁的横条，样式全糊）。
-            // 等比缩放后四角只取决于分割比例与字号，与图片自身分辨率无关，形状也不会变形。
-            val fitScale = if (fontSize > 0f) fontSize / bh else 0f
-            var leftW = srcX[1] * fitScale
-            var rightW = (bw - srcX[2]) * fitScale
-            var topH = srcY[1] * fitScale
-            var bottomH = (bh - srcY[2]) * fitScale
-            // 短匹配 / 长条图时四角可能放不下，按**同一个比例**整体收缩（只缩一个方向会把角压扁）
+            var leftW = srcX[1].toFloat()
+            var rightW = (bw - srcX[2]).toFloat()
+            var topH = srcY[1].toFloat()
+            var bottomH = (bh - srcY[2]).toFloat()
+            // 强制模式的外扩量取四角厚度，但必须先按可用空间夹一次：四角厚度是**位图原始像素**，
+            // 与字号无关（1024px 宽的图、npTop=0.1 就是上下各 100px），不夹会铺满整行并压到上下行。
+            // 水平上限 [maxBleedX]（一个字宽）、垂直上限 [verticalBlankSpace]（半格行距）。
+            if (bleedMode == HighlightRule.BLEED_FORCE) {
+                leftW = leftW.coerceAtMost(maxBleedX)
+                rightW = rightW.coerceAtMost(maxBleedX)
+                topH = topH.coerceAtMost(verticalBlankSpace)
+                bottomH = bottomH.coerceAtMost(verticalBlankSpace)
+            }
+            // 两侧厚度之和超过匹配区时按比例收缩（与拆分前的口径一致，短匹配 / 大图时不失控）
             val matchW = right - left
             val matchH = bottom - top
-            val fixedW = leftW + rightW
-            val fixedH = topH + bottomH
-            val ratio = minOf(
-                if (fixedW > matchW && fixedW > 0f) matchW / fixedW else 1f,
-                if (fixedH > matchH && fixedH > 0f) matchH / fixedH else 1f,
-            )
-            if (ratio < 1f) {
+            val horizontalFixed = leftW + rightW
+            if (horizontalFixed > matchW && horizontalFixed > 0f) {
+                val ratio = matchW / horizontalFixed
                 leftW *= ratio
                 rightW *= ratio
+            }
+            val verticalFixed = topH + bottomH
+            if (verticalFixed > matchH && verticalFixed > 0f) {
+                val ratio = matchH / verticalFixed
                 topH *= ratio
                 bottomH *= ratio
             }
