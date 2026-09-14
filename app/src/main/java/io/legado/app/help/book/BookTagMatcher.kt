@@ -1,6 +1,7 @@
 package io.legado.app.help.book
 
 import android.content.Context
+import android.os.Build
 import java.util.Locale
 
 /**
@@ -10,11 +11,43 @@ import java.util.Locale
  */
 object BookTagMatcher {
 
-    /** 当前生效的智能规则（总开关关闭时为空）。调用方应复用返回值，避免逐本书重复解析。 */
+    /** 书籍信息区展示标签时的菱形前缀，用于与字数、分类等其他信息区分。 */
+    const val TAG_MARKER = "◆"
+
+    /** 规则解析结果的缓存快照（不可变，整体替换，避免并发读到半更新状态）。 */
+    private data class RuleCache(val key: String, val rules: List<SmartTag.ResolvedRule>)
+
+    @Volatile
+    private var ruleCache: RuleCache? = null
+
+    /** 当前生效的智能规则（总开关关闭时为空）。结果带缓存，可逐本书调用。 */
     fun enabledRules(context: Context): List<SmartTag.ResolvedRule> {
-        if (!SmartTagConfig.isEnabled(context)) return emptyList()
-        val disabled = SmartTagConfig.disabledRuleIds(context)
-        return SmartTag.resolve(context).filter { it.id !in disabled }
+        val key = "${SmartTagConfig.revision}|${localeKey(context)}"
+        ruleCache?.let { if (it.key == key) return it.rules }
+        val rules = if (SmartTagConfig.isEnabled(context)) {
+            val disabled = SmartTagConfig.disabledRuleIds(context)
+            SmartTag.resolve(context).filter { it.id !in disabled }
+        } else {
+            emptyList()
+        }
+        ruleCache = RuleCache(key, rules)
+        return rules
+    }
+
+    /** 书籍自身的标签名：用户自定义标签 + 命中的智能标签（自定义标签在前，大小写不敏感去重）。 */
+    fun bookTagNames(
+        customTag: String?,
+        snapshot: SmartTag.Snapshot,
+        resolvedRules: List<SmartTag.ResolvedRule>,
+    ): List<String> {
+        val names = BookTagHelper.parse(customTag).toMutableList()
+        if (resolvedRules.isEmpty()) return names
+        val keys = names.mapTo(HashSet()) { it.lowercase(Locale.ROOT) }
+        for (rule in resolvedRules) {
+            if (!rule.match(snapshot)) continue
+            if (keys.add(rule.name.lowercase(Locale.ROOT))) names.add(rule.name)
+        }
+        return names
     }
 
     /** 书籍是否命中标签 [tag]：customTag 命中，或任一启用规则命中（规则名与 [tag] 同名）。 */
@@ -72,5 +105,16 @@ object BookTagMatcher {
             }
         }
         return tags.associateWith { counts[it] ?: 0 }
+    }
+
+    /** 当前语言标识，仅用于判断 [ruleCache] 是否失效（语言变化后规则名需重新解析）。 */
+    private fun localeKey(context: Context): String {
+        val configuration = context.resources.configuration
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            configuration.locales[0].toString()
+        } else {
+            @Suppress("DEPRECATION")
+            configuration.locale.toString()
+        }
     }
 }

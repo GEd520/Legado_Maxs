@@ -169,6 +169,39 @@ class SmartTagTest {
     }
 
     @Test
+    fun `bookTagNames puts custom tags first and dedupes smart tags`() {
+        val snapshot = snapshot(type = BookType.audio, totalChapterNum = 10, durChapterIndex = 5)
+        val rules = listOf(
+            SmartTag.ResolvedRule("audio", "有声", "音频书籍") { matches("audio", it) },
+            SmartTag.ResolvedRule("reading", "在读", "正在阅读") { matches("reading", it) },
+            SmartTag.ResolvedRule("finished", "已读完", "阅读完成") { matches("finished", it) },
+        )
+        assertEquals(
+            listOf("玄幻", "有声", "在读"),
+            BookTagMatcher.bookTagNames("玄幻,有声", snapshot, rules),
+        )
+    }
+
+    @Test
+    fun `bookTagNames falls back to smart tags only`() {
+        val rules = listOf(
+            SmartTag.ResolvedRule("local", "本地", "本地书籍") { matches("local", it) },
+        )
+        assertEquals(
+            listOf("本地"),
+            BookTagMatcher.bookTagNames(null, snapshot(type = BookType.local), rules),
+        )
+    }
+
+    @Test
+    fun `bookTagNames keeps custom tags when smart tags disabled`() {
+        assertEquals(
+            listOf("玄幻", "修仙"),
+            BookTagMatcher.bookTagNames("玄幻,修仙", snapshot(), emptyList()),
+        )
+    }
+
+    @Test
     fun `matchingNames only keeps rules hitting at least one book`() {
         val rules = listOf(
             SmartTag.ResolvedRule("audio", "有声", "音频书籍") { matches("audio", it) },
