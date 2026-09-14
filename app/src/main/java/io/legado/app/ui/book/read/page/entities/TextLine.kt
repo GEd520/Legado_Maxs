@@ -742,6 +742,34 @@ data class TextLine(
     }
 
     /**
+     * 行内正文可用区域的右边界（与列坐标同为绝对坐标）。
+     *
+     * 列坐标由排版时 `absStartX + x` 生成（含 paddingLeft），所以用"本行起点 + 一页正文宽度"还原；
+     * 再与页面右边界取小：双栏时本行在右栏两者相等，在左栏时只有取小才落在左栏的右边界上。
+     */
+    private fun contentRightEdge(): Float {
+        val bound = lineStart + ChapterProvider.visibleWidth
+        return minOf(bound, ChapterProvider.visibleRight.toFloat())
+    }
+
+    /**
+     * 匹配段右侧可借用的空白宽度（智能策略用）。
+     *
+     * - 邻字本身是空白（空格等）→ 借它的推进宽度；
+     * - 匹配段一直排到本行最后一列（段末 / 行末）→ 右侧到内容区右边界之间同样是空白，也可借用，
+     *   但最多一个字符宽，否则段末右侧不外扩、与左侧（段首缩进的全角空格）不对称；
+     * - 其余情况（邻字有字形）返回 0，绝不外扩。
+     */
+    private fun rightBlankSpace(endIndex: Int, endX: Float): Float {
+        val neighbor = blankNeighborWidth(endIndex + 1)
+        if (neighbor > 0f) return neighbor
+        if (endIndex != columns.lastIndex) return 0f
+        val remain = contentRightEdge() - endX
+        if (remain <= 0f) return 0f
+        return minOf(remain, styleTextSize)
+    }
+
+    /**
      * 行与行之间空白（行距）的一半：智能策略用它把背景上下撑开，正好填满行距段、
      * 与相邻行的背景相接，又不会压到上下行的字形。
      */
@@ -771,7 +799,7 @@ data class TextLine(
                 first.npLeft, first.npTop, first.npRight, first.npBottom,
                 first.bgBleedMode,
                 leftBlankWidth = blankNeighborWidth(startIndex - 1),
-                rightBlankWidth = blankNeighborWidth(endIndex + 1),
+                rightBlankWidth = rightBlankSpace(endIndex, endX),
                 verticalBlankSpace = halfLineGap(),
                 maxBleedX = textSize,
                 spacingH = first.bgSpacingH * textSize,
