@@ -44,6 +44,20 @@ object BookTagManagement {
         }
     }
 
+    /** 标签栏展示用的分隔符，标签与"全部"统一使用 `名称·数量`。 */
+    const val TAG_BAR_COUNT_SEPARATOR = "·"
+
+    /**
+     * 书架标签栏的标签显示文案：`标签名·命中数量`。
+     *
+     * 空字符串代表"全部"标签，文案由 [allText] 提供，数量为分组内书籍总数。
+     *
+     * @param tag 标签名，空字符串表示"全部"
+     * @param allText "全部"标签的显示文案（本地化字符串，由调用方传入）
+     * @param count 该标签命中的书籍数量
+     */
+    fun tagBarLabel(tag: String, allText: String, count: Int): String = "${tag.ifBlank { allText }}$TAG_BAR_COUNT_SEPARATOR$count"
+
     /**
      * 标签变更操作结果。
      *

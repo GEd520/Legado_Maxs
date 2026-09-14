@@ -113,6 +113,62 @@ class SmartTagTest {
     }
 
     @Test
+    fun `countMatches counts custom and smart tags in one pass`() {
+        val parsedCustomTags = listOf(
+            BookTagHelper.parseSet("玄幻"),
+            BookTagHelper.parseSet(null),
+            BookTagHelper.parseSet("玄幻,科幻"),
+        )
+        val snapshots = listOf(
+            snapshot(type = BookType.audio, totalChapterNum = 10, durChapterIndex = 5),
+            snapshot(type = BookType.text, totalChapterNum = 10, durChapterIndex = 5),
+            snapshot(type = BookType.text, totalChapterNum = 10, durChapterIndex = 9),
+        )
+        val rules = listOf(
+            SmartTag.ResolvedRule("audio", "有声", "音频书籍") { matches("audio", it) },
+            SmartTag.ResolvedRule("reading", "在读", "正在阅读") { matches("reading", it) },
+            SmartTag.ResolvedRule("finished", "已读完", "阅读完成") { matches("finished", it) },
+        )
+        val counts = BookTagMatcher.countMatches(
+            tags = listOf("玄幻", "科幻", "有声", "在读", "已读完"),
+            parsedCustomTags = parsedCustomTags,
+            snapshots = snapshots,
+            resolvedRules = rules,
+        )
+        assertEquals(2, counts["玄幻"])
+        assertEquals(1, counts["科幻"])
+        assertEquals(1, counts["有声"])
+        assertEquals(2, counts["在读"])
+        assertEquals(1, counts["已读完"])
+    }
+
+    @Test
+    fun `countMatches does not double count tag hit by both custom and smart`() {
+        val counts = BookTagMatcher.countMatches(
+            tags = listOf("有声"),
+            parsedCustomTags = listOf(BookTagHelper.parseSet("有声")),
+            snapshots = listOf(snapshot(type = BookType.audio)),
+            resolvedRules = listOf(
+                SmartTag.ResolvedRule("audio", "有声", "音频书籍") { matches("audio", it) },
+            ),
+        )
+        assertEquals(1, counts["有声"])
+    }
+
+    @Test
+    fun `countMatches returns empty for empty input`() {
+        assertTrue(BookTagMatcher.countMatches(emptyList(), emptyList(), emptyList(), emptyList()).isEmpty())
+        assertTrue(
+            BookTagMatcher.countMatches(
+                tags = listOf("玄幻"),
+                parsedCustomTags = listOf(BookTagHelper.parseSet(null)),
+                snapshots = emptyList(),
+                resolvedRules = emptyList(),
+            ).isEmpty(),
+        )
+    }
+
+    @Test
     fun `matchingNames only keeps rules hitting at least one book`() {
         val rules = listOf(
             SmartTag.ResolvedRule("audio", "有声", "音频书籍") { matches("audio", it) },

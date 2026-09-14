@@ -2,7 +2,6 @@ package io.legado.app.help.book
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -14,7 +13,7 @@ class BookTagManagementTest {
     fun `mergeTags combines and deduplicates`() {
         assertEquals(
             listOf("玄幻", "修仙", "都市"),
-            BookTagManagement.mergeTags(listOf("玄幻", "修仙"), listOf("修仙", "都市"))
+            BookTagManagement.mergeTags(listOf("玄幻", "修仙"), listOf("修仙", "都市")),
         )
     }
 
@@ -33,7 +32,7 @@ class BookTagManagementTest {
     fun `mergeTags filters blank entries`() {
         assertEquals(
             listOf("玄幻"),
-            BookTagManagement.mergeTags(listOf("玄幻", "  ", ""), listOf(""))
+            BookTagManagement.mergeTags(listOf("玄幻", "  ", ""), listOf("")),
         )
     }
 
@@ -49,6 +48,17 @@ class BookTagManagementTest {
         val all = listOf("Tag", "Other")
         val current = listOf("tag")
         assertEquals(listOf("Other"), BookTagManagement.reusableTags(current, all))
+    }
+
+    @Test
+    fun `tagBarLabel appends book count`() {
+        assertEquals("玄幻·3", BookTagManagement.tagBarLabel("玄幻", "全部", 3))
+        assertEquals("本地·0", BookTagManagement.tagBarLabel("本地", "全部", 0))
+    }
+
+    @Test
+    fun `tagBarLabel uses all text for blank tag`() {
+        assertEquals("全部·10", BookTagManagement.tagBarLabel("", "全部", 10))
     }
 
     @Test

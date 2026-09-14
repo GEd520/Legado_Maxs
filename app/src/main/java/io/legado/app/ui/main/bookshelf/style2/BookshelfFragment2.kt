@@ -428,20 +428,30 @@ class BookshelfFragment2() :
         val context = requireContext()
         viewLifecycleOwner.lifecycleScope.launch {
             val allText = getString(R.string.bookshelf_tag_all)
-            val tags = withContext(Dispatchers.IO) {
+            val (tags, tagCounts) = withContext(Dispatchers.IO) {
                 val configured = AppConfig.bookshelfGroupTags[currentGroupId].orEmpty()
                 val hidden = AppConfig.bookshelfHiddenTags[currentGroupId].orEmpty()
                 val allBooks = appDb.bookDao.allTagInfos
                 val groupBooks = filterBooksByGroup(allBooks, currentGroupId)
-                val existing = groupBooks.flatMap { BookTagHelper.parse(it.customTag) }
+                // 每本书的标签只解析一次，后续合并标签与统计数量复用
+                val parsedTags = groupBooks.map { BookTagHelper.parseSet(it.customTag) }
+                val existing = parsedTags.flatten()
                 val merged = BookTagManagement.mergeTags(configured, existing)
                     .filter { tag -> hidden.none { it.equals(tag, ignoreCase = true) } }
+                val smartRules = BookTagMatcher.enabledRules(context)
+                val snapshots = groupBooks.map { it.toSmartTagSnapshot() }
                 // 追加智能标签：仅保留本分组内有书籍命中的规则（总开关关闭时为空）
-                val smartNames = BookTagMatcher.matchingNames(
-                    groupBooks.map { it.toSmartTagSnapshot() },
-                    BookTagMatcher.enabledRules(context),
-                )
-                BookTagManagement.mergeTags(merged, smartNames)
+                val smartNames = BookTagMatcher.matchingNames(snapshots, smartRules)
+                val mergedTags = BookTagManagement.mergeTags(merged, smartNames)
+                // 每个标签的命中数量，用于 "标签名·数量" 展示（自定义标签与智能标签同一口径）；
+                // 空 key 代表"全部"标签，数量即分组内书籍总数
+                val counts = BookTagMatcher.countMatches(
+                    mergedTags,
+                    parsedTags,
+                    snapshots,
+                    smartRules,
+                ) + ("" to groupBooks.size)
+                mergedTags to counts
             }
             // 查询期间已切换分组（如快速进出分组），丢弃过期结果
             if (currentGroupId != groupId) return@launch
@@ -450,7 +460,11 @@ class BookshelfFragment2() :
             tagSelectedIndex = 0
             tagBar?.applyTopBarStyle(force = true)
             tagBar?.submitItems(
-                currentTagList.map { RoundedTagBarView.Item(it.ifBlank { allText }) },
+                currentTagList.map { tag ->
+                    RoundedTagBarView.Item(
+                        BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
+                    )
+                },
                 0,
             )
             tagBar?.setSelectedIndex(0, false)
