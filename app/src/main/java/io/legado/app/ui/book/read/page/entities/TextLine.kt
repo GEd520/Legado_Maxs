@@ -905,6 +905,13 @@ data class TextLine(
 
         /** 智能策略借用邻接空白时只取其中的一部分，给后面那个字留出余量 */
         private const val SMART_BLANK_RATIO = 0.8f
+
+        /**
+         * 智能策略的最小外扩量（em）：一点空白都借不到时（中文密排、行末等）也要留出这么一点，
+         * 否则目标矩形刚好等于匹配文字的外框，四角装饰只能压在自己匹配到的字上，
+         * 表现为"背景包不住文字"。
+         */
+        private const val SMART_MIN_BLEED_RATIO = 0.1f
         private val bgSampleWidth by lazy {
             appCtx.resources.displayMetrics.widthPixels
         }
@@ -1013,7 +1020,8 @@ data class TextLine(
                 topH *= ratio
                 bottomH *= ratio
             }
-            // 自动外扩量：按策略决定
+            // 自动外扩量：按策略决定（[maxBleedX] 就是一个字宽，即字号）
+            val smartMinBleed = maxBleedX * SMART_MIN_BLEED_RATIO
             val bleedLeft: Float
             val bleedRight: Float
             val bleedTop: Float
@@ -1032,11 +1040,26 @@ data class TextLine(
                     bleedBottom = 0f
                 }
                 else -> {
-                    bleedLeft = leftBlankWidth * SMART_BLANK_RATIO
-                    bleedRight = rightBlankWidth * SMART_BLANK_RATIO
-                    bleedTop = verticalBlankSpace
-                    bleedBottom = verticalBlankSpace
+                    // 借到的空白只取其中一部分；借不到时用最小外扩兜底，保证目标矩形比文字外框大一点
+                    bleedLeft = maxOf(leftBlankWidth * SMART_BLANK_RATIO, smartMinBleed)
+                    bleedRight = maxOf(rightBlankWidth * SMART_BLANK_RATIO, smartMinBleed)
+                    bleedTop = maxOf(verticalBlankSpace, smartMinBleed)
+                    bleedBottom = maxOf(verticalBlankSpace, smartMinBleed)
                 }
+            }
+            // 四角/边条装饰只能占用"这一侧实际让出来的空隙"（自动外扩 + 手动间距）：
+            // 超出部分会画到匹配文字上面，看起来就像背景没包住自己的文字。
+            // 强制模式的空隙本来就等于四角自身，这里等价于不夹；严格模式不外扩也不夹，
+            // 保持"只覆盖匹配文字"的原有观感。
+            val marginLeft = (bleedLeft + spacingH).coerceAtLeast(0f)
+            val marginRight = (bleedRight + spacingH).coerceAtLeast(0f)
+            val marginTop = (bleedTop + spacingV).coerceAtLeast(0f)
+            val marginBottom = (bleedBottom + spacingV).coerceAtLeast(0f)
+            if (bleedMode != HighlightRule.BLEED_STRICT) {
+                leftW = leftW.coerceAtMost(marginLeft)
+                rightW = rightW.coerceAtMost(marginRight)
+                topH = topH.coerceAtMost(marginTop)
+                bottomH = bottomH.coerceAtMost(marginBottom)
             }
             // 目标矩形 = 匹配区 + 自动外扩 + 手动间距（正数向外撑、负数向内收）。
             // 强制模式会外扩到邻字上方，排版阶段已把邻字推开（见 TextChapterLayout.computeNeighborPush）
