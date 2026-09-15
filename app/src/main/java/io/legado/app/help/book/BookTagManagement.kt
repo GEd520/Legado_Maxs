@@ -59,6 +59,19 @@ object BookTagManagement {
     fun tagBarLabel(tag: String, allText: String, count: Int): String = "${tag.ifBlank { allText }}$TAG_BAR_COUNT_SEPARATOR$count"
 
     /**
+     * 过滤掉 groupId 已不存在的标签配置项。
+     *
+     * 用户分组被删除时若只删了 book_groups 行，该分组在配置里的标签就成了孤儿项：
+     * 管理标签页看不到（分组已不在列表里）、永远删不掉，却仍会出现在书籍详情页的可选标签中。
+     * 读取配置时统一过滤可自愈这类历史数据。
+     *
+     * @param tags 以 groupId 为键的标签配置（可见标签或隐藏标签）
+     * @param validGroupIds 当前实际存在的分组 id 集合
+     * @return 过滤后的配置，全部有效时原样返回
+     */
+    fun <T> pruneUnknownGroups(tags: Map<Long, T>, validGroupIds: Set<Long>): Map<Long, T> = if (tags.keys.all { it in validGroupIds }) tags else tags.filterKeys { it in validGroupIds }
+
+    /**
      * 标签变更操作结果。
      *
      * @param customTag 变更后的标签字符串，为 null 表示清除所有标签

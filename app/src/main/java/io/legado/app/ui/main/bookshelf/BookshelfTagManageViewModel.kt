@@ -57,9 +57,16 @@ class BookshelfTagManageViewModel(
                 val userGroupMask = groups.asSequence()
                     .filter { it.groupId > 0 }
                     .fold(0L) { acc, group -> acc or group.groupId }
-                val configuredMap = AppConfig.bookshelfGroupTags.toMutableMap()
-                var configuredChanged = false
-                val hiddenMap = AppConfig.bookshelfHiddenTags
+                // 分组删除后可能在配置里留下孤儿标签项：这里统一丢弃并写回，
+                // 否则它们只在书籍详情页的可选标签里出现，管理页却无法删除
+                val validGroupIds = groups.mapTo(HashSet()) { it.groupId }
+                val storedTagMap = AppConfig.bookshelfGroupTags
+                val configuredMap =
+                    BookTagManagement.pruneUnknownGroups(storedTagMap, validGroupIds).toMutableMap()
+                var configuredChanged = configuredMap.size != storedTagMap.size
+                val storedHiddenMap = AppConfig.bookshelfHiddenTags
+                val hiddenMap = BookTagManagement.pruneUnknownGroups(storedHiddenMap, validGroupIds)
+                var hiddenChanged = hiddenMap.size != storedHiddenMap.size
                 val result = groups.mapNotNull { group ->
                     val groupBooks = booksInGroup(group, books, userGroupMask)
                     val existingTags = groupBooks
@@ -90,6 +97,9 @@ class BookshelfTagManageViewModel(
                 }
                 if (configuredChanged) {
                     AppConfig.bookshelfGroupTags = configuredMap
+                }
+                if (hiddenChanged) {
+                    AppConfig.bookshelfHiddenTags = hiddenMap
                 }
                 // 智能标签：规则名/说明取决于语言，规则开关取自偏好；命中数量按全库书籍统计
                 val context = getApplication<Application>()

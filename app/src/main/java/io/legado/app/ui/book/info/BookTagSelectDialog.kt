@@ -122,9 +122,15 @@ class BookTagSelectDialog() : BaseDialogFragment(R.layout.dialog_book_tag_edit, 
             inited = true
             execute {
                 customTag = arguments.getString("customTag")
-                // 可复用标签 = 书架分组配置的标签 + 书架上所有书籍已用的标签
+                // 可复用标签 = 现有分组的标签配置 + 书架上所有书籍已用的标签。
+                // 分组被删除后遗留的孤儿配置必须过滤：那些标签在管理页无法删除（分组已不在列表），
+                // 却会一直出现在这里的可选标签中
+                val validGroupIds = appDb.bookGroupDao.all.mapTo(HashSet()) { it.groupId }
+                val configuredTags = BookTagManagement
+                    .pruneUnknownGroups(AppConfig.bookshelfGroupTags, validGroupIds)
+                    .values
+                    .flatten()
                 val bookTags = appDb.bookDao.allTagInfos.flatMap { BookTagHelper.parse(it.customTag) }
-                val configuredTags = AppConfig.bookshelfGroupTags.values.flatten()
                 reusableTags = BookTagManagement.mergeTags(configuredTags, bookTags)
             }.onFinally {
                 onFinally.invoke()

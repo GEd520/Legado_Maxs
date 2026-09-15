@@ -2,6 +2,7 @@ package io.legado.app.help.book
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
@@ -48,6 +49,21 @@ class BookTagManagementTest {
         val all = listOf("Tag", "Other")
         val current = listOf("tag")
         assertEquals(listOf("Other"), BookTagManagement.reusableTags(current, all))
+    }
+
+    @Test
+    fun `pruneUnknownGroups drops configs of deleted groups`() {
+        val tags = mapOf(1L to listOf("玄幻"), 2L to listOf("修仙"))
+        assertEquals(
+            mapOf(1L to listOf("玄幻")),
+            BookTagManagement.pruneUnknownGroups(tags, setOf(1L, -1L)),
+        )
+    }
+
+    @Test
+    fun `pruneUnknownGroups keeps map when all groups valid`() {
+        val tags = mapOf(1L to listOf("玄幻"))
+        assertSame(tags, BookTagManagement.pruneUnknownGroups(tags, setOf(1L)))
     }
 
     @Test
