@@ -180,7 +180,7 @@ class BooksAdapterList(
             BookTagMatcher.enabledRules(context),
         )
         for (tag in bookTags) {
-            flexboxLayout.addView(createTagView("${BookTagMatcher.TAG_MARKER}$tag"))
+            flexboxLayout.addView(createTagView(BookTagMatcher.tagLabel(tag)))
         }
 
         // 其后显示字数标签
@@ -201,7 +201,7 @@ class BooksAdapterList(
     }
 
     /** 创建单个标签视图（带外框样式） */
-    private fun createTagView(tag: String): TextView = TextView(context).apply {
+    private fun createTagView(tag: CharSequence): TextView = TextView(context).apply {
         text = tag
         textSize = 11f
         gravity = Gravity.CENTER

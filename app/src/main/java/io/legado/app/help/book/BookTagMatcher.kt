@@ -2,6 +2,9 @@ package io.legado.app.help.book
 
 import android.content.Context
 import android.os.Build
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.RelativeSizeSpan
 import java.util.Locale
 
 /**
@@ -13,6 +16,23 @@ object BookTagMatcher {
 
     /** 书籍信息区展示标签时的菱形前缀，用于与字数、分类等其他信息区分。 */
     const val TAG_MARKER = "◆"
+
+    /** 菱形前缀相对标签文字的字号比例：略小一点，避免比标签本身更抢眼。 */
+    const val TAG_MARKER_SCALE = 0.75f
+
+    /**
+     * 带菱形前缀的标签文案，菱形按 [TAG_MARKER_SCALE] 缩小。
+     *
+     * 用相对字号而不是换字符：既保留菱形形状，又不影响标签文字与外框样式。
+     */
+    fun tagLabel(name: String): CharSequence = SpannableString("$TAG_MARKER$name").apply {
+        setSpan(
+            RelativeSizeSpan(TAG_MARKER_SCALE),
+            0,
+            TAG_MARKER.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+    }
 
     /** 规则解析结果的缓存快照（不可变，整体替换，避免并发读到半更新状态）。 */
     private data class RuleCache(val key: String, val rules: List<SmartTag.ResolvedRule>)
