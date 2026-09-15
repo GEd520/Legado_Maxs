@@ -6,6 +6,7 @@ import io.legado.app.R
 import io.legado.app.base.BaseViewModel
 import io.legado.app.constant.AppLog
 import io.legado.app.constant.BookType
+import io.legado.app.constant.EventBus
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookSource
@@ -19,12 +20,12 @@ import io.legado.app.model.webBook.WebBook
 import io.legado.app.model.SourceCallBack
 import io.legado.app.utils.FileUtils
 import io.legado.app.utils.GSON
+import io.legado.app.utils.postEvent
 import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.writeToOutputStream
 import kotlinx.coroutines.delay
 import java.io.File
-
 
 class BookshelfManageViewModel(application: Application) : BaseViewModel(application) {
     var groupId: Long = -1L
@@ -43,12 +44,18 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
                 }
             }
             appDb.bookDao.update(*array)
+        }.onFinally {
+            // 更新状态影响"不可更新"等智能标签的命中，写库完成后刷新书架标签栏
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
         }
     }
 
     fun updateBook(vararg book: Book) {
         execute {
             appDb.bookDao.update(*book)
+        }.onFinally {
+            // 改分组会同时改变原分组与新分组的标签命中数量，必须通知书架重算标签栏
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
         }
     }
 
@@ -63,6 +70,8 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
                     SourceCallBack.callBackBook(SourceCallBack.DEL_BOOK_SHELF, source, it)
                 }
             }
+        }.onFinally {
+            postEvent(EventBus.BOOKSHELF_REFRESH, "")
         }
     }
 
@@ -130,5 +139,4 @@ class BookshelfManageViewModel(application: Application) : BaseViewModel(applica
             context.toastOnUi(R.string.clear_cache_success)
         }
     }
-
 }
