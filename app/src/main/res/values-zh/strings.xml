@@ -667,7 +667,7 @@
     <string name="bookshelf_tag_save">保存</string>
     <string name="bookshelf_tag_rename">重命名</string>
     <string name="bookshelf_tag_rename_title">重命名标签</string>
-    <string name="bookshelf_tag_rename_group">在"%1$s"中重命名标签</string>
+    <string name="bookshelf_tag_rename_scope">在所有分组中重命名"%1$s"</string>
     <string name="bookshelf_tag_rename_label">标签名</string>
     <string name="bookshelf_tag_all">全部</string>
 

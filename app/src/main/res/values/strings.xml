@@ -668,7 +668,7 @@
     <string name="bookshelf_tag_save">Save</string>
     <string name="bookshelf_tag_rename">Rename</string>
     <string name="bookshelf_tag_rename_title">Rename tag</string>
-    <string name="bookshelf_tag_rename_group">Rename tag in "%1$s"</string>
+    <string name="bookshelf_tag_rename_scope">Rename "%1$s" in all groups</string>
     <string name="bookshelf_tag_rename_label">Tag name</string>
     <string name="bookshelf_tag_all">All</string>
 

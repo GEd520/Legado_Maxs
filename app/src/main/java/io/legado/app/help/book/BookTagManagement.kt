@@ -72,6 +72,55 @@ object BookTagManagement {
     fun <T> pruneUnknownGroups(tags: Map<Long, T>, validGroupIds: Set<Long>): Map<Long, T> = if (tags.keys.all { it in validGroupIds }) tags else tags.filterKeys { it in validGroupIds }
 
     /**
+     * 把可见标签配置里所有分组的 [oldTag] 改名为 [newTag]。
+     *
+     * 标签改名必须**跨分组**生效：只改当前分组会让其他分组留下同名的空标签，
+     * 看起来就像"重命名时新建了一个标签、旧标签没删掉"。
+     *
+     * @return 有改动时返回新 map，没有任何分组含旧标签时原样返回
+     */
+    fun renameInGroups(
+        groups: Map<Long, List<String>>,
+        oldTag: String,
+        newTag: String,
+    ): Map<Long, List<String>> {
+        var changed = false
+        val renamed = groups.mapValues { (_, tags) ->
+            val index = tags.indexOfFirst { it.equals(oldTag, ignoreCase = true) }
+            if (index < 0) {
+                tags
+            } else {
+                changed = true
+                tags.toMutableList().apply { this[index] = newTag }
+                    .distinctBy { it.lowercase(Locale.ROOT) }
+            }
+        }
+        return if (changed) renamed else groups
+    }
+
+    /**
+     * 把隐藏标签配置里所有分组的 [oldTag] 改名为 [newTag]，口径同 [renameInGroups]。
+     */
+    fun renameInHiddenGroups(
+        groups: Map<Long, Set<String>>,
+        oldTag: String,
+        newTag: String,
+    ): Map<Long, Set<String>> {
+        var changed = false
+        val renamed = groups.mapValues { (_, tags) ->
+            if (tags.none { it.equals(oldTag, ignoreCase = true) }) {
+                tags
+            } else {
+                changed = true
+                tags.filterNot { it.equals(oldTag, ignoreCase = true) }
+                    .toMutableSet()
+                    .apply { add(newTag) }
+            }
+        }
+        return if (changed) renamed else groups
+    }
+
+    /**
      * 标签变更操作结果。
      *
      * @param customTag 变更后的标签字符串，为 null 表示清除所有标签

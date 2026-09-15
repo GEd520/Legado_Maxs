@@ -58,8 +58,8 @@ internal data class BookshelfTagManageCallbacks(
     val onConfirmDelete: (Long, String, String, List<BookTagInfo>) -> Unit,
     val onDismissDialog: () -> Unit,
     val onSaveAssignment: (BookTagAssignmentUi, Set<String>) -> Unit,
-    val onRequestRename: (BookshelfTagGroupUi, String) -> Unit,
-    val onRenameTag: (Long, String, String, String) -> Unit,
+    val onRequestRename: (String) -> Unit,
+    val onRenameTag: (String, String) -> Unit,
     val onReorderTags: (Long, List<String>) -> Unit,
     val onShowSmartTagDialog: () -> Unit,
     val onSmartTagsEnabledChange: (Boolean) -> Unit,
@@ -167,7 +167,7 @@ internal fun BookshelfTagManageScreen(
                     },
                     onManageBooks = { tag -> callbacks.onManageBooks(selectedGroup, tag) },
                     onDeleteTag = { tag -> callbacks.onRequestDelete(selectedGroup, tag) },
-                    onRenameTag = { tag -> callbacks.onRequestRename(selectedGroup, tag) },
+                    onRenameTag = { tag -> callbacks.onRequestRename(tag) },
                     onReorderTags = { newOrder -> callbacks.onReorderTags(selectedGroup.groupId, newOrder) },
                 )
             }
@@ -247,13 +247,11 @@ internal fun BookshelfTagManageScreen(
         }
         is BookshelfTagDialogState.RenameTag -> {
             BookTagRenameDialog(
-                groupId = dialog.groupId,
-                groupName = dialog.groupName,
                 oldTag = dialog.oldTag,
                 onDismiss = callbacks.onDismissDialog,
                 onRename = { newTag ->
                     callbacks.onDismissDialog()
-                    callbacks.onRenameTag(dialog.groupId, dialog.groupName, dialog.oldTag, newTag)
+                    callbacks.onRenameTag(dialog.oldTag, newTag)
                 },
             )
         }

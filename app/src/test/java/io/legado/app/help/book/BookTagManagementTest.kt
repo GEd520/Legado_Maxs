@@ -52,6 +52,35 @@ class BookTagManagementTest {
     }
 
     @Test
+    fun `renameInGroups renames old tag in every group`() {
+        val groups = mapOf(1L to listOf("玄幻", "都市"), 2L to listOf("玄幻"))
+        val renamed = BookTagManagement.renameInGroups(groups, "玄幻", "仙侠")
+        assertEquals(listOf("仙侠", "都市"), renamed[1L])
+        assertEquals(listOf("仙侠"), renamed[2L])
+    }
+
+    @Test
+    fun `renameInGroups dedupes when new name already exists`() {
+        val groups = mapOf(1L to listOf("仙侠", "玄幻"))
+        assertEquals(listOf("仙侠"), BookTagManagement.renameInGroups(groups, "玄幻", "仙侠")[1L])
+    }
+
+    @Test
+    fun `renameInGroups keeps map when old tag absent`() {
+        val groups = mapOf(1L to listOf("都市"))
+        assertSame(groups, BookTagManagement.renameInGroups(groups, "玄幻", "仙侠"))
+    }
+
+    @Test
+    fun `renameInHiddenGroups renames old tag`() {
+        val groups = mapOf(1L to setOf("玄幻", "都市"))
+        assertEquals(
+            setOf("仙侠", "都市"),
+            BookTagManagement.renameInHiddenGroups(groups, "玄幻", "仙侠")[1L],
+        )
+    }
+
+    @Test
     fun `pruneUnknownGroups drops configs of deleted groups`() {
         val tags = mapOf(1L to listOf("玄幻"), 2L to listOf("修仙"))
         assertEquals(
