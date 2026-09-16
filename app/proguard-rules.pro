@@ -68,10 +68,10 @@
 # 屏蔽规则数据类：通过 GSON 持久化到 SharedPreferences（exploreBlockRuleItems），
 # 并随 config.xml 参与备份恢复，字段名被混淆会导致升级后规则失效、剪贴板导出键名乱码
 -keep class io.legado.app.model.blockrule.BlockRule{*;}
+# 书籍缓存索引数据类：GSON 写入 bookCacheIndex.json（常规备份与「书籍缓存选择」单独导出 ZIP 共用），
+# 不在 data.entities 包内，字段名被混淆会导致正式包恢复缓存时索引解析失败、.nb 文件无法复制
 -keep class io.legado.app.help.storage.BookCacheIndex{*;}
 -keep class io.legado.app.help.storage.ChapterCacheInfo{*;}
--keep class io.legado.app.ui.book.cacheSelector.BookCacheIndex{*;}
--keep class io.legado.app.ui.book.cacheSelector.ChapterCacheInfo{*;}
 
 # Room 数据库（防止 R8 在 release 构建中剥离生成的 _Impl 类）
 -keep class io.legado.app.data.AppDatabase {*;}

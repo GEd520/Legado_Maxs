@@ -1487,7 +1487,9 @@
     <string name="only_latest_backup_t">仅保留最新备份</string>
     <string name="only_latest_backup_s">本地备份仅保留最新备份文件</string>
     <string name="backup_selector">备份选择器</string>
-    <string name="backup_selector_summary">选择需要备份的内容</string>
+    <string name="backup_selector_summary">分别选择本地与 WebDAV 云备份的内容</string>
+    <string name="backup_scope_local">本地备份</string>
+    <string name="backup_scope_webdav">WebDAV 云备份</string>
     <string name="book_cache_selector">书籍缓存选择</string>
     <string name="book_cache_selector_summary">选择要备份缓存的书籍</string>
     <string name="view_backup_info_t">查看备份信息</string>

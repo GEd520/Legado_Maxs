@@ -9,7 +9,9 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.storage.BookCacheIndex
 import io.legado.app.help.storage.BookCacheSelectorConfig
+import io.legado.app.help.storage.ChapterCacheInfo
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.GSON
 import io.legado.app.utils.compress.ZipUtils
@@ -34,20 +36,8 @@ data class BookCacheItem(
     val isSelected: Boolean
 )
 
-data class ChapterCacheInfo(
-    val index: Int,
-    val title: String,
-    val titleMD5: String,
-    val fileName: String
-)
-
-data class BookCacheIndex(
-    val bookUrl: String,
-    val bookName: String,
-    val author: String,
-    val folderName: String,
-    val chapters: List<ChapterCacheInfo> = emptyList()
-)
+// 缓存索引数据类（BookCacheIndex / ChapterCacheInfo）统一在 io.legado.app.help.storage 中定义，
+// 此处不再重复声明，避免两份定义字段不一致导致备份/恢复解析失败
 
 sealed class BookCacheSelectorUiState {
     object Loading : BookCacheSelectorUiState()

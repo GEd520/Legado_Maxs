@@ -1480,7 +1480,9 @@
     <string name="only_latest_backup_t">Keep only the latest backup</string>
     <string name="only_latest_backup_s">Local backup keeps only the latest backup file</string>
     <string name="backup_selector">Backup Selector</string>
-    <string name="backup_selector_summary">Select items to backup</string>
+    <string name="backup_selector_summary">Set local and WebDAV backup items separately</string>
+    <string name="backup_scope_local">Local backup</string>
+    <string name="backup_scope_webdav">WebDAV cloud backup</string>
     <string name="book_cache_selector">Book Cache Selector</string>
     <string name="book_cache_selector_summary">Select books to backup cache</string>
     <string name="selected_items_total">Selected:</string>
