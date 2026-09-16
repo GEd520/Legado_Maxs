@@ -24,6 +24,8 @@ import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf2Binding
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.book.BookTagManagement
+import io.legado.app.help.book.BookTagMatcher
+import io.legado.app.help.book.toSmartTagSnapshot
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
@@ -54,7 +56,8 @@ import kotlin.math.max
 /**
  * 书架界面
  */
-class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2),
+class BookshelfFragment2() :
+    BaseBookshelfFragment(R.layout.fragment_bookshelf2),
     SearchView.OnQueryTextListener,
     BaseBooksAdapter.CallBack {
 
@@ -85,27 +88,24 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
 
     /** 二级标签栏数据是否已就绪；显隐变化统一推迟到列表提交同帧生效，消除转场残留帧 */
     private var tagBarLoaded = false
+
     /** 适配器最近一次提交列表时所属的分组 */
     private var lastCommittedGroupId = BookGroup.IdRoot
 
     // 计算最小公倍数
-    private fun lcm(a: Int, b: Int): Int {
-        return a * b / gcd(a, b)
-    }
+    private fun lcm(a: Int, b: Int): Int = a * b / gcd(a, b)
 
     // 计算最大公约数
-    private fun gcd(a: Int, b: Int): Int {
-        return if (b == 0) a else gcd(b, a % b)
-    }
+    private fun gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
 
-    private fun createBooksAdapter(): BaseBooksAdapter<*> {
-        return (if (AppConfig.bookLayout >= 2) {
+    private fun createBooksAdapter(): BaseBooksAdapter<*> = (
+        if (AppConfig.bookLayout >= 2) {
             BooksAdapterGrid(requireContext(), this)
         } else {
             BooksAdapterList(requireContext(), this)
-        }).also { adapter ->
-            adapter.onListCommitted = { onBookListCommitted(it) }
         }
+        ).also { adapter ->
+        adapter.onListCommitted = { onBookListCommitted(it) }
     }
 
     /**
@@ -151,34 +151,32 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         val bookSpan = if (bookLayout >= 2) bookLayout else 1
         val folderSpan = if (folderLayout >= 2) folderLayout else 1
         val useGrid = bookSpan > 1 || folderSpan > 1
-        
+
         // 计算最小公倍数
         spanCount = if (useGrid) {
             lcm(bookSpan, folderSpan)
         } else {
             1
         }
-        
+
         val layoutManager = if (useGrid) {
             GridLayoutManager(context, spanCount).apply {
                 spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
-                    override fun getSpanSize(position: Int): Int {
-                        return if (booksAdapter.getItemViewType(position) == 1) {
-                            // 文件夹：folderLayout >= 2 时占 spanCount/folderSpan 列（显示为folderLayout列网格）
-                            // folderLayout < 2 时占满一行（列表样式）
-                            if (folderLayout >= 2) {
-                                spanCount / folderSpan
-                            } else {
-                                spanCount // 占满一行（列表样式）
-                            }
+                    override fun getSpanSize(position: Int): Int = if (booksAdapter.getItemViewType(position) == 1) {
+                        // 文件夹：folderLayout >= 2 时占 spanCount/folderSpan 列（显示为folderLayout列网格）
+                        // folderLayout < 2 时占满一行（列表样式）
+                        if (folderLayout >= 2) {
+                            spanCount / folderSpan
                         } else {
-                            // 书籍：bookLayout >= 2 时占 spanCount/bookSpan 列（显示为bookLayout列网格）
-                            // bookLayout < 2 时占满一行（列表样式）
-                            if (bookLayout >= 2) {
-                                spanCount / bookSpan
-                            } else {
-                                spanCount // 占满一行（列表样式）
-                            }
+                            spanCount // 占满一行（列表样式）
+                        }
+                    } else {
+                        // 书籍：bookLayout >= 2 时占 spanCount/bookSpan 列（显示为bookLayout列网格）
+                        // bookLayout < 2 时占满一行（列表样式）
+                        if (bookLayout >= 2) {
+                            spanCount / bookSpan
+                        } else {
+                            spanCount // 占满一行（列表样式）
                         }
                     }
                 }
@@ -202,38 +200,44 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         binding.rvBookshelf.addItemDecoration(object : RecyclerView.ItemDecoration() {
             private val marginFirst = bookshelfMargin + 24
             private val marginNormal = bookshelfMargin
-            
+
             override fun getItemOffsets(
                 outRect: Rect,
                 view: View,
                 parent: RecyclerView,
-                state: RecyclerView.State
+                state: RecyclerView.State,
             ) {
                 val position = parent.getChildAdapterPosition(view)
                 if (position == RecyclerView.NO_POSITION) return
-                
+
                 if (spanCount >= 2 && spanSizeLookup != null) {
                     // 使用spanSizeLookup获取正确的行号（组索引）
                     val rowIndex = spanSizeLookup!!.getSpanGroupIndex(position, spanCount)
                     val lastGroupIndex = if (itemCount > 0) {
                         spanSizeLookup!!.getSpanGroupIndex(itemCount - 1, spanCount)
-                    } else 0
+                    } else {
+                        0
+                    }
                     // 处理单行情况：既是第一行也是最后一行
                     if (rowIndex == 0 && rowIndex == lastGroupIndex) {
                         outRect.set(bookshelfMargin, marginFirst, bookshelfMargin, marginFirst)
-                    } else when (rowIndex) {
-                        0 -> outRect.set(bookshelfMargin, marginFirst, bookshelfMargin, bookshelfMargin)
-                        lastGroupIndex -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, marginFirst)
-                        else -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, bookshelfMargin)
+                    } else {
+                        when (rowIndex) {
+                            0 -> outRect.set(bookshelfMargin, marginFirst, bookshelfMargin, bookshelfMargin)
+                            lastGroupIndex -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, marginFirst)
+                            else -> outRect.set(bookshelfMargin, bookshelfMargin, bookshelfMargin, bookshelfMargin)
+                        }
                     }
                 } else {
                     // 处理单行情况：既是第一行也是最后一行
                     if (position == 0 && position == itemCount - 1) {
                         outRect.set(0, marginFirst, 0, marginFirst)
-                    } else when (position) {
-                        0 -> outRect.set(0, marginFirst, 0, marginNormal)
-                        itemCount - 1 -> outRect.set(0, marginNormal, 0, marginFirst)
-                        else -> outRect.set(0, marginNormal, 0, marginNormal)
+                    } else {
+                        when (position) {
+                            0 -> outRect.set(0, marginFirst, 0, marginNormal)
+                            itemCount - 1 -> outRect.set(0, marginNormal, 0, marginFirst)
+                            else -> outRect.set(0, marginNormal, 0, marginNormal)
+                        }
                     }
                 }
             }
@@ -308,7 +312,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             // 方案A：使用轻量查询 flowShelfByGroup 替代 flowByGroup，
             // SQL 层面已过滤 notShelf 并按 durChapterTime DESC 排序
             appDb.bookDao.flowShelfByGroup(groupId).map { list ->
-                //排序
+                // 排序
                 when (AppConfig.getBookSortByGroupId(groupId)) {
                     1 -> list.sortedByDescending {
                         it.latestChapterTime
@@ -331,13 +335,25 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             }.flowWithLifecycleAndDatabaseChangeFirst(
                 viewLifecycleOwner.lifecycle,
                 Lifecycle.State.STARTED,
-                AppDatabase.BOOK_TABLE_NAME
+                AppDatabase.BOOK_TABLE_NAME,
             ).catch {
                 AppLog.put("书架更新出错", it)
             }.conflate().flowOn(Dispatchers.Default).collect { list ->
                 // 方案A：将 BookShelfDisplay 转换为最小化 Book，供 style2 的 Any 类型 Adapter 使用
-                val filtered = if (tagFilter == null) list else list.filter {
-                    BookTagHelper.has(it.customTag, tagFilter!!)
+                // 注意 flowOn 只影响上游，collect 仍运行在主线程，可安全取 context
+                val filtered = if (tagFilter == null) {
+                    list
+                } else {
+                    val filterTag = tagFilter!!
+                    val smartRules = BookTagMatcher.enabledRules(requireContext())
+                    list.filter {
+                        BookTagMatcher.matches(
+                            filterTag,
+                            it.customTag,
+                            it.toSmartTagSnapshot(),
+                            smartRules,
+                        )
+                    }
                 }
                 books = filtered.map { it.toMinimalBook() }
                 booksAdapter.updateItems(groupId)
@@ -368,9 +384,7 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         return false
     }
 
-    override fun onQueryTextChange(newText: String?): Boolean {
-        return false
-    }
+    override fun onQueryTextChange(newText: String?): Boolean = false
 
     override fun gotoTop() {
         if (AppConfig.isEInkMode) {
@@ -411,16 +425,33 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             return
         }
         val currentGroupId = groupId
+        val context = requireContext()
         viewLifecycleOwner.lifecycleScope.launch {
             val allText = getString(R.string.bookshelf_tag_all)
-            val tags = withContext(Dispatchers.IO) {
+            val (tags, tagCounts) = withContext(Dispatchers.IO) {
                 val configured = AppConfig.bookshelfGroupTags[currentGroupId].orEmpty()
                 val hidden = AppConfig.bookshelfHiddenTags[currentGroupId].orEmpty()
                 val allBooks = appDb.bookDao.allTagInfos
                 val groupBooks = filterBooksByGroup(allBooks, currentGroupId)
-                val existing = groupBooks.flatMap { BookTagHelper.parse(it.customTag) }
+                // 每本书的标签只解析一次，后续合并标签与统计数量复用
+                val parsedTags = groupBooks.map { BookTagHelper.parseSet(it.customTag) }
+                val existing = parsedTags.flatten()
                 val merged = BookTagManagement.mergeTags(configured, existing)
-                merged.filter { tag -> hidden.none { it.equals(tag, ignoreCase = true) } }
+                    .filter { tag -> hidden.none { it.equals(tag, ignoreCase = true) } }
+                val smartRules = BookTagMatcher.enabledRules(context)
+                val snapshots = groupBooks.map { it.toSmartTagSnapshot() }
+                // 追加智能标签：仅保留本分组内有书籍命中的规则（总开关关闭时为空）
+                val smartNames = BookTagMatcher.matchingNames(snapshots, smartRules)
+                val mergedTags = BookTagManagement.mergeTags(merged, smartNames)
+                // 每个标签的命中数量，用于 "标签名·数量" 展示（自定义标签与智能标签同一口径）；
+                // 空 key 代表"全部"标签，数量即分组内书籍总数
+                val counts = BookTagMatcher.countMatches(
+                    mergedTags,
+                    parsedTags,
+                    snapshots,
+                    smartRules,
+                ) + ("" to groupBooks.size)
+                mergedTags to counts
             }
             // 查询期间已切换分组（如快速进出分组），丢弃过期结果
             if (currentGroupId != groupId) return@launch
@@ -429,8 +460,12 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
             tagSelectedIndex = 0
             tagBar?.applyTopBarStyle(force = true)
             tagBar?.submitItems(
-                currentTagList.map { RoundedTagBarView.Item(it.ifBlank { allText }) },
-                0
+                currentTagList.map { tag ->
+                    RoundedTagBarView.Item(
+                        BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
+                    )
+                },
+                0,
             )
             tagBar?.setSelectedIndex(0, false)
             tagBarLoaded = true
@@ -454,36 +489,34 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
      */
     private fun filterBooksByGroup(
         books: List<io.legado.app.data.dao.BookTagInfo>,
-        currentGroupId: Long
-    ): List<io.legado.app.data.dao.BookTagInfo> {
-        return when (currentGroupId) {
-            BookGroup.IdAll -> books
-            BookGroup.IdLocal -> books.filter { it.type and BookType.local > 0 }
-            BookGroup.IdAudio -> books.filter { it.type and BookType.audio > 0 }
-            BookGroup.IdVideo -> books.filter { it.type and BookType.video > 0 }
-            BookGroup.IdError -> books.filter { it.type and BookType.updateError > 0 }
-            else -> {
-                val userGroupMask = appDb.bookGroupDao.all
-                    .filter { it.groupId > 0 }
-                    .fold(0L) { acc, group -> acc or group.groupId }
-                when (currentGroupId) {
-                    BookGroup.IdNetNone -> books.filter {
-                        it.type and BookType.audio == 0 &&
-                            it.type and BookType.video == 0 &&
-                            it.type and BookType.local == 0 &&
-                            (it.group and userGroupMask) == 0L
-                    }
-                    BookGroup.IdLocalNone -> books.filter {
-                        it.type and BookType.audio == 0 &&
-                            it.type and BookType.video == 0 &&
-                            it.type and BookType.local > 0 &&
-                            (it.group and userGroupMask) == 0L
-                    }
-                    else -> if (currentGroupId > 0) {
-                        books.filter { it.group and currentGroupId > 0 }
-                    } else {
-                        emptyList()
-                    }
+        currentGroupId: Long,
+    ): List<io.legado.app.data.dao.BookTagInfo> = when (currentGroupId) {
+        BookGroup.IdAll -> books
+        BookGroup.IdLocal -> books.filter { it.type and BookType.local > 0 }
+        BookGroup.IdAudio -> books.filter { it.type and BookType.audio > 0 }
+        BookGroup.IdVideo -> books.filter { it.type and BookType.video > 0 }
+        BookGroup.IdError -> books.filter { it.type and BookType.updateError > 0 }
+        else -> {
+            val userGroupMask = appDb.bookGroupDao.all
+                .filter { it.groupId > 0 }
+                .fold(0L) { acc, group -> acc or group.groupId }
+            when (currentGroupId) {
+                BookGroup.IdNetNone -> books.filter {
+                    it.type and BookType.audio == 0 &&
+                        it.type and BookType.video == 0 &&
+                        it.type and BookType.local == 0 &&
+                        (it.group and userGroupMask) == 0L
+                }
+                BookGroup.IdLocalNone -> books.filter {
+                    it.type and BookType.audio == 0 &&
+                        it.type and BookType.video == 0 &&
+                        it.type and BookType.local > 0 &&
+                        (it.group and userGroupMask) == 0L
+                }
+                else -> if (currentGroupId > 0) {
+                    books.filter { it.group and currentGroupId > 0 }
+                } else {
+                    emptyList()
                 }
             }
         }
@@ -515,16 +548,12 @@ class BookshelfFragment2() : BaseBookshelfFragment(R.layout.fragment_bookshelf2)
         }
     }
 
-    override fun isUpdate(bookUrl: String): Boolean {
-        return activityViewModel.isUpdate(bookUrl)
-    }
+    override fun isUpdate(bookUrl: String): Boolean = activityViewModel.isUpdate(bookUrl)
 
-    fun getItemCount(): Int {
-        return if (groupId == BookGroup.IdRoot) {
-            bookGroups.size + books.size
-        } else {
-            books.size
-        }
+    fun getItemCount(): Int = if (groupId == BookGroup.IdRoot) {
+        bookGroups.size + books.size
+    } else {
+        books.size
     }
 
     override fun getItems(): List<Any> {

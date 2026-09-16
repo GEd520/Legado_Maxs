@@ -190,14 +190,17 @@ object ThemeConfig {
     /**
      * 计算当前主题背景的签名，取图逻辑与 [getBgImage] 保持一致。
      * 纳入主题模式（日/夜）、背景路径、文件最后修改时间与大小、模糊强度，
-     * 任一变化都会使签名不同而触发重新解码。无背景图配置时返回非空标识（缓存键仍有效）。
+     * 任一变化都会使签名不同而触发重新解码。
+     * 未配置背景图、或配置的图片文件不存在时返回 null（此时应显示纯色底，
+     * 不得使用占位图）。
      */
-    fun getBackgroundSignature(context: Context): String {
+    fun getBackgroundSignature(context: Context): String? {
         val night = AppConfig.isNightTheme
         val prefKey = if (night) PreferKey.bgImageN else PreferKey.bgImage
         val rawPath = context.getPrefString(prefKey).orEmpty()
-        if (rawPath.isBlank()) return "bg:$prefKey:empty"
-        // 与 getBgImage 相同：在线背景需先落到缓存文件，仅文件名的需拼接完整路径
+        if (rawPath.isBlank()) return null
+        // 与 getBgImage 相同：在线背景需先落到缓存文件，仅文件名的需拼接完整路径，
+        // 绝对路径须为真实存在的文件，否则视为无背景图
         val path = if (rawPath.startsWith("http")) {
             val filePath = FileUtils.getPath(context.externalFiles, prefKey, getUrlToFile(rawPath))
             filePath.takeIf { FileUtils.exist(it) }
@@ -205,9 +208,9 @@ object ThemeConfig {
             val filePath = FileUtils.getPath(context.externalFiles, prefKey, rawPath)
             filePath.takeIf { FileUtils.exist(it) }
         } else {
-            rawPath
+            rawPath.takeIf { File(it).isFile }
         }
-        if (path == null) return "bg:$prefKey:missing:$rawPath"
+        if (path == null) return null
         val blurring = context.getPrefInt(
             if (night) PreferKey.bgImageNBlurring else PreferKey.bgImageBlurring,
             0,

@@ -208,21 +208,35 @@ abstract class BaseActivity<VB : ViewBinding>(
         }
     }
 
+    /** 应用任何背景图之前 decorView 的原始背景（主题纯色底），无背景图时恢复它而非把窗口背景置空 */
+    private var defaultDecorBackground: Drawable? = null
+
     open fun upBackgroundImage() {
         if (imageBg) {
+            // 首次调用时记录原始窗口背景（initTheme 设置的纯色底），
+            // 供背景图缺失/加载失败时恢复；此时必然还没应用过任何背景图
+            if (defaultDecorBackground == null) {
+                defaultDecorBackground = window.decorView.background
+            }
+            // 签名为 null 表示未配置背景图或图片文件不存在（应显示纯色底）
             val signature = ThemeConfig.getBackgroundSignature(this)
             // 命中进程级缓存：同步应用，Activity 重建/返回主界面时无需重新解码，无闪烁
-            val cached = ThemeConfig.getCachedBgImage(signature)
-            if (cached != null) {
-                onBackgroundDrawableLoaded(cached)
-                return
+            if (signature != null) {
+                val cached = ThemeConfig.getCachedBgImage(signature)
+                if (cached != null) {
+                    onBackgroundDrawableLoaded(cached)
+                    return
+                }
             }
-            // 未命中缓存：先用最近一次应用的背景图占位（如有），
-            // 避免异步解码期间先显示纯色底再跳变成背景图
+            // 未命中缓存且确实配置了背景图：先用最近一次应用的背景图占位，
+            // 避免异步解码期间先显示纯色底再跳变成背景图。
+            // 未配置背景图（signature == null）时不得占位，否则清除背景图后无法回到纯色
             var placeholderApplied = false
-            ThemeConfig.getLastBgImage(signature)?.let {
-                onBackgroundDrawableLoaded(it)
-                placeholderApplied = true
+            if (signature != null) {
+                ThemeConfig.getLastBgImage(signature)?.let {
+                    onBackgroundDrawableLoaded(it)
+                    placeholderApplied = true
+                }
             }
             val windowSize = windowManager.windowSize
             lifecycleScope.launch(Dispatchers.Default) {
@@ -238,10 +252,10 @@ abstract class BaseActivity<VB : ViewBinding>(
                 withContext(Dispatchers.Main) {
                     if (!isFinishing && !isDestroyed) {
                         if (drawable != null) {
-                            ThemeConfig.cacheBgImage(signature, drawable)
+                            signature?.let { ThemeConfig.cacheBgImage(it, drawable) }
                             onBackgroundDrawableLoaded(drawable)
                         } else if (!placeholderApplied) {
-                            // 加载失败且无占位时才通知空背景（清除旧背景），
+                            // 加载失败且无占位时回调 null（恢复纯色底，清除旧背景图），
                             // 有占位时保留占位图，避免闪回纯色
                             onBackgroundDrawableLoaded(null)
                         }
@@ -254,15 +268,17 @@ abstract class BaseActivity<VB : ViewBinding>(
     /**
      * 背景图异步解码完成回调（主线程）。
      *
-     * [drawable] 为 null 表示无背景图配置或加载失败。
+     * [drawable] 为 null 表示无背景图配置或加载失败，此时恢复 [defaultDecorBackground]
+     * （进入界面时的主题纯色底），实现"清除背景图后回到纯色"。
+     * 注意不能把窗口背景置 null：decorView 没有背景 drawable 时硬件渲染不会
+     * 整帧覆盖窗口表面，滑动等局部重绘场景会残留上一帧像素，造成持续闪烁。
+     *
      * 子类若需要在背景就绪后做同步处理（如同步到其他 View），
      * 必须覆写本方法而非在 [upBackgroundImage] 调用后同步取值——
      * 解码是异步的，[upBackgroundImage] 返回时背景尚未生效。
      */
     protected open fun onBackgroundDrawableLoaded(drawable: Drawable?) {
-        if (drawable != null) {
-            window.decorView.background = drawable
-        }
+        window.decorView.background = drawable ?: defaultDecorBackground
     }
 
     open fun setupSystemBar() {

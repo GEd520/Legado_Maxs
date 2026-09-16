@@ -8,7 +8,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Shader
-import android.graphics.drawable.NinePatchDrawable
 import android.os.Build
 import androidx.annotation.Keep
 import io.legado.app.help.PaintPool
@@ -18,6 +17,7 @@ import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.ContentTextView
 import io.legado.app.ui.book.read.page.entities.TextPage.Companion.emptyTextPage
+import io.legado.app.ui.book.read.config.highlight.HighlightRule
 import io.legado.app.ui.book.read.page.entities.column.BaseColumn
 import io.legado.app.ui.book.read.page.entities.column.ImageColumn
 import io.legado.app.ui.book.read.page.entities.column.TextBaseColumn
@@ -27,6 +27,7 @@ import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.canvasrecorder.recordIfNeededThenDraw
 import io.legado.app.utils.dpToPx
 import splitties.init.appCtx
+import kotlin.math.roundToInt
 
 /**
  * 行信息
@@ -429,44 +430,93 @@ data class TextLine(
     }
 
     private fun drawBgImageSegments(canvas: Canvas) {
-        var rangeStart = 0f
-        var rangeEnd = 0f
+        var rangeStartIndex = 0
+        var rangeEndIndex = 0
         var currentBgImage = ""
         var currentBgImageFit = 0
         var currentBgImageScale = 1f
+        var currentNpLeft = 0.1f
+        var currentNpTop = 0.1f
+        var currentNpRight = 0.1f
+        var currentNpBottom = 0.1f
+        var currentBleedMode = HighlightRule.BLEED_SMART
+        var currentSpacingH = 0f
+        var currentSpacingV = 0f
         var active = false
+        fun sameStyle(
+            bgImage: String,
+            bgImageFit: Int,
+            bgImageScale: Float,
+            npLeft: Float,
+            npTop: Float,
+            npRight: Float,
+            npBottom: Float,
+            bleedMode: Int,
+            spacingH: Float,
+            spacingV: Float,
+        ) = bgImage == currentBgImage && bgImageFit == currentBgImageFit &&
+            bgImageScale == currentBgImageScale && npLeft == currentNpLeft &&
+            npTop == currentNpTop && npRight == currentNpRight && npBottom == currentNpBottom &&
+            bleedMode == currentBleedMode && spacingH == currentSpacingH &&
+            spacingV == currentSpacingV
+        // 段的首尾列下标决定"邻字是谁"，智能策略要靠它判断能否借用邻接空白
+        fun flush() = drawBgImageSegment(canvas, rangeStartIndex, rangeEndIndex)
         columns.forEachIndexed { index, column ->
             val textColumn = column as? TextBaseColumn
             val bgImage = textColumn?.bgImage ?: ""
             val bgImageFit = textColumn?.bgImageFit ?: 0
             val bgImageScale = textColumn?.bgImageScale ?: 1f
+            val npLeft = textColumn?.npLeft ?: 0.1f
+            val npTop = textColumn?.npTop ?: 0.1f
+            val npRight = textColumn?.npRight ?: 0.1f
+            val npBottom = textColumn?.npBottom ?: 0.1f
+            val bleedMode = textColumn?.bgBleedMode ?: HighlightRule.BLEED_SMART
+            val spacingH = textColumn?.bgSpacingH ?: 0f
+            val spacingV = textColumn?.bgSpacingV ?: 0f
             when {
                 bgImage.isEmpty() && active -> {
-                    drawBgImageSegment(canvas, rangeStart, rangeEnd, currentBgImage, currentBgImageFit, currentBgImageScale)
+                    flush()
                     active = false
                 }
                 bgImage.isNotEmpty() && !active -> {
-                    rangeStart = textColumn!!.start
-                    rangeEnd = textColumn.end
+                    rangeStartIndex = index
+                    rangeEndIndex = index
                     currentBgImage = bgImage
                     currentBgImageFit = bgImageFit
                     currentBgImageScale = bgImageScale
+                    currentNpLeft = npLeft
+                    currentNpTop = npTop
+                    currentNpRight = npRight
+                    currentNpBottom = npBottom
+                    currentBleedMode = bleedMode
+                    currentSpacingH = spacingH
+                    currentSpacingV = spacingV
                     active = true
                 }
-                bgImage.isNotEmpty() && bgImage == currentBgImage && bgImageFit == currentBgImageFit && bgImageScale == currentBgImageScale -> {
-                    rangeEnd = textColumn!!.end
+                bgImage.isNotEmpty() && sameStyle(
+                    bgImage, bgImageFit, bgImageScale, npLeft, npTop, npRight, npBottom,
+                    bleedMode, spacingH, spacingV,
+                ) -> {
+                    rangeEndIndex = index
                 }
                 bgImage.isNotEmpty() -> {
-                    drawBgImageSegment(canvas, rangeStart, rangeEnd, currentBgImage, currentBgImageFit, currentBgImageScale)
-                    rangeStart = textColumn!!.start
-                    rangeEnd = textColumn.end
+                    flush()
+                    rangeStartIndex = index
+                    rangeEndIndex = index
                     currentBgImage = bgImage
                     currentBgImageFit = bgImageFit
                     currentBgImageScale = bgImageScale
+                    currentNpLeft = npLeft
+                    currentNpTop = npTop
+                    currentNpRight = npRight
+                    currentNpBottom = npBottom
+                    currentBleedMode = bleedMode
+                    currentSpacingH = spacingH
+                    currentSpacingV = spacingV
                 }
             }
             if (active && index == columns.lastIndex) {
-                drawBgImageSegment(canvas, rangeStart, rangeEnd, currentBgImage, currentBgImageFit, currentBgImageScale)
+                flush()
             }
         }
     }
@@ -665,34 +715,109 @@ data class TextLine(
         canvas.restore()
     }
 
-    private fun drawBgImageSegment(
-        canvas: Canvas,
-        startX: Float,
-        endX: Float,
-        bgImage: String,
-        bgImageFit: Int,
-        bgImageScale: Float,
-    ) {
-        val top = bgPaddingTop
-        val bottom = height - bgPaddingBottom
-        // 点九图优先：九宫格拉伸铺满匹配区域，平铺/裁剪等 bitmap 适配方式不适用
-        getBgNinePatchDrawable(bgImage)?.let { drawable ->
-            drawBgNinePatch(
-                drawable, canvas,
-                startX.toInt(), top.toInt(), endX.toInt(), bottom.toInt(),
-                getBgNinePatchInsets(bgImage)
+    /**
+     * 当前行正文/标题实际使用的画笔，用于把间距（em）换算成像素、以及量取邻字墨迹。
+     */
+    private val stylePaint: Paint
+        get() = if (isTitle) ChapterProvider.titlePaint else ChapterProvider.contentPaint
+
+    /** 当前行字号，用于把背景图间距（em）换算成像素 */
+    private val styleTextSize: Float get() = stylePaint.textSize
+
+    /**
+     * 当前行正文/标题的字体度量：九宫格上下范围以文字上下界为基准，不能用行盒内缩——
+     * 文字基线贴着行盒底部，按行盒内缩会把字身上下各切掉一段（表现为背景包不住文字）。
+     */
+    private val styleFontMetrics: Paint.FontMetrics get() = stylePaint.fontMetrics
+
+    /**
+     * 邻接空白字符的宽度：邻字是无字形的空白（空格/制表符等）时返回其推进宽度，否则返回 0。
+     * 智能策略只借用这份空白向外扩，邻字有字形时绝不外扩。
+     */
+    private fun blankNeighborWidth(index: Int): Float {
+        val neighbor = columns.getOrNull(index) as? TextBaseColumn ?: return 0f
+        val char = neighbor.charData
+        if (char.isEmpty() || !char.isBlank()) return 0f
+        return neighbor.end - neighbor.start
+    }
+
+    /**
+     * 行内正文可用区域的右边界（与列坐标同为绝对坐标）。
+     *
+     * 列坐标由排版时 `absStartX + x` 生成（含 paddingLeft），所以用"本行起点 + 一页正文宽度"还原；
+     * 再与页面右边界取小：双栏时本行在右栏两者相等，在左栏时只有取小才落在左栏的右边界上。
+     */
+    private fun contentRightEdge(): Float {
+        val bound = lineStart + ChapterProvider.visibleWidth
+        return minOf(bound, ChapterProvider.visibleRight.toFloat())
+    }
+
+    /**
+     * 匹配段右侧可借用的空白宽度（智能策略用）。
+     *
+     * - 邻字本身是空白（空格等）→ 借它的推进宽度；
+     * - 匹配段一直排到本行最后一列（段末 / 行末）→ 右侧到内容区右边界之间同样是空白，也可借用，
+     *   但最多一个字符宽，否则段末右侧不外扩、与左侧（段首缩进的全角空格）不对称；
+     * - 其余情况（邻字有字形）返回 0，绝不外扩。
+     */
+    private fun rightBlankSpace(endIndex: Int, endX: Float): Float {
+        val neighbor = blankNeighborWidth(endIndex + 1)
+        if (neighbor > 0f) return neighbor
+        if (endIndex != columns.lastIndex) return 0f
+        val remain = contentRightEdge() - endX
+        if (remain <= 0f) return 0f
+        return minOf(remain, styleTextSize)
+    }
+
+    /**
+     * 行与行之间空白（行距）的一半：智能策略用它把背景上下撑开，正好填满行距段、
+     * 与相邻行的背景相接，又不会压到上下行的字形。
+     */
+    private fun halfLineGap(): Float {
+        val lineGap = height * (ChapterProvider.lineSpacingExtra - 1f)
+        return if (lineGap > 0f) lineGap / 2f else 0f
+    }
+
+    /**
+     * 绘制一段连续的背景图。[startIndex]..[endIndex] 为同一套样式的连续列，
+     * 两端之外的第一列就是"邻字"，智能策略据此判断能否借用空白。
+     */
+    private fun drawBgImageSegment(canvas: Canvas, startIndex: Int, endIndex: Int) {
+        val first = columns.getOrNull(startIndex) as? TextBaseColumn ?: return
+        val last = columns.getOrNull(endIndex) as? TextBaseColumn ?: return
+        val bitmap = getBgBitmap(first.bgImage) ?: return
+        val startX = first.start
+        val endX = last.end
+        if (first.bgImageFit == 3) {
+            // 九宫格：按用户调整的分割比例与外扩策略切图拉伸；上下以文字上下界为基准
+            val textSize = styleTextSize
+            val baseline = lineBase - lineTop
+            val fontMetrics = styleFontMetrics
+            drawNineSlice(
+                bitmap, canvas, startX, baseline + fontMetrics.ascent, endX,
+                baseline + fontMetrics.descent,
+                first.npLeft, first.npTop, first.npRight, first.npBottom,
+                first.bgBleedMode,
+                leftBlankWidth = blankNeighborWidth(startIndex - 1),
+                rightBlankWidth = rightBlankSpace(endIndex, endX),
+                verticalBlankSpace = halfLineGap(),
+                maxBleedX = textSize,
+                spacingH = first.bgSpacingH * textSize,
+                spacingV = first.bgSpacingV * textSize,
             )
             return
         }
-        val bitmap = getBgBitmap(bgImage) ?: return
+        // 其余适配方式保持原有绘制范围
+        val top = bgPaddingTop
+        val bottom = height - bgPaddingBottom
         val paint = PaintPool.obtain()
         paint.style = android.graphics.Paint.Style.FILL
         paint.isAntiAlias = true
         paint.isFilterBitmap = true
         val rectWidth = endX - startX
         val rectHeight = bottom - top
-        val scale = bgImageScale.coerceIn(0.1f, 5f)
-        when (bgImageFit) {
+        val scale = first.bgImageScale.coerceIn(0.1f, 5f)
+        when (first.bgImageFit) {
             1 -> {
                 val sw = rectWidth * scale
                 val sh = rectHeight * scale
@@ -720,7 +845,7 @@ data class TextLine(
                 val tileBitmap = if (scale != 1f) {
                     val sw = (bitmap.width * scale).toInt().coerceAtLeast(1)
                     val sh = (bitmap.height * scale).toInt().coerceAtLeast(1)
-                    getScaledBitmap("${bgImage}_s$scale", bitmap, sw, sh)
+                    getScaledBitmap("${first.bgImage}_s$scale", bitmap, sw, sh)
                 } else {
                     bitmap
                 }
@@ -777,23 +902,16 @@ data class TextLine(
         private val einkUnderlineWidth = 1.dpToPx().toFloat()
         private val bgBitmapCache = android.util.LruCache<String, Bitmap>(16 * 1024 * 1024)
         private val bgScaledBitmapCache = android.util.LruCache<String, Bitmap>(8 * 1024 * 1024)
-        /** 点九图探测的尺寸上限：超过此尺寸的图不按点九图处理，避免主线程无采样全量解码 */
-        private const val NINE_PATCH_MAX_DIM = 1024
-        /** 内容区检测的 alpha 阈值，低于该值视为透明留白 */
-        private const val CONTENT_ALPHA_THRESHOLD = 16
-        /** 点九图包裹文字时内容区之外再向外延伸的余量（dp） */
-        private const val NINE_PATCH_WRAP_EXTRA_DP = 2
-        /** 点九图缓存：点九图不能按普通 bitmap 采样缩放，需整图解码后按九宫格拉伸；按字节数限额防止大图占满内存 */
-        private val bgNinePatchCache = object : android.util.LruCache<String, NinePatchDrawable>(8 * 1024 * 1024) {
-            override fun sizeOf(key: String, value: NinePatchDrawable): Int =
-                value.intrinsicWidth.coerceAtLeast(1) * value.intrinsicHeight.coerceAtLeast(1) * 4
-        }
-        /** 已确认不是点九图的路径，避免每次绘制重复解码探测 */
-        private val bgNotNinePatchPaths = java.util.Collections.newSetFromMap(
-            java.util.concurrent.ConcurrentHashMap<String, Boolean>()
-        )
-        /** 点九图内容区（非透明像素）外的透明留白缓存，绘制时据此向外扩展 bounds */
-        private val bgNinePatchInsets = java.util.concurrent.ConcurrentHashMap<String, android.graphics.Rect>()
+
+        /** 智能策略借用邻接空白时只取其中的一部分，给后面那个字留出余量 */
+        private const val SMART_BLANK_RATIO = 0.8f
+
+        /**
+         * 智能策略的最小外扩量（em）：一点空白都借不到时（中文密排、行末等）也要留出这么一点，
+         * 否则目标矩形刚好等于匹配文字的外框，四角装饰只能压在自己匹配到的字上，
+         * 表现为"背景包不住文字"。
+         */
+        private const val SMART_MIN_BLEED_RATIO = 0.1f
         private val bgSampleWidth by lazy {
             appCtx.resources.displayMetrics.widthPixels
         }
@@ -810,117 +928,170 @@ data class TextLine(
         }
 
         /**
-         * 获取点九图（.9.png）背景的 NinePatchDrawable。
-         * 探测依据是 PNG 内嵌的九宫格 chunk（BitmapFactory 解码后 ninePatchChunk 非空），
-         * 与文件名无关，迁移/重命名后的内部文件同样可识别。
+         * 按分割比例换算出的左右四角厚度（位图像素，返回 `[左, 右]`），并按 [limit] 夹一次。
+         *
+         * 与 [drawNineSlice] 的切分口径一致（含"强制模式按可用空间夹一次"这一步），
+         * 供排版阶段估算"强制"策略要给邻字让出多少空间——两边用量必须一致，否则推开的
+         * 距离与背景实际外扩量对不上。
          */
-        fun getBgNinePatchDrawable(path: String): NinePatchDrawable? {
-            if (path.isBlank() || bgNotNinePatchPaths.contains(path)) return null
-            bgNinePatchCache.get(path)?.let { return it }
-            // loadBgNinePatch 仅在"确认非点九图"时写入否定缓存；IO/解码失败不缓存，文件恢复后仍可重试
-            return loadBgNinePatch(path)?.also { bgNinePatchCache.put(path, it) }
-        }
-
-        /**
-         * 获取点九图内容区（非透明像素）外的透明留白，单位为图片原始像素。
-         * 不依赖 .9 的 padding 指南（很多 .9 的留白并不在 padding 指南范围内），
-         * 而是加载时扫描非透明像素的实际包围盒得到。
-         */
-        fun getBgNinePatchInsets(path: String): android.graphics.Rect {
-            return bgNinePatchInsets[path] ?: android.graphics.Rect()
-        }
-
-        /**
-         * 点九图按"包裹内容"方式绘制：bounds 向外扩展内容区外的透明留白，
-         * 再额外外延 [NINE_PATCH_WRAP_EXTRA_DP]dp，使可见内容（气泡/边框）完全包裹住文字
-         * 并留有少量余量，与主题背景图把 .9 作为 View background 的观感一致。
-         * 每侧总扩展量不超过目标区域尺寸的 1/3，避免异常留白导致绘制区域失控。
-         */
-        fun drawBgNinePatch(
-            drawable: NinePatchDrawable,
-            canvas: Canvas,
-            left: Int,
-            top: Int,
-            right: Int,
-            bottom: Int,
-            insets: android.graphics.Rect,
-        ) {
-            val maxHorizontal = (right - left) / 3
-            val maxVertical = (bottom - top) / 3
-            val extra = NINE_PATCH_WRAP_EXTRA_DP.dpToPx()
-            drawable.setBounds(
-                left - insets.left.coerceAtMost(maxHorizontal - extra).coerceAtLeast(0) - extra,
-                top - insets.top.coerceAtMost(maxVertical - extra).coerceAtLeast(0) - extra,
-                right + insets.right.coerceAtMost(maxHorizontal - extra).coerceAtLeast(0) + extra,
-                bottom + insets.bottom.coerceAtMost(maxVertical - extra).coerceAtLeast(0) + extra,
+        fun nineSliceSideWidth(
+            bitmap: Bitmap,
+            npLeft: Float,
+            npRight: Float,
+            limit: Float,
+        ): FloatArray {
+            val bw = bitmap.width
+            if (bw <= 0) return floatArrayOf(0f, 0f)
+            val rightCutX = bw - (bw * npRight.coerceIn(0f, 1f)).roundToInt()
+            val leftCutX = (bw * npLeft.coerceIn(0f, 1f)).roundToInt().coerceAtMost(rightCutX)
+            return floatArrayOf(
+                leftCutX.toFloat().coerceAtMost(limit),
+                (bw - rightCutX).toFloat().coerceAtMost(limit),
             )
-            drawable.draw(canvas)
-        }
-
-        private fun loadBgNinePatch(path: String): NinePatchDrawable? {
-            return try {
-                val input = openBgImageStream(path) ?: return null
-                input.use { stream ->
-                    val buffered = if (stream.markSupported()) stream else java.io.BufferedInputStream(stream)
-                    // 先只读尺寸：点九图背景通常很小，超大图不做无采样的全量解码，
-                    // 避免首次绘制时在主线程瞬时分配数十 MB 位图
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    buffered.mark(buffered.available())
-                    BitmapFactory.decodeStream(buffered, null, bounds)
-                    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-                    if (bounds.outWidth > NINE_PATCH_MAX_DIM || bounds.outHeight > NINE_PATCH_MAX_DIM) {
-                        bgNotNinePatchPaths.add(path)
-                        return null
-                    }
-                    buffered.reset()
-                    // 点九图不能带 inSampleSize 采样，否则拉伸区域度量失真
-                    val options = BitmapFactory.Options().apply { inScaled = false }
-                    val bitmap = BitmapFactory.decodeStream(buffered, null, options) ?: return null
-                    if (bitmap.ninePatchChunk == null) {
-                        bitmap.recycle()
-                        bgNotNinePatchPaths.add(path)
-                        return null
-                    }
-                    bgNinePatchInsets[path] = computeContentInsets(bitmap)
-                    NinePatchDrawable(appCtx.resources, android.graphics.NinePatch(bitmap, bitmap.ninePatchChunk, path))
-                }
-            } catch (e: Exception) {
-                null
-            }
         }
 
         /**
-         * 扫描非透明像素的实际包围盒，返回内容区距四边的留白（原始像素）。
-         * 仅在点九图加载时执行一次并缓存。
+         * 手动九宫格绘制：按 [npLeft]/[npTop]/[npRight]/[npBottom]（占位图宽高比例，0-1，
+         * 左右相加、上下相加不超过 1）把位图切成 3×3，四个角保持原始尺寸，四条边与中心分别拉伸。
+         *
+         * 四角一律画在目标矩形内部（对齐 .9.png 语义），目标矩形 = 匹配区 + 自动外扩 + 手动间距：
+         * - [bleedMode] 决定**自动外扩**量：[HighlightRule.BLEED_STRICT] 不外扩；
+         *   [HighlightRule.BLEED_SMART] 只占用邻接空白（水平借 [leftBlankWidth]/[rightBlankWidth]，
+         *   垂直借 [verticalBlankSpace]，即一半行距）；[HighlightRule.BLEED_FORCE] 按四角厚度外扩，
+         *   即原来的"向外包裹文字"行为，可能压到相邻未匹配文字。
+         * - [spacingH]/[spacingV] 为手动微调（调用方已换算成像素）：正数把背景向外撑大、离文字更远，
+         *   负数向内收；与自动外扩叠加，所以"严格 + 正间距"也仍是用户主动往外撑。
+         * 目标矩形放不下两侧边框时按比例收缩，避免短匹配 / 大间距时绘制区域失控。
          */
-        private fun computeContentInsets(bitmap: Bitmap): android.graphics.Rect {
-            val w = bitmap.width
-            val h = bitmap.height
-            if (w <= 0 || h <= 0) return android.graphics.Rect()
-            val pixels = IntArray(w * h)
-            bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
-            fun rowHasContent(y: Int): Boolean {
-                val rowStart = y * w
-                for (x in 0 until w) {
-                    if (pixels[rowStart + x] ushr 24 > CONTENT_ALPHA_THRESHOLD) return true
-                }
-                return false
+        fun drawNineSlice(
+            bitmap: Bitmap,
+            canvas: Canvas,
+            left: Float,
+            top: Float,
+            right: Float,
+            bottom: Float,
+            npLeft: Float,
+            npTop: Float,
+            npRight: Float,
+            npBottom: Float,
+            bleedMode: Int,
+            leftBlankWidth: Float,
+            rightBlankWidth: Float,
+            verticalBlankSpace: Float,
+            maxBleedX: Float,
+            spacingH: Float,
+            spacingV: Float,
+        ) {
+            val bw = bitmap.width
+            val bh = bitmap.height
+            if (bw <= 0 || bh <= 0) return
+            // 切割点先按 0-1 换算，交叉（比例之和超 1 的异常数据）时压回保证三段单调
+            val rightCutX = bw - (bw * npRight.coerceIn(0f, 1f)).roundToInt()
+            val leftCutX = (bw * npLeft.coerceIn(0f, 1f)).roundToInt().coerceAtMost(rightCutX)
+            val rightCutY = bh - (bh * npBottom.coerceIn(0f, 1f)).roundToInt()
+            val leftCutY = (bh * npTop.coerceIn(0f, 1f)).roundToInt().coerceAtMost(rightCutY)
+            val srcX = intArrayOf(0, leftCutX, rightCutX, bw)
+            val srcY = intArrayOf(0, leftCutY, rightCutY, bh)
+            var leftW = srcX[1].toFloat()
+            var rightW = (bw - srcX[2]).toFloat()
+            var topH = srcY[1].toFloat()
+            var bottomH = (bh - srcY[2]).toFloat()
+            // 强制模式的外扩量取四角厚度，但必须先按可用空间夹一次：四角厚度是**位图原始像素**，
+            // 与字号无关（1024px 宽的图、npTop=0.1 就是上下各 100px），不夹会铺满整行并压到上下行。
+            // 水平上限 [maxBleedX]（一个字宽）、垂直上限 [verticalBlankSpace]（半格行距）。
+            if (bleedMode == HighlightRule.BLEED_FORCE) {
+                leftW = leftW.coerceAtMost(maxBleedX)
+                rightW = rightW.coerceAtMost(maxBleedX)
+                topH = topH.coerceAtMost(verticalBlankSpace)
+                bottomH = bottomH.coerceAtMost(verticalBlankSpace)
             }
-            fun colHasContent(x: Int): Boolean {
-                for (y in 0 until h) {
-                    if (pixels[y * w + x] ushr 24 > CONTENT_ALPHA_THRESHOLD) return true
-                }
-                return false
+            // 两侧厚度之和超过匹配区时按比例收缩（与拆分前的口径一致，短匹配 / 大图时不失控）
+            val matchW = right - left
+            val matchH = bottom - top
+            val horizontalFixed = leftW + rightW
+            if (horizontalFixed > matchW && horizontalFixed > 0f) {
+                val ratio = matchW / horizontalFixed
+                leftW *= ratio
+                rightW *= ratio
             }
-            var top = 0
-            var bottom = h - 1
-            var left = 0
-            var right = w - 1
-            while (top < bottom && !rowHasContent(top)) top++
-            while (bottom > top && !rowHasContent(bottom)) bottom--
-            while (left < right && !colHasContent(left)) left++
-            while (right > left && !colHasContent(right)) right--
-            return android.graphics.Rect(left, top, w - 1 - right, h - 1 - bottom)
+            val verticalFixed = topH + bottomH
+            if (verticalFixed > matchH && verticalFixed > 0f) {
+                val ratio = matchH / verticalFixed
+                topH *= ratio
+                bottomH *= ratio
+            }
+            // 自动外扩量：按策略决定（[maxBleedX] 就是一个字宽，即字号）
+            val smartMinBleed = maxBleedX * SMART_MIN_BLEED_RATIO
+            val bleedLeft: Float
+            val bleedRight: Float
+            val bleedTop: Float
+            val bleedBottom: Float
+            when (bleedMode) {
+                HighlightRule.BLEED_FORCE -> {
+                    bleedLeft = leftW
+                    bleedRight = rightW
+                    bleedTop = topH
+                    bleedBottom = bottomH
+                }
+                HighlightRule.BLEED_STRICT -> {
+                    bleedLeft = 0f
+                    bleedRight = 0f
+                    bleedTop = 0f
+                    bleedBottom = 0f
+                }
+                else -> {
+                    // 借到的空白只取其中一部分；借不到时用最小外扩兜底，保证目标矩形比文字外框大一点
+                    bleedLeft = maxOf(leftBlankWidth * SMART_BLANK_RATIO, smartMinBleed)
+                    bleedRight = maxOf(rightBlankWidth * SMART_BLANK_RATIO, smartMinBleed)
+                    bleedTop = maxOf(verticalBlankSpace, smartMinBleed)
+                    bleedBottom = maxOf(verticalBlankSpace, smartMinBleed)
+                }
+            }
+            // 四角/边条装饰只能占用"这一侧实际让出来的空隙"（自动外扩 + 手动间距）：
+            // 超出部分会画到匹配文字上面，看起来就像背景没包住自己的文字。
+            // 强制模式的空隙本来就等于四角自身，这里等价于不夹；严格模式不外扩也不夹，
+            // 保持"只覆盖匹配文字"的原有观感。
+            val marginLeft = (bleedLeft + spacingH).coerceAtLeast(0f)
+            val marginRight = (bleedRight + spacingH).coerceAtLeast(0f)
+            val marginTop = (bleedTop + spacingV).coerceAtLeast(0f)
+            val marginBottom = (bleedBottom + spacingV).coerceAtLeast(0f)
+            if (bleedMode != HighlightRule.BLEED_STRICT) {
+                leftW = leftW.coerceAtMost(marginLeft)
+                rightW = rightW.coerceAtMost(marginRight)
+                topH = topH.coerceAtMost(marginTop)
+                bottomH = bottomH.coerceAtMost(marginBottom)
+            }
+            // 目标矩形 = 匹配区 + 自动外扩 + 手动间距（正数向外撑、负数向内收）。
+            // 强制模式会外扩到邻字上方，排版阶段已把邻字推开（见 TextChapterLayout.computeNeighborPush）
+            val frameLeft = left - bleedLeft - spacingH
+            val frameRight = right + bleedRight + spacingH
+            val frameTop = top - bleedTop - spacingV
+            val frameBottom = bottom + bleedBottom + spacingV
+            if (frameRight - frameLeft <= 0f || frameBottom - frameTop <= 0f) return
+            val dstX = floatArrayOf(frameLeft, frameLeft + leftW, frameRight - rightW, frameRight)
+            val dstY = floatArrayOf(frameTop, frameTop + topH, frameBottom - bottomH, frameBottom)
+            val paint = PaintPool.obtain()
+            paint.style = android.graphics.Paint.Style.FILL
+            paint.isAntiAlias = true
+            paint.isFilterBitmap = true
+            for (row in 0..2) {
+                for (col in 0..2) {
+                    if (srcX[col] == srcX[col + 1] ||
+                        srcY[row] == srcY[row + 1] ||
+                        dstX[col] == dstX[col + 1] ||
+                        dstY[row] == dstY[row + 1]
+                    ) {
+                        continue
+                    }
+                    canvas.drawBitmap(
+                        bitmap,
+                        android.graphics.Rect(srcX[col], srcY[row], srcX[col + 1], srcY[row + 1]),
+                        android.graphics.RectF(dstX[col], dstY[row], dstX[col + 1], dstY[row + 1]),
+                        paint,
+                    )
+                }
+            }
+            PaintPool.recycle(paint)
         }
 
         private fun openBgImageStream(path: String): java.io.InputStream? = try {
@@ -1019,9 +1190,6 @@ data class TextLine(
         fun clearBgBitmapCache() {
             bgBitmapCache.evictAll()
             bgScaledBitmapCache.evictAll()
-            bgNinePatchCache.evictAll()
-            bgNotNinePatchPaths.clear()
-            bgNinePatchInsets.clear()
         }
 
         fun copyBgImageToInternal(context: android.content.Context, sourcePath: String): String? {

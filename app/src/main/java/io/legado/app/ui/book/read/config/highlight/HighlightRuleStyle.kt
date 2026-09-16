@@ -17,6 +17,17 @@ data class HighlightRuleStyle(
     val bgImage: String,
     val bgImageFit: Int,
     val bgImageScale: Float,
+    /** 九宫格分割比例，适配方式为九宫格(bgImageFit=3)时生效 */
+    val npLeft: Float = 0.1f,
+    val npTop: Float = 0.1f,
+    val npRight: Float = 0.1f,
+    val npBottom: Float = 0.1f,
+    /** 九宫格外扩策略，取值 HighlightRule.BLEED_*，已在 [from] 中解析为确定值 */
+    val bgBleedMode: Int = HighlightRule.BLEED_SMART,
+    /** 背景图左右间距（em），正数向外撑大、负数向内收 */
+    val bgSpacingH: Float = 0f,
+    /** 背景图上下间距（em），正数向外撑大、负数向内收 */
+    val bgSpacingV: Float = 0f,
     /** 高亮字体路径，空串表示跟随阅读字体 */
     val font: String = "",
 ) {
@@ -42,6 +53,13 @@ data class HighlightRuleStyle(
             bgImage = rule.bgImage.orEmpty(),
             bgImageFit = rule.bgImageFit,
             bgImageScale = rule.bgImageScale,
+            npLeft = rule.npLeft,
+            npTop = rule.npTop,
+            npRight = rule.npRight,
+            npBottom = rule.npBottom,
+            bgBleedMode = HighlightRule.resolvedBleedMode(rule.bgBleedMode),
+            bgSpacingH = rule.bgSpacingH,
+            bgSpacingV = rule.bgSpacingV,
             font = rule.font.orEmpty(),
         )
     }

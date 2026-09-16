@@ -1358,10 +1358,14 @@ class BookInfoActivity :
         viewModel.getBook()?.let { book ->
             book.group = groupId
             if (viewModel.inBookshelf) {
-                viewModel.saveBook(book)
+                // 改分组会同时改变原分组与新分组的标签命中数量，写库完成后必须刷新书架标签栏
+                viewModel.saveBook(book) {
+                    postEvent(EventBus.BOOKSHELF_REFRESH, "")
+                }
             } else if (groupId > 0) {
                 viewModel.addToBookshelf({
                     upTvBookshelf()
+                    postEvent(EventBus.BOOKSHELF_REFRESH, "")
                 }, groupId)
             }
         }

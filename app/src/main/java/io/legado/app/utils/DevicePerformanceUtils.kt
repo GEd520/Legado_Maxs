@@ -9,7 +9,7 @@ import splitties.init.appCtx
  *
  * 实时玻璃/磨砂效果需要持续采样整页内容并做高斯模糊，在旧系统或低内存设备上
  * 会造成严重的渲染卡顿和电量消耗。本工具综合以下因素判断设备性能等级：
- * - Android 版本（API 31/Android 12 以下视为低性能优先）
+ * - Android 版本（API 33/Android 13 以下视为低性能优先）
  * - 低 RAM 标志（[ActivityManager.isLowRamDevice]）
  * - 可用内存占总量比例
  * - CPU 核心数
@@ -19,8 +19,16 @@ object DevicePerformanceUtils {
     private val activityManager: ActivityManager
         get() = appCtx.getSystemService(ActivityManager::class.java)
 
-    /** 实时玻璃效果最低推荐的 API 级别 */
-    private const val MIN_API_FOR_REALTIME_GLASS = Build.VERSION_CODES.S // API 31 / Android 12
+    /**
+     * 实时玻璃效果最低 API 级别。
+     *
+     * 必须与 LiquidGlass 库的实际能力对齐：其折射着色器基于 AGSL RuntimeShader，
+     * 库内部在 API < 33（Tiramisu）时不创建渲染实现、视图不绘制任何内容。
+     * 若门槛低于 33，Android 12 设备会误入"实时玻璃"路径——采样视图空转，
+     * 仅剩一层极淡的静态薄纱，纯色背景下底栏几乎没有玻璃/磨砂观感；
+     * 对齐到 33 后这些设备会改走完整的多层静态玻璃材质兜底。
+     */
+    private const val MIN_API_FOR_REALTIME_GLASS = Build.VERSION_CODES.TIRAMISU // API 33 / Android 13
 
     /** 最低推荐 CPU 核心数 */
     private const val MIN_CPU_CORES = 4
@@ -35,7 +43,7 @@ object DevicePerformanceUtils {
      * 是否支持实时玻璃模糊效果。
      *
      * 判断条件（全部满足才返回 true）：
-     * 1. API >= 31（Android 12+，RenderEffect 等硬件加速 API 可用）
+     * 1. API >= 33（Android 13+，LiquidGlass 库的 AGSL 折射着色器仅在 33+ 生效）
      * 2. 非低 RAM 设备
      * 3. CPU 核心数 >= 4
      * 4. 总内存 >= 2GB

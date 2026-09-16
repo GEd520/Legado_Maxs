@@ -1,7 +1,10 @@
 package io.legado.app.ui.book.read.page.provider
 
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.text.TextPaint
 import android.text.style.CharacterStyle
+import android.text.style.ReplacementSpan
 import android.text.style.UpdateAppearance
 import io.legado.app.ui.book.read.config.highlight.HighlightRuleStyle
 
@@ -21,6 +24,13 @@ class HighlightStyleSpan(
     val bgImage: String = "",
     val bgImageFit: Int = 0,
     val bgImageScale: Float = 1f,
+    val npLeft: Float = 0.1f,
+    val npTop: Float = 0.1f,
+    val npRight: Float = 0.1f,
+    val npBottom: Float = 0.1f,
+    val bgBleedMode: Int = 1,
+    val bgSpacingH: Float = 0f,
+    val bgSpacingV: Float = 0f,
 ) : CharacterStyle(), UpdateAppearance {
 
     constructor(style: HighlightRuleStyle) : this(
@@ -33,8 +43,47 @@ class HighlightStyleSpan(
         bgImage = style.bgImage,
         bgImageFit = style.bgImageFit,
         bgImageScale = style.bgImageScale,
+        npLeft = style.npLeft,
+        npTop = style.npTop,
+        npRight = style.npRight,
+        npBottom = style.npBottom,
+        bgBleedMode = style.bgBleedMode,
+        bgSpacingH = style.bgSpacingH,
+        bgSpacingV = style.bgSpacingV,
     )
 
     override fun updateDrawState(tp: TextPaint) = Unit
 
+}
+
+/**
+ * 只为排版量宽而存在的 Span：让所在字符多占 [extraWidth] 像素，其余表现不变。
+ *
+ * 九宫格"强制"策略要把背景左右两侧的邻字推开一个正文字距，做法就是把这个距离加进**邻字自己**
+ * 的推进宽度——这样断行与两端对齐都按真实宽度计算，剩下的文字仍然整齐。
+ * 阅读页正文按列绘制，[draw] 只在直接绘制 Layout 的场景兜底。
+ */
+class HighlightSpacingSpan(private val extraWidth: Float) : ReplacementSpan() {
+
+    override fun getSize(
+        paint: Paint,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        fm: Paint.FontMetricsInt?,
+    ): Int = (paint.measureText(text, start, end) + extraWidth).toInt().coerceAtLeast(0)
+
+    override fun draw(
+        canvas: Canvas,
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        x: Float,
+        top: Int,
+        y: Int,
+        bottom: Int,
+        paint: Paint,
+    ) {
+        canvas.drawText(text, start, end, x, y.toFloat(), paint)
+    }
 }

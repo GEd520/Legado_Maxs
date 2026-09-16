@@ -24,6 +24,20 @@ data class HighlightRule(
     var bgImage: String? = null,
     var bgImageFit: Int = 0,
     var bgImageScale: Float = 1f,
+    /** 九宫格分割比例（0-1，占图片宽/高的百分比；左右相加、上下相加不超过 1），适配方式为九宫格时生效 */
+    var npLeft: Float = 0.1f,
+    var npTop: Float = 0.1f,
+    var npRight: Float = 0.1f,
+    var npBottom: Float = 0.1f,
+    /**
+     * 九宫格外扩策略，取值 [BLEED_STRICT] / [BLEED_SMART] / [BLEED_FORCE]。
+     * 为空表示 [BLEED_SMART]（智能）：可空是为了区分"用户显式选了严格"与"老规则没有这个字段"。
+     */
+    var bgBleedMode: Int? = null,
+    /** 背景图左右间距（em，随字号缩放）：正数把背景向外撑大、离文字更远，负数向内收 */
+    var bgSpacingH: Float = 0f,
+    /** 背景图上下间距（em）：正数向外撑大，负数向内收 */
+    var bgSpacingV: Float = 0f,
     /** 作用范围，书名或书源URL，分号分隔，为空则对所有书籍生效 */
     var scope: String? = null,
     /** 排除范围，书名或书源URL，分号分隔，匹配的书籍不应用该规则 */
@@ -75,6 +89,7 @@ data class HighlightRule(
                 when (bgImageFit) {
                     1 -> "背景图(拉伸)"
                     2 -> "背景图(裁剪)"
+                    3 -> "背景图(九宫格)"
                     else -> "背景图(平铺)"
                 },
             )
@@ -186,6 +201,20 @@ data class HighlightRule(
         const val THEME_LIGHT = 1
         const val THEME_DARK = 2
         const val THEME_ALL = 3
+
+        /** 严格：不自动外扩，背景只覆盖匹配到的文字 */
+        const val BLEED_STRICT = 0
+
+        /** 智能（默认）：只占用邻接的空白——水平借邻接空白字符的宽度，垂直吃掉一半行距 */
+        const val BLEED_SMART = 1
+
+        /** 强制：按四角厚度向外扩展，即原来的"向外包裹文字"行为，可能压到相邻文字 */
+        const val BLEED_FORCE = 2
+
+        fun resolvedBleedMode(mode: Int?): Int = when (mode) {
+            BLEED_STRICT, BLEED_SMART, BLEED_FORCE -> mode
+            else -> BLEED_SMART
+        }
 
         fun Int.toHexColor(): String = String.format("#%08X", this)
     }

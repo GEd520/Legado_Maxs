@@ -18,6 +18,17 @@ data class CharStyle(
     val bgImage: String = "",
     val bgImageFit: Int = 0,
     val bgImageScale: Float = 1f,
+    /** 九宫格分割比例，适配方式为九宫格(bgImageFit=3)时生效 */
+    val npLeft: Float = 0.1f,
+    val npTop: Float = 0.1f,
+    val npRight: Float = 0.1f,
+    val npBottom: Float = 0.1f,
+    /** 九宫格外扩策略，取值 HighlightRule.BLEED_* */
+    val bgBleedMode: Int = 1,
+    /** 背景图左右间距（em），正数向外撑大、负数向内收 */
+    val bgSpacingH: Float = 0f,
+    /** 背景图上下间距（em），正数向外撑大、负数向内收 */
+    val bgSpacingV: Float = 0f,
     /** 高亮字体路径，空串表示跟随阅读字体 */
     val font: String = "",
 ) {
@@ -47,6 +58,13 @@ data class CharStyle(
             bgImage = if (later.bgImage.isNotEmpty()) later.bgImage else bgImage,
             bgImageFit = if (later.bgImage.isNotEmpty()) later.bgImageFit else bgImageFit,
             bgImageScale = if (later.bgImage.isNotEmpty()) later.bgImageScale else bgImageScale,
+            npLeft = if (later.bgImage.isNotEmpty()) later.npLeft else npLeft,
+            npTop = if (later.bgImage.isNotEmpty()) later.npTop else npTop,
+            npRight = if (later.bgImage.isNotEmpty()) later.npRight else npRight,
+            npBottom = if (later.bgImage.isNotEmpty()) later.npBottom else npBottom,
+            bgBleedMode = if (later.bgImage.isNotEmpty()) later.bgBleedMode else bgBleedMode,
+            bgSpacingH = if (later.bgImage.isNotEmpty()) later.bgSpacingH else bgSpacingH,
+            bgSpacingV = if (later.bgImage.isNotEmpty()) later.bgSpacingV else bgSpacingV,
             font = if (later.font.isNotEmpty()) later.font else font,
         )
     }

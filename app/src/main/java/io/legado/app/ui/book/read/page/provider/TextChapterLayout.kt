@@ -123,6 +123,12 @@ class TextChapterLayout(
     private val lineSpacingExtra = ChapterProvider.lineSpacingExtra
     private val paragraphSpacing = ChapterProvider.paragraphSpacing
 
+    /** 九宫格适配方式的取值（与 HighlightRule.bgImageFit / TextLine.drawNineSlice 口径一致） */
+    private val bgImageFitNine = 3
+
+    /** 九宫格"强制"策略需要从列末尾扣掉的宽度（见 [computeNeighborPush]），按段落排版时写入 */
+    private var columnTrimEnd: FloatArray? = null
+
     private val visibleHeight = ChapterProvider.visibleHeight
     private val visibleWidth = ChapterProvider.visibleWidth
 
@@ -955,6 +961,26 @@ class TextChapterLayout(
         )
         val width = visibleWidth
         val textPaint = contentPaint
+        // 九宫格"强制"策略：HTML 走 StaticLayout，只有把推开的宽度挂到邻字身上（Span），
+        // 断行与两端对齐才会一起生效
+        val neighborPush = computeNeighborPush(
+            spanned,
+            collectForcedBleedSegments(spanned),
+            textPaint,
+        ) { index -> textPaint.measureText(spanned, index, index + 1) }
+        columnTrimEnd = neighborPush?.trimEnd
+        neighborPush?.let { push ->
+            for (i in push.widthAdd.indices) {
+                if (push.widthAdd[i] > 0f) {
+                    spanned.setSpan(
+                        HighlightSpacingSpan(push.widthAdd[i]),
+                        i,
+                        i + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            }
+        }
         val textColor = ReadBookConfig.textColor
         if (textPaint.color != textColor) {
             textPaint.color = textColor
@@ -1015,6 +1041,13 @@ class TextChapterLayout(
                 val bgImage = highlightStyle?.bgImage ?: ""
                 val bgImageFit = highlightStyle?.bgImageFit ?: 0
                 val bgImageScale = highlightStyle?.bgImageScale ?: 1f
+                val npLeft = highlightStyle?.npLeft ?: 0.1f
+                val npTop = highlightStyle?.npTop ?: 0.1f
+                val npRight = highlightStyle?.npRight ?: 0.1f
+                val npBottom = highlightStyle?.npBottom ?: 0.1f
+                val bgBleedMode = highlightStyle?.bgBleedMode ?: HighlightRule.BLEED_SMART
+                val bgSpacingH = highlightStyle?.bgSpacingH ?: 0f
+                val bgSpacingV = highlightStyle?.bgSpacingV ?: 0f
                 val highlightFontPath = extractFontPath(spanned, charIndex)
                 val charRight = if (charIndex + 1 < lineEnd) {
                     staticLayout.getPrimaryHorizontal(charIndex + 1)
@@ -1132,7 +1165,9 @@ class TextChapterLayout(
                     }
                     needAddText = false
                 }
-                spanned.getSpans(charIndex, charIndex + 1, ReplacementSpan::class.java).firstOrNull()?.let { _ ->
+                // 只认自定义标签用的 ReplacementSpan：邻字外推挂的 HighlightSpacingSpan 不算
+                spanned.getSpans(charIndex, charIndex + 1, ReplacementSpan::class.java)
+                    .firstOrNull { it !is HighlightSpacingSpan }?.let { _ ->
                     // 自定义标签
                     if (char == HR_PLACE_CHAR) {
                         columns.add(
@@ -1149,6 +1184,13 @@ class TextChapterLayout(
                                 bgImage = bgImage,
                                 bgImageFit = bgImageFit,
                                 bgImageScale = bgImageScale,
+                                npLeft = npLeft,
+                                npTop = npTop,
+                                npRight = npRight,
+                                npBottom = npBottom,
+                                bgBleedMode = bgBleedMode,
+                                bgSpacingH = bgSpacingH,
+                                bgSpacingV = bgSpacingV,
                                 fontPath = highlightFontPath,
                             ),
                         )
@@ -1159,7 +1201,8 @@ class TextChapterLayout(
                     columns.add(
                         TextHtmlColumn(
                             absStartX + charX,
-                            absStartX + charRight,
+                            // 九宫格"强制"策略给最后一个字加的宽度要扣掉，否则背景会跟着一起变宽
+                            absStartX + charRight - (columnTrimEnd?.getOrNull(charIndex) ?: 0f),
                             char,
                             textSize,
                             textColor,
@@ -1170,6 +1213,13 @@ class TextChapterLayout(
                             bgImage = bgImage,
                             bgImageFit = bgImageFit,
                             bgImageScale = bgImageScale,
+                            npLeft = npLeft,
+                            npTop = npTop,
+                            npRight = npRight,
+                            npBottom = npBottom,
+                            bgBleedMode = bgBleedMode,
+                            bgSpacingH = bgSpacingH,
+                            bgSpacingV = bgSpacingV,
                             fontPath = highlightFontPath,
                         ),
                     )
@@ -1334,6 +1384,7 @@ class TextChapterLayout(
     private fun buildFontAwareLayoutText(
         text: String,
         charStyles: Array<CharStyle?>?,
+        widthAdd: FloatArray? = null,
     ): CharSequence {
         if (charStyles == null) return text
         var spanStart = -1
@@ -1355,6 +1406,20 @@ class TextChapterLayout(
                 spanFont = font
             }
         }
+        // 邻字外推：把多占的宽度挂到邻字第身上，StaticLayout 断行与两端对齐才会按真实宽度计算
+        if (widthAdd != null) {
+            for (i in widthAdd.indices) {
+                if (widthAdd[i] > 0f) {
+                    val sb = spannable ?: SpannableString(text).also { spannable = it }
+                    sb.setSpan(
+                        HighlightSpacingSpan(widthAdd[i]),
+                        i,
+                        i + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            }
+        }
         return spannable ?: text
     }
 
@@ -1374,6 +1439,13 @@ class TextChapterLayout(
         var bgImage = ""
         var bgImageFit = 0
         var bgImageScale = 1f
+        var npLeft = 0.1f
+        var npTop = 0.1f
+        var npRight = 0.1f
+        var npBottom = 0.1f
+        var bgBleedMode = HighlightRule.BLEED_SMART
+        var bgSpacingH = 0f
+        var bgSpacingV = 0f
         var hasUnderline = false
         var hasBgImage = false
         var hasBgColor = false
@@ -1390,6 +1462,13 @@ class TextChapterLayout(
                 bgImage = span.bgImage
                 bgImageFit = span.bgImageFit
                 bgImageScale = span.bgImageScale
+                npLeft = span.npLeft
+                npTop = span.npTop
+                npRight = span.npRight
+                npBottom = span.npBottom
+                bgBleedMode = span.bgBleedMode
+                bgSpacingH = span.bgSpacingH
+                bgSpacingV = span.bgSpacingV
                 hasBgImage = true
             }
             if (span.bgColor != null) {
@@ -1408,6 +1487,13 @@ class TextChapterLayout(
             bgImage = if (hasBgImage) bgImage else "",
             bgImageFit = if (hasBgImage) bgImageFit else 0,
             bgImageScale = if (hasBgImage) bgImageScale else 1f,
+            npLeft = if (hasBgImage) npLeft else 0.1f,
+            npTop = if (hasBgImage) npTop else 0.1f,
+            npRight = if (hasBgImage) npRight else 0.1f,
+            npBottom = if (hasBgImage) npBottom else 0.1f,
+            bgBleedMode = bgBleedMode,
+            bgSpacingH = bgSpacingH,
+            bgSpacingV = bgSpacingV,
         )
     }
 
@@ -1570,13 +1656,26 @@ class TextChapterLayout(
                 }
             }
         }
+        // 九宫格"强制"策略：把左右邻字向外推开一个正文字距。加宽写进 widthsArray 参与断行与两端
+        // 对齐，列末尾再按 trimEnd 扣回来，保证背景本身不被撑宽（见 computeNeighborPush）
+        val neighborPush = computeNeighborPush(
+            text,
+            collectForcedBleedSegments(charStyles),
+            textPaint,
+        ) { index -> widthsArray.getOrElse(index) { 0f } }
+        columnTrimEnd = neighborPush?.trimEnd
+        neighborPush?.let { push ->
+            for (i in push.widthAdd.indices) {
+                if (push.widthAdd[i] != 0f) widthsArray[i] += push.widthAdd[i]
+            }
+        }
         val layout = if (useZhLayout) {
             val (words, widths) = measureTextSplit(text, widthsArray)
             val indentSize = if (isFirstLine) paragraphIndent.length else 0
             ZhLayout(text, textPaint, visibleWidth, words, widths, indentSize)
         } else {
             StaticLayout(
-                buildFontAwareLayoutText(text, charStyles),
+                buildFontAwareLayoutText(text, charStyles, neighborPush?.widthAdd),
                 textPaint,
                 visibleWidth,
                 Layout.Alignment.ALIGN_NORMAL,
@@ -1913,6 +2012,13 @@ class TextChapterLayout(
         val bgImage = style?.bgImage ?: ""
         val bgImageFit = style?.bgImageFit ?: 0
         val bgImageScale = style?.bgImageScale ?: 1f
+        val npLeft = style?.npLeft ?: 0.1f
+        val npTop = style?.npTop ?: 0.1f
+        val npRight = style?.npRight ?: 0.1f
+        val npBottom = style?.npBottom ?: 0.1f
+        val bgBleedMode = style?.bgBleedMode ?: HighlightRule.BLEED_SMART
+        val bgSpacingH = style?.bgSpacingH ?: 0f
+        val bgSpacingV = style?.bgSpacingV ?: 0f
         val fontPath = style?.font.orEmpty()
         val column = when {
             !srcList.isNullOrEmpty() && (char == srcReplaceStr || char == reviewStr) -> {
@@ -1942,7 +2048,8 @@ class TextChapterLayout(
             else -> {
                 TextColumn(
                     start = absStartX + xStart,
-                    end = absStartX + xEnd,
+                    // 九宫格"强制"策略给最后一个字加的宽度要扣掉，否则背景会跟着一起变宽
+                    end = absStartX + xEnd - (columnTrimEnd?.getOrNull(textIndex) ?: 0f),
                     charData = char,
                     textColor = textColor,
                     underlineMode = underlineMode,
@@ -1954,6 +2061,13 @@ class TextChapterLayout(
                     bgImage = bgImage,
                     bgImageFit = bgImageFit,
                     bgImageScale = bgImageScale,
+                    npLeft = npLeft,
+                    npTop = npTop,
+                    npRight = npRight,
+                    npBottom = npBottom,
+                    bgBleedMode = bgBleedMode,
+                    bgSpacingH = bgSpacingH,
+                    bgSpacingV = bgSpacingV,
                     fontPath = fontPath,
                 )
             }
@@ -2026,6 +2140,140 @@ class TextChapterLayout(
         return floatArray
     }
 
+    /**
+     * "邻字外推"的结果。
+     *
+     * [widthAdd] 参与断行与两端对齐：加在**邻字自己**的推进量上，所以剩下的文字仍然整齐；
+     * [trimEnd] 记录加在"匹配区最后一个字"上的那份，建列时要从列末尾扣掉——否则背景会跟着
+     * 一起变宽，等于没把邻字推开。
+     */
+    private class NeighborPush(val widthAdd: FloatArray, val trimEnd: FloatArray)
+
+    /** 参与"邻字外推"计算的一段九宫格强制高亮（只保留与背景图外扩相关的字段） */
+    private class BleedSegment(
+        val start: Int,
+        val end: Int,
+        val bgImage: String,
+        val spacingH: Float,
+        val npLeft: Float,
+        val npRight: Float,
+    )
+
+    private fun CharStyle.isForcedBleed(): Boolean =
+        bgImage.isNotEmpty() && bgImageFit == bgImageFitNine &&
+            bgBleedMode == HighlightRule.BLEED_FORCE
+
+    private fun CharStyle?.sameBleedAs(other: CharStyle): Boolean =
+        this != null && bgImage == other.bgImage && bgImageFit == other.bgImageFit &&
+            bgBleedMode == other.bgBleedMode && bgSpacingH == other.bgSpacingH &&
+            npLeft == other.npLeft && npRight == other.npRight
+
+    private fun HighlightStyleSpan.isForcedBleed(): Boolean =
+        bgImage.isNotEmpty() && bgImageFit == bgImageFitNine &&
+            bgBleedMode == HighlightRule.BLEED_FORCE
+
+    /** 从整章字符样式数组里收集需要"推开邻字"的九宫格强制段 */
+    private fun collectForcedBleedSegments(charStyles: Array<CharStyle?>?): List<BleedSegment> {
+        if (charStyles == null) return emptyList()
+        val segments = ArrayList<BleedSegment>()
+        var index = 0
+        while (index < charStyles.size) {
+            val style = charStyles[index]
+            if (style == null || !style.isForcedBleed()) {
+                index++
+                continue
+            }
+            var end = index + 1
+            while (end < charStyles.size && charStyles[end].sameBleedAs(style)) end++
+            segments.add(
+                BleedSegment(index, end, style.bgImage, style.bgSpacingH, style.npLeft, style.npRight),
+            )
+            index = end
+        }
+        return segments
+    }
+
+    /** 从 HTML 的高亮 Span 里收集需要"推开邻字"的九宫格强制段 */
+    private fun collectForcedBleedSegments(spanned: Spanned): List<BleedSegment> {
+        val segments = ArrayList<BleedSegment>()
+        spanned.getSpans(0, spanned.length, HighlightStyleSpan::class.java).forEach { span ->
+            if (!span.isForcedBleed()) return@forEach
+            val start = spanned.getSpanStart(span)
+            val end = spanned.getSpanEnd(span)
+            if (start < end) {
+                segments.add(
+                    BleedSegment(start, end, span.bgImage, span.bgSpacingH, span.npLeft, span.npRight),
+                )
+            }
+        }
+        return segments
+    }
+
+    /**
+     * 九宫格"强制"策略：把左右邻字向外推开的宽度。
+     *
+     * 目标：背景照旧向外包裹（外扩量 = 四角厚度 + 间距），但邻字与背景边缘之间保留一个**正文字距**，
+     * 于是邻字要向外让出的量 = 外扩量 + 正文字距 − 邻字与匹配区之间本来已有的空隙。
+     * 加宽加在邻字自己的推进量上，因此断行与两端对齐都会按真实宽度处理，剩下的文字仍然整齐。
+     *
+     * 单侧最多让出 1em，避免极端分割比例把整行挤爆。
+     */
+    private fun computeNeighborPush(
+        text: CharSequence,
+        segments: List<BleedSegment>,
+        textPaint: TextPaint,
+        advance: (Int) -> Float,
+    ): NeighborPush? {
+        if (segments.isEmpty()) return null
+        val textSize = textPaint.textSize
+        val bodySpacing = textPaint.letterSpacing * textSize
+        val push = NeighborPush(FloatArray(text.length), FloatArray(text.length))
+        val inkBounds = android.graphics.Rect()
+
+        /** 邻字与匹配区之间已有的空隙：左侧看邻字的右侧空，右侧看邻字的左侧空 */
+        fun bearing(index: Int, isLeftNeighbor: Boolean): Float {
+            val char = text[index].toString()
+            if (char.isBlank()) return advance(index)
+            textPaint.getTextBounds(char, 0, char.length, inkBounds)
+            return if (isLeftNeighbor) {
+                (advance(index) - inkBounds.right).coerceAtLeast(0f)
+            } else {
+                (-inkBounds.left).toFloat().coerceAtLeast(0f)
+            }
+        }
+
+        var applied = false
+        segments.forEach { segment ->
+            val bitmap = TextLine.getBgBitmap(segment.bgImage) ?: return@forEach
+            val sides = TextLine.nineSliceSideWidth(
+                bitmap, segment.npLeft, segment.npRight, textSize,
+            )
+            val spacing = segment.spacingH * textSize
+            // 左侧：把匹配区连同背景一起往右挪，邻字不动
+            if (segment.start > 0) {
+                val index = segment.start - 1
+                val size = (sides[0] + spacing + bodySpacing - bearing(index, true))
+                    .coerceIn(0f, textSize)
+                if (size > 0f) {
+                    push.widthAdd[index] = maxOf(push.widthAdd[index], size)
+                    applied = true
+                }
+            }
+            // 右侧：加在匹配区最后一个字上（它后面的字才会被推开），因此记下要扣回背景的量
+            if (segment.end < text.length) {
+                val index = segment.end - 1
+                val size = (sides[1] + spacing + bodySpacing - bearing(segment.end, false))
+                    .coerceIn(0f, textSize)
+                if (size > 0f) {
+                    push.widthAdd[index] = maxOf(push.widthAdd[index], size)
+                    push.trimEnd[index] = maxOf(push.trimEnd[index], size)
+                    applied = true
+                }
+            }
+        }
+        return push.takeIf { applied }
+    }
+
     private fun measureTextSplit(
         text: String,
         widthsArray: FloatArray,
@@ -2076,6 +2324,13 @@ class TextChapterLayout(
                 bgImage = style.bgImage,
                 bgImageFit = style.bgImageFit,
                 bgImageScale = style.bgImageScale,
+                npLeft = style.npLeft,
+                npTop = style.npTop,
+                npRight = style.npRight,
+                npBottom = style.npBottom,
+                bgBleedMode = style.bgBleedMode,
+                bgSpacingH = style.bgSpacingH,
+                bgSpacingV = style.bgSpacingV,
                 font = style.font,
             )
         }

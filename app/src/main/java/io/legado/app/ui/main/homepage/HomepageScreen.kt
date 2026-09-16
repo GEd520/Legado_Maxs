@@ -671,6 +671,10 @@ private fun HomepageModuleItem(
         val isRankingTabs = rankingTabState != null
         val rankingCurrentExploreUrl = rankingTabState
             ?.tabs?.getOrNull(rankingTabState.selectedIndex)?.exploreUrl
+        // 箭头显示逻辑：多 Tab 时在 Tab 栏 → 标题行不显示；单 Tab 或无 Tab 时在标题行显示
+        val hasArrow = ((module.exploreUrl != null || rankingCurrentExploreUrl != null)
+                && module.type != HomepageModuleType.ButtonGroup
+                && (!isRankingTabs || (rankingTabState?.tabs?.size ?: 0) <= 1))
 
         // 模块标题
         Row(
@@ -702,6 +706,14 @@ private fun HomepageModuleItem(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
+            if (hasArrow) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = stringResource(R.string.homepage_more),
+                    tint = pageSecondaryTextColor(),
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
         }
 
         // Module content

@@ -15,8 +15,10 @@ import io.legado.app.databinding.ItemBookshelfGridGroupBinding
 import io.legado.app.databinding.ItemBookshelfList2Binding
 import io.legado.app.databinding.ItemBookshelfListBinding
 import io.legado.app.databinding.ItemBookshelfListGroupBinding
+import io.legado.app.help.book.BookTagMatcher
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.readProgress
+import io.legado.app.help.book.toSmartTagSnapshot
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.bookBorderBackground
@@ -200,17 +202,32 @@ class BooksAdapterList(context: Context, callBack: CallBack) : BaseBooksAdapter<
             }
         }
 
-        /** 更新 FlexboxLayout 中的标签视图（先显示字数后显示分类） */
+        /**
+         * 更新 FlexboxLayout 中的标签视图。
+         *
+         * 顺序固定为「书籍标签 → 字数 → 分类」：书籍标签（自定义标签 + 智能标签）优先显示，
+         * 带菱形前缀以便与字数/分类等其他信息区分；其余信息仍然照旧全部展示。
+         */
         private fun updateTagViews(flexboxLayout: FlexboxLayout, item: Book) {
             flexboxLayout.removeAllViews()
 
-            // 先显示字数标签
+            // 优先显示书籍标签，菱形前缀用于与其他信息区分
+            val bookTags = BookTagMatcher.bookTagNames(
+                item.customTag,
+                item.toSmartTagSnapshot(),
+                BookTagMatcher.enabledRules(context),
+            )
+            for (tag in bookTags) {
+                flexboxLayout.addView(createTagView(BookTagMatcher.tagLabel(tag)))
+            }
+
+            // 其后显示字数标签
             if (item.wordCount?.isNotBlank() == true) {
                 val wordCountTag = createTagView(item.wordCount!!)
                 flexboxLayout.addView(wordCountTag)
             }
 
-            // 后显示分类标签（只显示书源分类信息，书籍标签仅用于书架标签栏，不在此处展示）
+            // 最后显示分类标签（书源分类信息）
             val tagsText = item.kind ?: ""
             if (tagsText.isNotBlank()) {
                 val tags = tagsText.splitNotBlank(",", "\n")
@@ -222,7 +239,7 @@ class BooksAdapterList(context: Context, callBack: CallBack) : BaseBooksAdapter<
         }
 
         /** 创建单个标签视图（带外框样式） */
-        private fun createTagView(tag: String): TextView = TextView(context).apply {
+        private fun createTagView(tag: CharSequence): TextView = TextView(context).apply {
             text = tag
             textSize = 11f
             gravity = Gravity.CENTER
