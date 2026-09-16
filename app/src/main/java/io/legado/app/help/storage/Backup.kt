@@ -408,7 +408,7 @@ object Backup {
                             false
                         }
                         if (!hasBackUp) {
-                            backup(context, AppConfig.backupPath)
+                            runBackup(context, AppConfig.backupPath, localOnly = false, onProgress = null)
                         } else {
                             LocalConfig.lastBackup = System.currentTimeMillis()
                         }
@@ -436,8 +436,58 @@ object Backup {
     ) {
         mutex.withLock {
             withContext(IO) {
-                backup(context, path, localOnly, onProgress)
+                runBackup(context, path, localOnly, onProgress)
             }
+        }
+    }
+
+    /**
+     * 按备份目标执行备份。
+     *
+     * 本地备份与 WebDAV 云备份各自使用独立的勾选结果（见 [BackupSelectorConfig.Scope]）：
+     * - 两者勾选一致、或仅备份本地时只打包一次，本地保存与云端上传共用同一个备份包；
+     * - 勾选不同时分别打包，各自只包含自己选中的内容，互不干扰。
+     *
+     * @param context Android Context
+     * @param path 本地备份目标路径，可为null（使用默认路径）
+     * @param localOnly 是否仅备份到本地，跳过WebDav上传
+     */
+    private suspend fun runBackup(
+        context: Context,
+        path: String?,
+        localOnly: Boolean,
+        onProgress: ((String) -> Unit)?
+    ) {
+        val localScope = BackupSelectorConfig.Scope.Local
+        val webDavScope = BackupSelectorConfig.Scope.WebDav
+        if (localOnly || BackupSelectorConfig.isSameSelection()) {
+            backup(
+                context = context,
+                path = path,
+                localOnly = localOnly,
+                scope = localScope,
+                copyToLocal = true,
+                onProgress = onProgress
+            )
+        } else {
+            // 本地：按本地勾选打包，保存到本地备份目录
+            backup(
+                context = context,
+                path = path,
+                localOnly = true,
+                scope = localScope,
+                copyToLocal = true,
+                onProgress = onProgress
+            )
+            // 云端：按云端勾选另打一个包上传，不再覆盖本地备份文件
+            backup(
+                context = context,
+                path = null,
+                localOnly = false,
+                scope = webDavScope,
+                copyToLocal = false,
+                onProgress = onProgress
+            )
         }
     }
 
@@ -456,11 +506,15 @@ object Backup {
      * @param context Android Context
      * @param path 备份目标路径
      * @param localOnly 是否仅备份到本地，跳过WebDav上传
+     * @param scope 本次打包使用哪个备份目标的勾选结果
+     * @param copyToLocal 是否把打包结果复制到本地备份目录
      */
     private suspend fun backup(
         context: Context,
         path: String?,
         localOnly: Boolean = false,
+        scope: BackupSelectorConfig.Scope = BackupSelectorConfig.Scope.Local,
+        copyToLocal: Boolean = true,
         onProgress: ((String) -> Unit)? = null
     ) {
         LogUtils.d(TAG, "开始备份 path:$path")
@@ -468,7 +522,7 @@ object Backup {
         val aes = BackupAES()
         FileUtils.delete(backupPath)
 
-        val selectedFiles = BackupSelectorConfig.getSelectedFileNames()
+        val selectedFiles = BackupSelectorConfig.getSelectedFileNames(scope)
 
         // 导出数据库数据到JSON文件
         if (selectedFiles.contains("bookshelf.json")) {
@@ -693,18 +747,20 @@ object Backup {
         onProgress?.invoke(BackupInfoHelper.getDisplayName("zip"))
         if (ZipUtils.zipFiles(paths, zipFilePath)) {
             onProgress?.invoke(BackupInfoHelper.getDisplayName("copyBackup"))
-            // 复制到目标目录
-            when {
-                path.isNullOrBlank() -> {
-                    copyBackup(context.getExternalFilesDir(null)!!, backupFileName)
-                }
+            // 复制到目标目录（云端专用打包不写本地）
+            if (copyToLocal) {
+                when {
+                    path.isNullOrBlank() -> {
+                        copyBackup(context.getExternalFilesDir(null)!!, backupFileName)
+                    }
 
-                path.isContentScheme() -> {
-                    copyBackup(context, path.toUri(), backupFileName)
-                }
+                    path.isContentScheme() -> {
+                        copyBackup(context, path.toUri(), backupFileName)
+                    }
 
-                else -> {
-                    copyBackup(File(path), backupFileName)
+                    else -> {
+                        copyBackup(File(path), backupFileName)
+                    }
                 }
             }
 
@@ -726,8 +782,8 @@ object Backup {
 
         currentCoroutineContext().ensureActive()
 
-        // 上传背景图片到WebDav（仅本地模式时跳过）
-        if (!localOnly) {
+        // 上传背景图片到WebDav（仅本地模式时跳过，且需本次备份包含背景图片）
+        if (!localOnly && selectedFiles.contains("bg")) {
             try {
                 onProgress?.invoke(BackupInfoHelper.getDisplayName("webDavBackgroundImages"))
                 AppWebDav.upBgs(getBackgroundImageFiles().toTypedArray())

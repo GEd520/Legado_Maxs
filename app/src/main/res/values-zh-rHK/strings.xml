@@ -1358,7 +1358,9 @@
     <string name="auto_update_summary">每天自動檢查軟件是否有更新</string>
     <string name="auto_wrap">自動換行</string>
     <string name="backup_selector">備份選擇器</string>
-    <string name="backup_selector_summary">選擇要備份的資料</string>
+    <string name="backup_selector_summary">分別選擇本機與 WebDAV 雲端備份的資料</string>
+    <string name="backup_scope_local">本機備份</string>
+    <string name="backup_scope_webdav">WebDAV 雲端備份</string>
     <string name="backward_pre_download">向前預下載</string>
     <string name="backward_pre_download_s">預先下載前面的 %s 章節</string>
     <string name="book_cache_selector">書籍快取選擇器</string>

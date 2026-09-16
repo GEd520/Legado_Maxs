@@ -10,9 +10,26 @@ import splitties.init.appCtx
  * 备份选择器配置。
  *
  * 这个文件只维护可备份项定义和用户选择结果的读写，不依赖具体 UI 组件。
+ *
+ * 本地备份与 WebDAV 云备份各自维护一份独立的勾选结果（见 [Scope]），
+ * 两条备份链路互不干扰：本地备份按 [Scope.Local] 打包，
+ * 上传到 WebDAV 的备份包按 [Scope.WebDav] 打包。
+ * 旧版本只有一份勾选结果，升级时本地与云端都沿用该结果，保证升级后行为不变。
  */
 @Suppress("ConstPropertyName")
 object BackupSelectorConfig {
+
+    /**
+     * 备份目标，用于区分本地备份与 WebDAV 云备份各自的选择结果。
+     */
+    enum class Scope(val key: String) {
+        Local("local"),
+        WebDav("webDav");
+
+        companion object {
+            fun fromKey(key: String?): Scope? = values().firstOrNull { it.key == key }
+        }
+    }
 
     private val configPath = FileUtils.getPath(appCtx.filesDir, "backupSelector.json")
 
@@ -63,52 +80,85 @@ object BackupSelectorConfig {
 
     val groupItems: Map<String, List<BackupItem>> = allItems.groupBy { it.group }
 
-    private var selectedMap: MutableMap<String, Boolean> = load()
+    private val selectedMaps: MutableMap<Scope, MutableMap<String, Boolean>> = load()
 
-    private fun load(): MutableMap<String, Boolean> {
-        val map = HashMap<String, Boolean>()
+    private fun load(): MutableMap<Scope, MutableMap<String, Boolean>> {
+        val result = LinkedHashMap<Scope, MutableMap<String, Boolean>>()
+        Scope.values().forEach { result[it] = HashMap() }
         val file = FileUtils.createFileIfNotExist(configPath)
-        if (file.exists() && file.length() > 0) {
-            val json = file.readText()
-            GSON.fromJsonObject<Map<String, Boolean>>(json).getOrNull()?.let {
-                map.putAll(it)
+        if (!file.exists() || file.length() <= 0) {
+            return result
+        }
+        val json = GSON.fromJsonObject<Map<String, Any?>>(file.readText()).getOrNull() ?: return result
+        var hasScopeConfig = false
+        json.forEach { (key, value) ->
+            val scope = Scope.fromKey(key)
+            if (scope != null && value is Map<*, *>) {
+                // 新版格式：按备份目标分别保存
+                hasScopeConfig = true
+                value.forEach { (itemKey, itemValue) ->
+                    if (itemKey is String && itemValue is Boolean) {
+                        result.getValue(scope)[itemKey] = itemValue
+                    }
+                }
             }
         }
-        return map
+        if (!hasScopeConfig) {
+            // 旧版格式只有一份勾选结果，本地与云端都沿用
+            json.forEach { (key, value) ->
+                if (value is Boolean) {
+                    result.values.forEach { it[key] = value }
+                }
+            }
+        }
+        return result
     }
 
-    fun isSelected(key: String): Boolean = selectedMap[key] ?: true
+    private fun selectionOf(scope: Scope): MutableMap<String, Boolean> =
+        selectedMaps.getOrPut(scope) { HashMap() }
 
-    fun getSelectedKeys(): Set<String> = allItems
-        .filter { isSelected(it.key) }
+    fun isSelected(key: String, scope: Scope = Scope.Local): Boolean =
+        selectionOf(scope)[key] ?: true
+
+    fun getSelectedKeys(scope: Scope = Scope.Local): Set<String> = allItems
+        .filter { isSelected(it.key, scope) }
         .map { it.key }
         .toSet()
 
-    fun setSelected(key: String, selected: Boolean) {
-        selectedMap[key] = selected
+    fun setSelected(key: String, selected: Boolean, scope: Scope = Scope.Local) {
+        selectionOf(scope)[key] = selected
     }
 
     // 供选择器弹窗在确认时一次性提交内存中的完整选择结果。
-    fun setSelectedKeys(keys: Set<String>) {
-        allItems.forEach { selectedMap[it.key] = it.key in keys }
+    fun setSelectedKeys(keys: Set<String>, scope: Scope = Scope.Local) {
+        allItems.forEach { selectionOf(scope)[it.key] = it.key in keys }
     }
 
-    fun selectAll() {
-        allItems.forEach { selectedMap[it.key] = true }
+    fun selectAll(scope: Scope = Scope.Local) {
+        allItems.forEach { selectionOf(scope)[it.key] = true }
     }
 
-    fun deselectAll() {
-        allItems.forEach { selectedMap[it.key] = false }
+    fun deselectAll(scope: Scope = Scope.Local) {
+        allItems.forEach { selectionOf(scope)[it.key] = false }
     }
 
-    fun getSelectedFileNames(): List<String> = allItems.filter { isSelected(it.key) }.map { it.fileName }
+    fun getSelectedFileNames(scope: Scope = Scope.Local): List<String> =
+        allItems.filter { isSelected(it.key, scope) }.map { it.fileName }
 
-    fun isAllSelected(): Boolean = allItems.all { isSelected(it.key) }
+    fun isAllSelected(scope: Scope = Scope.Local): Boolean = allItems.all { isSelected(it.key, scope) }
 
-    fun isNoneSelected(): Boolean = allItems.none { isSelected(it.key) }
+    fun isNoneSelected(scope: Scope = Scope.Local): Boolean = allItems.none { isSelected(it.key, scope) }
+
+    /**
+     * 本地备份与云端备份的勾选结果是否完全一致。
+     *
+     * 一致时备份只需打包一次，本地保存与云端上传共用同一个备份包。
+     */
+    fun isSameSelection(): Boolean =
+        getSelectedKeys(Scope.Local) == getSelectedKeys(Scope.WebDav)
 
     fun save() {
-        val json = GSON.toJson(selectedMap.toMap())
+        val json = GSON.toJson(selectedMaps.mapKeys { it.key.key })
         FileUtils.createFileIfNotExist(configPath).writeText(json)
     }
 

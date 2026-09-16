@@ -290,6 +290,9 @@ class BackupConfigFragment : PreferenceFragment(),
 
     /**
      * 显示备份选择器 - Compose版本
+     *
+     * 选择器内按「本地备份 / WebDAV 云备份」两个选项卡分别选择各自的备份内容，
+     * 备份目标（本地备份路径、WebDAV 设置）仍由本页上方的设置项统一配置。
      */
     private fun showBackupSelector() {
         showDialogFragment(BackupSelectorDialog())
