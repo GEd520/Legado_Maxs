@@ -246,15 +246,18 @@ private fun View.applyTopBarChildConfig(config: TopBarConfig.Config, contentColo
 
 /**
  * 解析分组 TabLayout 的指示器（当前分组下划线）颜色。
- * 默认顶栏配置中"选中标签颜色"与"标签栏背景色"同为 primaryColor，
- * 指示器会与标签栏背景融为一体而不可见，此时回退为全局强调色保证下划线可见；
- * 选中色透明度为 0 时同样回退。
+ * 标签栏背景完全透明时（开启"顶栏颜色透明"或标签栏透明度为 0），
+ * 指示器直接叠在页面背景上，而默认选中色是主题主色，常与页面背景同色而看不清，
+ * 因此这种场景始终使用全局强调色；
+ * 背景不透明时，若"选中标签颜色"与标签栏背景色同为 primaryColor（默认顶栏配置）
+ * 会融为一体而不可见，此时同样回退为全局强调色，选中色透明度为 0 时也回退。
  */
 private fun resolveTabIndicatorColor(
     context: Context,
     config: TopBarConfig.Config,
     barColor: Int,
 ): Int {
+    if (Color.alpha(barColor) == 0) return context.accentColor
     val selectedColor = config.tagSelectedColor
         ?.let { TopBarConfig.withOpacity(it, config.tagSelectedAlpha) }
         ?: context.primaryColor
