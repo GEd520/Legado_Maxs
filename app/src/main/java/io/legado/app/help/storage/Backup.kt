@@ -60,6 +60,9 @@ import io.legado.app.data.repository.CoverGalleryRepository
 /**
  * 章节缓存信息
  * 用于记录单个章节的缓存文件信息
+ *
+ * 唯一一份定义：常规备份 stageBookCache 与「书籍缓存选择」单独导出 ZIP 共用，
+ * 请勿在其他包内重复声明（字段名不一致会导致缓存索引解析失败）。
  */
 data class ChapterCacheInfo(
     val index: Int,           // 章节序号
@@ -71,6 +74,8 @@ data class ChapterCacheInfo(
 /**
  * 书籍缓存索引数据类
  * 用于记录备份中每本书的缓存信息，恢复时用于匹配
+ *
+ * 唯一一份定义，走 GSON 写入 bookCacheIndex.json，需配合 ProGuard keep 规则。
  */
 data class BookCacheIndex(
     val bookUrl: String,
