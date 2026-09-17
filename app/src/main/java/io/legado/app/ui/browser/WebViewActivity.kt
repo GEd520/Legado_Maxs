@@ -106,7 +106,7 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var needClearHistory = true
     // 文件上传回调，记录网页 <input type="file"> 触发的选择器回调
     // Android 5.0+ 系统回调类型为 ValueCallback<Uri[]>，泛型擦除会掩盖类型错位，这里必须用数组
-    private var filePathCallback: ValueCallback<Uri[]>? = null
+    private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private val saveImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
