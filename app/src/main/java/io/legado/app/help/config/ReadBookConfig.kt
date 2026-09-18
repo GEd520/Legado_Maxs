@@ -522,6 +522,12 @@ object ReadBookConfig {
             exportConfig.tipFooterLeft = shareConfig.tipFooterLeft
             exportConfig.tipFooterMiddle = shareConfig.tipFooterMiddle
             exportConfig.tipFooterRight = shareConfig.tipFooterRight
+            exportConfig.tipHeaderLeftTemplate = shareConfig.tipHeaderLeftTemplate
+            exportConfig.tipHeaderMiddleTemplate = shareConfig.tipHeaderMiddleTemplate
+            exportConfig.tipHeaderRightTemplate = shareConfig.tipHeaderRightTemplate
+            exportConfig.tipFooterLeftTemplate = shareConfig.tipFooterLeftTemplate
+            exportConfig.tipFooterMiddleTemplate = shareConfig.tipFooterMiddleTemplate
+            exportConfig.tipFooterRightTemplate = shareConfig.tipFooterRightTemplate
             exportConfig.tipColor = shareConfig.tipColor
             exportConfig.headerMode = shareConfig.headerMode
             exportConfig.footerMode = shareConfig.footerMode
@@ -679,6 +685,13 @@ object ReadBookConfig {
         var tipFooterLeft: Int = ReadTipConfig.chapterTitle,
         var tipFooterMiddle: Int = ReadTipConfig.none,
         var tipFooterRight: Int = ReadTipConfig.pageAndTotal,
+        /** 页眉页脚自定义模板，null 表示沿用对应的旧枚举规则 */
+        var tipHeaderLeftTemplate: String? = null,
+        var tipHeaderMiddleTemplate: String? = null,
+        var tipHeaderRightTemplate: String? = null,
+        var tipFooterLeftTemplate: String? = null,
+        var tipFooterMiddleTemplate: String? = null,
+        var tipFooterRightTemplate: String? = null,
         var tipColor: Int = 0,
         var tipDividerColor: Int = -1,
         var headerMode: Int = 0,

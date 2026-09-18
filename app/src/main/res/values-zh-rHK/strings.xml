@@ -1194,6 +1194,9 @@
     <string name="show_last_update_time">显示上次更新时间</string>
     <string name="refresh_list">刷新列表</string>
     <string name="tip_divider_color">分隔线颜色</string>
+    <string name="reader_info_template">資訊模板</string>
+    <string name="reader_info_template_hint">可輸入文字並插入下方佔位符</string>
+    <string name="reader_info_placeholders">佔位符</string>
     <string name="same_title_removed">移除重複標題</string>
     <string name="update_book_fail">更新失敗</string>
     <string name="notification_permission_rationale">閱讀需要發送通知來顯示朗讀控制和下載進度</string>
