@@ -4,13 +4,16 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.webkit.MimeTypeMap
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient.FileChooserParams
 import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import io.legado.app.constant.AppConst
+import io.legado.app.constant.AppLog
 import java.io.File
 
 /**
@@ -40,8 +43,8 @@ class WebFileChooserHelper(private val activity: ComponentActivity) {
         override fun createIntent(context: Context, input: Array<String>): Intent {
             return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                 addCategory(Intent.CATEGORY_OPENABLE)
-                type = "*/*"
                 if (input.size > 1) {
+                    type = "*/*"
                     putExtra(Intent.EXTRA_MIME_TYPES, input)
                 } else {
                     type = input.firstOrNull() ?: "*/*"
@@ -98,24 +101,70 @@ class WebFileChooserHelper(private val activity: ComponentActivity) {
 
         // 网页声明 `<input capture>` 时优先走拍照；TakePicture 需要预先给一个可写入的 FileProvider Uri
         if (params?.isCaptureEnabled == true) {
-            val uri = createImageUri() ?: run {
-                // 创建失败则回退到文件选择器
-                uploadFile.launch(arrayOf("image/*"))
-                return true
+            val uri = createImageUri()
+            if (uri != null) {
+                takePictureUri = uri
+                if (takePicture.launchSafely(uri)) return true
+                // 设备没有相机应用：删掉临时文件，回退到文件选择器
+                deleteCaptureFile()
             }
-            takePictureUri = uri
-            takePicture.launch(uri)
-            return true
         }
 
         // 解析 accept 类型；多个类型用数组传给 EXTRA_MIME_TYPES，避免逗号拼接的坑
-        val acceptTypes = params?.acceptTypes
-            ?.filter { it.isNotBlank() }
-            ?.toTypedArray()
-            ?.takeIf { it.isNotEmpty() }
-            ?: arrayOf("*/*")
-        uploadFile.launch(acceptTypes)
+        if (!uploadFile.launchSafely(resolveMimeTypes(params?.acceptTypes))) {
+            // 没有任何可用应用接管：回填 null 让网页结束等待，否则页面会一直挂着
+            filePathCallback = null
+            target.onReceiveValue(null)
+        }
         return true
+    }
+
+    /**
+     * 把网页 accept 的值转成合法 MIME 类型。
+     *
+     * accept 里可能是扩展名（`.pdf`）、通配符（`image/*`）、空串，甚至混合，
+     * 直接塞进 Intent 会得到非法 type，ACTION_OPEN_DOCUMENT 找不到 Activity
+     * 就抛 ActivityNotFoundException（`.pdf` 崩溃日志见 2026-09-18）。
+     * 无法识别的项直接丢弃；全部不可用则回退 `*/*`（宁可选全部，也不要崩）。
+     */
+    private fun resolveMimeTypes(acceptTypes: Array<String>?): Array<String> {
+        val result = linkedSetOf<String>()
+        acceptTypes.orEmpty().forEach { raw ->
+            val item = raw.trim().lowercase()
+            when {
+                item.isEmpty() -> Unit
+                // 通配符直接放行全部
+                item == "*/*" -> return arrayOf("*/*")
+                // 已经是 MIME 类型（含 image/*、video/*）
+                item.contains("/") -> result.add(item)
+                // 扩展名：.pdf / pdf / .tar.gz
+                else -> {
+                    val ext = item.removePrefix(".")
+                    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+                        ?: MimeTypeMap.getSingleton()
+                            .getMimeTypeFromExtension(ext.substringAfterLast('.'))
+                    mime?.let { result.add(it) }
+                }
+            }
+        }
+        return result.toTypedArray().takeIf { it.isNotEmpty() } ?: arrayOf("*/*")
+    }
+
+    /**
+     * 启动系统选择器/相机。
+     *
+     * 该回调由 WebView native 层直调，任何异常都会一路抛到主线程 Looper 直接崩掉 App
+     * （如 accept 非法 MIME 时的 ActivityNotFoundException），所以这里必须兜底，
+     * 失败返回 false 由调用方回填 null 结束网页等待。
+     */
+    private fun <I> ActivityResultLauncher<I>.launchSafely(input: I): Boolean {
+        return try {
+            launch(input)
+            true
+        } catch (e: Exception) {
+            AppLog.put("启动系统文件选择器失败", e)
+            false
+        }
     }
 
     /**
