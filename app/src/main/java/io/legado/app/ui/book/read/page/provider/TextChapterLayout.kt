@@ -129,6 +129,14 @@ class TextChapterLayout(
     /** 九宫格"强制"策略需要从列末尾扣掉的宽度（见 [computeNeighborPush]），按段落排版时写入 */
     private var columnTrimEnd: FloatArray? = null
 
+    /**
+     * 九宫格"强制"策略在**段首带缩进**时给缩进额外让出的宽度（见 [computeNeighborPush]）。
+     *
+     * 两端对齐时首行缩进是用固定宽度的占位列重建的（见 [addCharsToLineFirst]），读不到宽度数组里
+     * 那份加宽，所以单独带一份过来补在最后一个缩进列上。
+     */
+    private var columnIndentExtra: Float = 0f
+
     private val visibleHeight = ChapterProvider.visibleHeight
     private val visibleWidth = ChapterProvider.visibleWidth
 
@@ -969,6 +977,7 @@ class TextChapterLayout(
             textPaint,
         ) { index -> textPaint.measureText(spanned, index, index + 1) }
         columnTrimEnd = neighborPush?.trimEnd
+        columnIndentExtra = neighborPush?.indentAdd ?: 0f
         neighborPush?.let { push ->
             for (i in push.widthAdd.indices) {
                 if (push.widthAdd[i] > 0f) {
@@ -1662,8 +1671,10 @@ class TextChapterLayout(
             text,
             collectForcedBleedSegments(charStyles),
             textPaint,
+            paragraphIndentLength(text, isTitle),
         ) { index -> widthsArray.getOrElse(index) { 0f } }
         columnTrimEnd = neighborPush?.trimEnd
+        columnIndentExtra = neighborPush?.indentAdd ?: 0f
         neighborPush?.let { push ->
             for (i in push.widthAdd.indices) {
                 if (push.widthAdd[i] != 0f) widthsArray[i] += push.widthAdd[i]
@@ -1848,8 +1859,11 @@ class TextChapterLayout(
             return
         }
         val bodyIndent = paragraphIndent
-        repeat(bodyIndent.length) {
-            val x1 = x + indentCharWidth
+        val indentExtra = columnIndentExtra
+        repeat(bodyIndent.length) { index ->
+            // 段首有"强制"外扩时，最后一个缩进列要多让出外扩量，缩进后的文字随之整体右移
+            val x1 = x + indentCharWidth +
+                if (index == bodyIndent.lastIndex) indentExtra else 0f
             textLine.addColumn(
                 TextColumn(
                     charData = ChapterProvider.indentChar,
@@ -2147,7 +2161,14 @@ class TextChapterLayout(
      * [trimEnd] 记录加在"匹配区最后一个字"上的那份，建列时要从列末尾扣掉——否则背景会跟着
      * 一起变宽，等于没把邻字推开。
      */
-    private class NeighborPush(val widthAdd: FloatArray, val trimEnd: FloatArray)
+    private class NeighborPush(val widthAdd: FloatArray, val trimEnd: FloatArray) {
+
+        /**
+         * 段首缩进额外让出的宽度：加在**最后一个缩进字**上，缩进后的文字整体右移。
+         * 两端对齐的缩进列是按固定宽度重建的，读不到 [widthAdd]，所以额外带一份。
+         */
+        var indentAdd: Float = 0f
+    }
 
     /** 参与"邻字外推"计算的一段九宫格强制高亮（只保留与背景图外扩相关的字段） */
     private class BleedSegment(
@@ -2210,18 +2231,36 @@ class TextChapterLayout(
     }
 
     /**
+     * 段落首行的缩进长度；没有缩进（标题、用户把缩进设为 0、非段落开头）时返回 0。
+     */
+    private fun paragraphIndentLength(text: CharSequence, isTitle: Boolean): Int {
+        if (isTitle) return 0
+        val indent = paragraphIndent
+        if (indent.isEmpty() || text.length <= indent.length) return 0
+        return if (text.startsWith(indent)) indent.length else 0
+    }
+
+    /**
      * 九宫格"强制"策略：把左右邻字向外推开的宽度。
      *
      * 目标：背景照旧向外包裹（外扩量 = 四角厚度 + 间距），但邻字与背景边缘之间保留一个**正文字距**，
      * 于是邻字要向外让出的量 = 外扩量 + 正文字距 − 邻字与匹配区之间本来已有的空隙。
      * 加宽加在邻字自己的推进量上，因此断行与两端对齐都会按真实宽度处理，剩下的文字仍然整齐。
      *
-     * 单侧最多让出 1em，避免极端分割比例把整行挤爆。
+     * 让出的距离由**背景元素自身**决定（四角厚度 + 间距），不再固定为一个字宽：间距调大时邻字会被
+     * 推得更远，背景始终完整地包住匹配文字。
+     *
+     * 段首缩进是例外：此时左邻字就是段落自己的缩进。缩进是段落必需的排版空间，不能按"邻字已有空隙"
+     * 抵扣（抵扣后背景的左侧边缘会压进缩进里，这一段看上去缩进比别的段落小）。改为**按外扩量把缩进
+     * 后的文字整体右移**：缩进的让出量写进 [NeighborPush.indentAdd]，背景边缘正好落在缩进后的文字
+     * 起始位置，且与匹配文字的距离保持不变。
      */
     private fun computeNeighborPush(
         text: CharSequence,
         segments: List<BleedSegment>,
         textPaint: TextPaint,
+        /** 段落首行的缩进长度（0 = 无缩进），左邻字落在缩进里时改用"整段右移" */
+        indentLength: Int = 0,
         advance: (Int) -> Float,
     ): NeighborPush? {
         if (segments.isEmpty()) return null
@@ -2252,18 +2291,30 @@ class TextChapterLayout(
             // 左侧：把匹配区连同背景一起往右挪，邻字不动
             if (segment.start > 0) {
                 val index = segment.start - 1
-                val size = (sides[0] + spacing + bodySpacing - bearing(index, true))
-                    .coerceIn(0f, textSize)
-                if (size > 0f) {
-                    push.widthAdd[index] = maxOf(push.widthAdd[index], size)
-                    applied = true
+                if (indentLength > 0 && index < indentLength) {
+                    // 段首缩进：外扩量加在最后一个缩进字上，缩进后的文字整体右移，背景的左侧边缘
+                    // 就落在缩进后的文字起始位置（与匹配文字的距离 = 外扩量，保持不变）
+                    val extra = (sides[0] + spacing).coerceAtLeast(0f)
+                    if (extra > 0f) {
+                        val target = indentLength - 1
+                        push.widthAdd[target] = maxOf(push.widthAdd[target], extra)
+                        push.indentAdd = maxOf(push.indentAdd, extra)
+                        applied = true
+                    }
+                } else {
+                    val size = (sides[0] + spacing + bodySpacing - bearing(index, true))
+                        .coerceAtLeast(0f)
+                    if (size > 0f) {
+                        push.widthAdd[index] = maxOf(push.widthAdd[index], size)
+                        applied = true
+                    }
                 }
             }
             // 右侧：加在匹配区最后一个字上（它后面的字才会被推开），因此记下要扣回背景的量
             if (segment.end < text.length) {
                 val index = segment.end - 1
                 val size = (sides[1] + spacing + bodySpacing - bearing(segment.end, false))
-                    .coerceIn(0f, textSize)
+                    .coerceAtLeast(0f)
                 if (size > 0f) {
                     push.widthAdd[index] = maxOf(push.widthAdd[index], size)
                     push.trimEnd[index] = maxOf(push.trimEnd[index], size)
