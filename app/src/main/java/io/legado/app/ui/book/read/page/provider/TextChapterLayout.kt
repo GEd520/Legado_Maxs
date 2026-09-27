@@ -324,7 +324,7 @@ class TextChapterLayout(
                     imageStyle,
                     srcList = srcList,
                     clickList = clickList,
-                    bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
+                    bodyHighlightStyles = bodyHighlightStyles,
                     bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
                 )
             } else {
@@ -333,6 +333,8 @@ class TextChapterLayout(
                     prepareNextPageIfNeed()
                 }
                 var start = 0
+                // 本段排版文本在全文中的起始偏移；被大图拆成多段时随 flush / 跳图推进
+                var layoutTextOffset = bodyHighlightStyles.startAt(contentIndex)
                 val srcList = LinkedList<String>()
                 val clickList = LinkedList<String?>()
                 sb.setLength(0)
@@ -411,7 +413,10 @@ class TextChapterLayout(
                                         isFirstLine = isFirstLine,
                                         srcList = srcList,
                                         clickList = clickList,
+                                        bodyHighlightStyles = bodyHighlightStyles,
+                                        bodyHighlightStart = layoutTextOffset,
                                     )
+                                    layoutTextOffset += textBefore.length
                                     sb.setLength(0)
                                     isFirstLine = false
                                 }
@@ -424,6 +429,8 @@ class TextChapterLayout(
                                     click,
                                     isAnimated,
                                 )
+                                // 大图不进排版文本，跳过全文中对应的占位字符
+                                layoutTextOffset += 1
                                 isSetTypedImage = true
                             }
                         }
@@ -451,8 +458,8 @@ class TextChapterLayout(
                         isFirstLine = isFirstLine,
                         srcList = srcList,
                         clickList = clickList,
-                        bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
-                        bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
+                        bodyHighlightStyles = bodyHighlightStyles,
+                        bodyHighlightStart = layoutTextOffset,
                     )
                 }
             }
@@ -712,7 +719,7 @@ class TextChapterLayout(
                     imageStyle,
                     srcList = srcList,
                     clickList = clickList,
-                    bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
+                    bodyHighlightStyles = bodyHighlightStyles,
                     bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
                 )
             } else {
@@ -721,6 +728,8 @@ class TextChapterLayout(
                     prepareNextPageIfNeed()
                 }
                 var start = 0
+                // 本段排版文本在全文中的起始偏移；被大图拆成多段时随 flush / 跳图推进
+                var layoutTextOffset = bodyHighlightStyles.startAt(contentIndex)
                 val srcList = LinkedList<String>()
                 val clickList = LinkedList<String?>()
                 sb.setLength(0)
@@ -799,7 +808,10 @@ class TextChapterLayout(
                                         isFirstLine = isFirstLine,
                                         srcList = srcList,
                                         clickList = clickList,
+                                        bodyHighlightStyles = bodyHighlightStyles,
+                                        bodyHighlightStart = layoutTextOffset,
                                     )
+                                    layoutTextOffset += textBefore.length
                                     sb.setLength(0)
                                     isFirstLine = false
                                 }
@@ -812,6 +824,8 @@ class TextChapterLayout(
                                     click,
                                     isAnimated,
                                 )
+                                // 大图不进排版文本，跳过全文中对应的占位字符
+                                layoutTextOffset += 1
                                 isSetTypedImage = true
                             }
                         }
@@ -839,8 +853,8 @@ class TextChapterLayout(
                         isFirstLine = isFirstLine,
                         srcList = srcList,
                         clickList = clickList,
-                        bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
-                        bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
+                        bodyHighlightStyles = bodyHighlightStyles,
+                        bodyHighlightStart = layoutTextOffset,
                     )
                 }
             }
@@ -1552,13 +1566,31 @@ class TextChapterLayout(
      * 与逐段建 SpannableStringBuilder 再 setSpan 的旧方案等价，
      * 但每条规则只产生一个共享样式对象，命中只做数组写入，
      * 排版期逐字符消费改为数组下标访问。
+     *
+     * 拼接时与排版侧保持一致：先把 img 标签压成单个占位字符再拼，
+     * 保证 starts 里的偏移与排版文本逐字符对齐——否则含段评气泡/插图的段落
+     * 会把它后面的段落整体推偏，跨段规则的高亮会落到气泡或错误字符上。
      */
     private fun buildBodyHighlightStyles(contents: List<String>): BodyHighlightStyles {
+        // 无正文高亮规则时不必拼全文跑正则（styles 为 null，排版期不设置任何样式）
+        if (compiledHighlightRules.none { it.rule.appliesTo(false, book.name, book.origin) }) {
+            return BodyHighlightStyles(null, emptyList())
+        }
         val starts = ArrayList<Int>(contents.size)
         val fullText = StringBuilder()
+        val imgSb = StringBuffer()
         contents.forEachIndexed { index, content ->
             starts.add(fullText.length)
-            fullText.append(content.replace(srcReplaceChar, srcReplacementChar))
+            val text = content.replace(srcReplaceChar, srcReplacementChar)
+            imgSb.setLength(0)
+            val matcher = AppPattern.imgPattern.matcher(text)
+            while (matcher.find()) {
+                // 与排版侧一致：img 标签压缩为单个占位字符（气泡/小图在排版文本里就是单字符，
+                // 大图由排版游标跳过），维持偏移对齐
+                matcher.appendReplacement(imgSb, reviewChar.toString())
+            }
+            matcher.appendTail(imgSb)
+            fullText.append(imgSb)
             if (index != contents.lastIndex) {
                 fullText.append('\n')
             }
