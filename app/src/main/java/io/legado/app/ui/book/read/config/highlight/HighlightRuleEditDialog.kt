@@ -146,10 +146,15 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
 
     override fun onStart() {
         super.onStart()
+        // 复位上次前台期间为避让输入法写下的窗口位移，避免高度已回默认值、位移还是旧值
+        appliedWindowOffsetY = 0
+        dialog?.window?.apply {
+            attributes = attributes.apply { y = 0 }
+            setGravity(Gravity.BOTTOM)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            setBackgroundDrawableResource(android.R.color.transparent)
+        }
         setLayout(ViewGroup.LayoutParams.MATCH_PARENT, SHEET_HEIGHT_RATIO)
-        dialog?.window?.setGravity(Gravity.BOTTOM)
-        dialog?.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        dialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -1509,7 +1514,8 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
      * 并把窗口顶到可见区底边（输入法上沿）之上。
      *
      * 窗口位移按「当前底边与可见区底边的差值」累加校正：没有输入法（或窗口本来就没被
-     * 挡住）时差值为 0，不做任何改动；被挡住多少就上移多少，不会来回抖动。
+     * 挡住）时差值为 0，不做任何改动；被挡住多少就上移多少。窗口 y 是相对 gravity 的
+     * 偏移（正数下移），底边位移与 y 同向，所以校正一步就能落到目标位置，不会来回抖动。
      */
     private fun applyImeAwareWindowMetrics() {
         if (!isAdded || view == null) return
@@ -1518,7 +1524,8 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         if (root.height == 0) return
         val visibleFrame = Rect()
         root.getWindowVisibleDisplayFrame(visibleFrame)
-        if (visibleFrame.isEmpty) return
+        // 拿不到可信可见区（部分机型/瞬态会给出空矩形或异常边界）时宁可不动，避免把窗口顶飞
+        if (visibleFrame.isEmpty || visibleFrame.bottom <= 0) return
         val location = IntArray(2)
         root.getLocationOnScreen(location)
         val rootBottom = location[1] + root.height
@@ -1532,6 +1539,9 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         appliedWindowOffsetY = offsetY
         attributes.y = offsetY
         window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, height)
+        // 窗口高度/位置变了就是可视区变了：此时滚动区尺寸可能没变（如候选栏高度变化），
+        // 单靠 updateEditorViewport 的变化判定会漏掉，这里补一次焦点输入框回滚
+        scheduleFocusedInputScroll()
     }
 
     /**
@@ -1709,7 +1719,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         /** 弹窗默认高度占屏高的比例，与 onStart 的初始布局保持一致 */
         const val SHEET_HEIGHT_RATIO = 0.85f
 
-        /** 悬浮预览还没量到高度时的保守估值 */
+        /** 悬浮预览还没量到高度时的保守估值（dp），偏大只会让悬浮层更早让位给输入框 */
         const val DEFAULT_FLOATING_RESERVE = 120
     }
 }
