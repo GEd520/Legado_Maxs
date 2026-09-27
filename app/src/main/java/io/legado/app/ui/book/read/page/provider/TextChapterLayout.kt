@@ -1570,6 +1570,9 @@ class TextChapterLayout(
      * 拼接时与排版侧保持一致：先把 img 标签压成单个占位字符再拼，
      * 保证 starts 里的偏移与排版文本逐字符对齐——否则含段评气泡/插图的段落
      * 会把它后面的段落整体推偏，跨段规则的高亮会落到气泡或错误字符上。
+     *
+     * 占位必须是单字符：排版侧气泡用 reviewChar、小图用 srcReplaceStr（取值为单字符），
+     * 大图不进排版文本而由游标 +1；若把占位改成多字符，偏移会静默错位且不报错。
      */
     private fun buildBodyHighlightStyles(contents: List<String>): BodyHighlightStyles {
         // 无正文高亮规则时不必拼全文跑正则（styles 为 null，排版期不设置任何样式）
