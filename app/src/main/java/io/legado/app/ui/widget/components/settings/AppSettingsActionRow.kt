@@ -27,7 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.theme.composePanelShape
-import io.legado.app.ui.theme.pageMutedIconTint
+import io.legado.app.ui.theme.pageAccentColor
 import io.legado.app.ui.theme.pageSecondaryTextColor
 
 /**
@@ -35,6 +35,7 @@ import io.legado.app.ui.theme.pageSecondaryTextColor
  *
  * 整行是一个点击热区（最小高度 [AppDimens.panelRowMinHeight]，不低于无障碍要求的 48dp），
  * 尾部控件自带点击时（如开关）由尾部控件消费自己的点击，不会误触整行回调。
+ * 行首图标统一用强调色，与旧版设置项的着色口径一致。
  *
  * @param title 主文案
  * @param summary 副标题，传 `null` 或空串时该行收缩为单行高度
@@ -97,7 +98,9 @@ fun AppSettingsActionRow(
                 painter = painterResource(leadingIconRes),
                 contentDescription = null,
                 colorFilter = ColorFilter.tint(
-                    if (danger) MaterialTheme.colorScheme.error else pageMutedIconTint()
+                    // 与旧版设置项一致：行图标用强调色（旧实现见 lib/prefs/Preference.bindView
+                    // 里的 iconView.setColorFilter(context.accentColor)），危险操作行仍走错误色
+                    if (danger) MaterialTheme.colorScheme.error else pageAccentColor()
                 ),
                 modifier = Modifier
                     .size(AppDimens.panelRowIconSize)
