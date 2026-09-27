@@ -44,7 +44,7 @@
 ### 配置入口与配置 UI
 
 - `app/src/main/java/io/legado/app/ui/book/read/ReadBookActivity.kt`
-  - 阅读菜单 `menu_highlight_rule_config` 与阅读页更多菜单 `menu_highlight_rule` 两处入口，直接 `showDialogFragment(HighlightRuleConfigDialog())`。
+  - 两处入口，都直接 `showDialogFragment(HighlightRuleConfigDialog())`：阅读页菜单 `menu_highlight_rule_config`（`res/menu/book_read.xml`）与正文选中菜单 `menu_highlight_rule`（`res/menu/content_select_action.xml`，条目与顺序受 `TextMenuConfig` 管控）。
   - 早期版本走阅读设置里的 `highlightRuleConfig` preference（`pref_config_read.xml` + `MoreConfigDialog` 拦截），该入口已移除，不要再按 preference 去找。
 
 - `app/src/main/java/io/legado/app/ui/book/read/config/highlight/HighlightRuleConfigDialog.kt`
