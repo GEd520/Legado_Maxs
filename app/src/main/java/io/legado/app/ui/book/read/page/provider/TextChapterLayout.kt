@@ -279,11 +279,49 @@ class TextChapterLayout(
             }
         }
 
+        layoutBodyContents(
+            contents = processedContents,
+            imageStyle = imageStyle,
+            isTextImageStyle = isTextImageStyle,
+            bodyHighlightStyles = bodyHighlightStyles,
+            breakPageAfterImage = true,
+        )
+
+        val textPage = pendingTextPage
+        val endPadding = 20.dpToPx()
+        val durYPadding = durY + endPadding
+        if (textPage.height < durYPadding) {
+            textPage.height = durYPadding
+        } else {
+            textPage.height += endPadding
+        }
+        textPage.text = stringBuilder.toString()
+        currentCoroutineContext().ensureActive()
+        onPageCompleted()
+
+        pendingTextPage = TextPage()
+        stringBuilder.clear()
+        durY = 0f
+        absStartX = paddingLeft
+    }
+
+    /**
+     * 正文段落排版主循环，首次排版与懒加载续排共用。
+     *
+     * @param breakPageAfterImage 大图之后是否强制换页：首排仅在单图模式下换页，续排始终换页（沿用既有行为）
+     * @return 本次排版的正文字数
+     */
+    private suspend fun layoutBodyContents(
+        contents: List<String>,
+        imageStyle: String?,
+        isTextImageStyle: Boolean,
+        bodyHighlightStyles: BodyHighlightStyles,
+        breakPageAfterImage: Boolean,
+    ): Int {
         val sb = StringBuffer()
         var isSetTypedImage = false
         var wordCount = 0
-
-        for ((contentIndex, content) in processedContents.withIndex()) {
+        for ((contentIndex, content) in contents.withIndex()) {
             currentCoroutineContext().ensureActive()
             if (adaptSpecialStyle) {
                 val text = content.trim()
@@ -328,7 +366,7 @@ class TextChapterLayout(
                     bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
                 )
             } else {
-                if (isSetTypedImage) {
+                if (breakPageAfterImage && isSetTypedImage) {
                     isSetTypedImage = false
                     prepareNextPageIfNeed()
                 }
@@ -343,61 +381,20 @@ class TextChapterLayout(
                     val matcher = AppPattern.imgPattern.matcher(text)
                     while (matcher.find()) {
                         currentCoroutineContext().ensureActive()
-                        val bubbleResult = tryParseForcedBubbleSrcWithClick(matcher.group(1)!!)
-                        val imgSrc = bubbleResult.renderSrc
-                        val isBubble = ParagraphBubbleRenderer.isBubbleSrc(imgSrc)
-                        var style: String? = if (isBubble) "TEXT" else null
-                        var click: String? = if (isBubble) bubbleResult.click else null
-                        var imgSize = ImageProvider.getImageSize(book, imgSrc, ReadBook.bookSource)
-                        val isAnimated = if (isBubble) false else ImageProvider.isGif(book, imgSrc, ReadBook.bookSource)
-                        val urlMatcher = paramPattern.matcher(imgSrc)
-                        if (urlMatcher.find()) {
-                            var width: String? = null
-                            val urlOptionStr = imgSrc.substring(urlMatcher.end())
-                            GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()?.let { map ->
-                                map.forEach { (key, value) ->
-                                    when (key) {
-                                        "style" -> style = value
-                                        "width" -> width = value
-                                        "click" -> click = value
-                                    }
-                                }
-                            }
-                            width?.let {
-                                if (width.endsWith("%")) {
-                                    width.dropLast(1).toIntOrNull()?.let { percentage ->
-                                        val imgWidth = visibleWidth * percentage / 100
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(imgWidth, sizeHeight * imgWidth / sizeWidth)
-                                    }
-                                } else {
-                                    width.toIntOrNull()?.let { width ->
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(width, sizeHeight * width / sizeWidth)
-                                    }
-                                }
-                            }
-                        }
-                        if (style == null) {
-                            style = if (imgSize.width < 80 && imgSize.height < 80) {
-                                "text"
-                            } else {
-                                imageStyle
-                            }
-                        }
+                        val img = resolveBodyImage(matcher.group(1)!!, imageStyle)
                         if (start < matcher.start()) {
                             sb.append(text.subSequence(start, matcher.start()))
                         }
-                        when (style) {
+                        when (img.style) {
                             "TEXT" -> {
                                 sb.append(reviewChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
+                                srcList.add(img.src)
+                                clickList.add(img.click)
                             }
                             "text" -> {
                                 sb.append(srcReplaceChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
+                                srcList.add(img.src)
+                                clickList.add(img.click)
                             }
                             else -> {
                                 val textBefore = sb.toString()
@@ -405,7 +402,7 @@ class TextChapterLayout(
                                     wordCount += textBefore.replace(noWordCountRegex, "").length
                                     setTypeText(
                                         book,
-                                        sb.toString(),
+                                        textBefore,
                                         contentPaint,
                                         contentPaintTextHeight,
                                         contentPaintFontMetrics,
@@ -422,12 +419,12 @@ class TextChapterLayout(
                                 }
                                 setTypeImage(
                                     book,
-                                    imgSrc,
+                                    img.src,
                                     contentPaintTextHeight,
-                                    style,
-                                    imgSize,
-                                    click,
-                                    isAnimated,
+                                    img.style,
+                                    img.size,
+                                    img.click,
+                                    img.isAnimated,
                                 )
                                 // 大图不进排版文本，跳过全文中对应的占位字符
                                 layoutTextOffset += 1
@@ -438,12 +435,11 @@ class TextChapterLayout(
                     }
                 }
                 if (start < content.length) {
-                    if (isSetTypedImage) {
+                    if (breakPageAfterImage && isSetTypedImage) {
                         isSetTypedImage = false
                         prepareNextPageIfNeed()
                     }
-                    val textAfter = content.subSequence(start, content.length)
-                    sb.append(textAfter)
+                    sb.append(content.subSequence(start, content.length))
                 }
                 text = sb.toString()
                 if (text.isNotBlank()) {
@@ -466,23 +462,65 @@ class TextChapterLayout(
             pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
             stringBuilder.append("\n")
         }
+        return wordCount
+    }
 
-        val textPage = pendingTextPage
-        val endPadding = 20.dpToPx()
-        val durYPadding = durY + endPadding
-        if (textPage.height < durYPadding) {
-            textPage.height = durYPadding
-        } else {
-            textPage.height += endPadding
+    private class BodyImage(
+        val src: String,
+        val style: String?,
+        val size: Size,
+        val click: String?,
+        val isAnimated: Boolean,
+    )
+
+    /**
+     * 解析正文 <img> 的地址与 URL 选项（style/width/click），并按尺寸推断默认样式
+     */
+    private suspend fun resolveBodyImage(rawImgSrc: String, imageStyle: String?): BodyImage {
+        val bubbleResult = tryParseForcedBubbleSrcWithClick(rawImgSrc)
+        val imgSrc = bubbleResult.renderSrc
+        val isBubble = ParagraphBubbleRenderer.isBubbleSrc(imgSrc)
+        var style: String? = if (isBubble) "TEXT" else null
+        var click: String? = if (isBubble) bubbleResult.click else null
+        var imgSize = ImageProvider.getImageSize(book, imgSrc, ReadBook.bookSource)
+        // 气泡 URL 走软件渲染，跳过 isGif 检测避免无意义判断
+        val isAnimated = if (isBubble) false else ImageProvider.isGif(book, imgSrc, ReadBook.bookSource)
+        val urlMatcher = paramPattern.matcher(imgSrc)
+        if (urlMatcher.find()) {
+            var width: String? = null
+            val urlOptionStr = imgSrc.substring(urlMatcher.end())
+            GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()?.let { map ->
+                map.forEach { (key, value) ->
+                    when (key) {
+                        "style" -> style = value
+                        "width" -> width = value
+                        "click" -> click = value
+                    }
+                }
+            }
+            width?.let { value ->
+                if (value.endsWith("%")) {
+                    value.dropLast(1).toIntOrNull()?.let { percentage ->
+                        val imgWidth = visibleWidth * percentage / 100
+                        val (sizeHeight, sizeWidth) = imgSize
+                        imgSize = Size(imgWidth, sizeHeight * imgWidth / sizeWidth)
+                    }
+                } else {
+                    value.toIntOrNull()?.let { width ->
+                        val (sizeHeight, sizeWidth) = imgSize
+                        imgSize = Size(width, sizeHeight * width / sizeWidth)
+                    }
+                }
+            }
         }
-        textPage.text = stringBuilder.toString()
-        currentCoroutineContext().ensureActive()
-        onPageCompleted()
-
-        pendingTextPage = TextPage()
-        stringBuilder.clear()
-        durY = 0f
-        absStartX = paddingLeft
+        val finalStyle = style ?: if (imgSize.width < SMALL_IMAGE_THRESHOLD_PX &&
+            imgSize.height < SMALL_IMAGE_THRESHOLD_PX
+        ) {
+            "text"
+        } else {
+            imageStyle
+        }
+        return BodyImage(imgSrc, finalStyle, imgSize, click, isAnimated)
     }
 
     private fun onPageCompleted() {
@@ -674,193 +712,13 @@ class TextChapterLayout(
         val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
         val bodyHighlightStyles = buildBodyHighlightStyles(contents)
 
-        val sb = StringBuffer()
-        var isSetTypedImage = false
-        var wordCount = 0
-        contents.forEachIndexed { contentIndex, content ->
-            currentCoroutineContext().ensureActive()
-            if (adaptSpecialStyle) {
-                val text = content.trim()
-                if (text == "[newpage]") {
-                    prepareNextPageIfNeed()
-                    return@forEachIndexed
-                } else if (text.startsWith("<usehtml>")) {
-                    val endInt = text.lastIndexOf("<")
-                    if (endInt > 9) {
-                        setTypeHtml(imageStyle, book, text.substring(9, endInt))
-                        return@forEachIndexed
-                    }
-                }
-            }
-            var text = content.replace(srcReplaceChar, srcReplacementChar)
-            if (isTextImageStyle) {
-                // 图片样式为文字嵌入类型
-                val srcList = LinkedList<String>()
-                val clickList = LinkedList<String?>()
-                sb.setLength(0)
-                val matcher = AppPattern.imgPattern.matcher(text)
-                while (matcher.find()) {
-                    matcher.group(1)?.let { src ->
-                        val bubbleResult = tryParseForcedBubbleSrcWithClick(src)
-                        srcList.add(bubbleResult.renderSrc)
-                        clickList.add(bubbleResult.click)
-                        matcher.appendReplacement(sb, srcReplaceStr)
-                    }
-                }
-                matcher.appendTail(sb)
-                text = sb.toString()
-                wordCount += text.replace(noWordCountRegex, "").length
-                setTypeText(
-                    book,
-                    text,
-                    contentPaint,
-                    contentPaintTextHeight,
-                    contentPaintFontMetrics,
-                    imageStyle,
-                    srcList = srcList,
-                    clickList = clickList,
-                    bodyHighlightStyles = bodyHighlightStyles,
-                    bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
-                )
-            } else {
-                if (isSingleImageStyle && isSetTypedImage) {
-                    isSetTypedImage = false
-                    prepareNextPageIfNeed()
-                }
-                var start = 0
-                // 本段排版文本在全文中的起始偏移；被大图拆成多段时随 flush / 跳图推进
-                var layoutTextOffset = bodyHighlightStyles.startAt(contentIndex)
-                val srcList = LinkedList<String>()
-                val clickList = LinkedList<String?>()
-                sb.setLength(0)
-                var isFirstLine = true
-                if (content.contains("<img")) {
-                    val matcher = AppPattern.imgPattern.matcher(text)
-                    while (matcher.find()) {
-                        currentCoroutineContext().ensureActive()
-                        val bubbleResult = tryParseForcedBubbleSrcWithClick(matcher.group(1)!!)
-                        val imgSrc = bubbleResult.renderSrc
-                        val isBubble = ParagraphBubbleRenderer.isBubbleSrc(imgSrc)
-                        var style: String? = if (isBubble) "TEXT" else null
-                        var click: String? = if (isBubble) bubbleResult.click else null
-                        var imgSize = ImageProvider.getImageSize(book, imgSrc, ReadBook.bookSource)
-                        val isAnimated = if (isBubble) false else ImageProvider.isGif(book, imgSrc, ReadBook.bookSource)
-                        val urlMatcher = paramPattern.matcher(imgSrc)
-                        if (urlMatcher.find()) {
-                            var width: String? = null
-                            val urlOptionStr = imgSrc.substring(urlMatcher.end())
-                            GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()?.let { map ->
-                                map.forEach { (key, value) ->
-                                    when (key) {
-                                        "style" -> style = value
-                                        "width" -> width = value
-                                        "click" -> click = value
-                                    }
-                                }
-                            }
-                            width?.let {
-                                if (width.endsWith("%")) {
-                                    width.dropLast(1).toIntOrNull()?.let { percentage ->
-                                        val imgWidth = visibleWidth * percentage / 100
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(imgWidth, sizeHeight * imgWidth / sizeWidth)
-                                    }
-                                } else {
-                                    width.toIntOrNull()?.let { width ->
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(width, sizeHeight * width / sizeWidth)
-                                    }
-                                }
-                            }
-                        }
-                        if (style == null) {
-                            style = if (imgSize.width < 80 && imgSize.height < 80) {
-                                "text"
-                            } else {
-                                imageStyle
-                            }
-                        }
-                        if (start < matcher.start()) {
-                            sb.append(text.subSequence(start, matcher.start()))
-                        }
-                        when (style) {
-                            "TEXT" -> {
-                                sb.append(reviewChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
-                            }
-                            "text" -> {
-                                sb.append(srcReplaceChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
-                            }
-                            else -> {
-                                val textBefore = sb.toString()
-                                if (textBefore.isNotBlank()) {
-                                    wordCount += textBefore.replace(noWordCountRegex, "").length
-                                    setTypeText(
-                                        book,
-                                        sb.toString(),
-                                        contentPaint,
-                                        contentPaintTextHeight,
-                                        contentPaintFontMetrics,
-                                        "TEXT",
-                                        isFirstLine = isFirstLine,
-                                        srcList = srcList,
-                                        clickList = clickList,
-                                        bodyHighlightStyles = bodyHighlightStyles,
-                                        bodyHighlightStart = layoutTextOffset,
-                                    )
-                                    layoutTextOffset += textBefore.length
-                                    sb.setLength(0)
-                                    isFirstLine = false
-                                }
-                                setTypeImage(
-                                    book,
-                                    imgSrc,
-                                    contentPaintTextHeight,
-                                    style,
-                                    imgSize,
-                                    click,
-                                    isAnimated,
-                                )
-                                // 大图不进排版文本，跳过全文中对应的占位字符
-                                layoutTextOffset += 1
-                                isSetTypedImage = true
-                            }
-                        }
-                        start = matcher.end()
-                    }
-                }
-                if (start < content.length) {
-                    if (isSingleImageStyle && isSetTypedImage) {
-                        isSetTypedImage = false
-                        prepareNextPageIfNeed()
-                    }
-                    val textAfter = content.subSequence(start, content.length)
-                    sb.append(textAfter)
-                }
-                text = sb.toString()
-                if (text.isNotBlank()) {
-                    wordCount += text.replace(noWordCountRegex, "").length
-                    setTypeText(
-                        book,
-                        text,
-                        contentPaint,
-                        contentPaintTextHeight,
-                        contentPaintFontMetrics,
-                        "TEXT",
-                        isFirstLine = isFirstLine,
-                        srcList = srcList,
-                        clickList = clickList,
-                        bodyHighlightStyles = bodyHighlightStyles,
-                        bodyHighlightStart = layoutTextOffset,
-                    )
-                }
-            }
-            pendingTextPage.lines.last().isParagraphEnd = true
-            stringBuilder.append("\n")
-        }
+        val wordCount = layoutBodyContents(
+            contents = contents,
+            imageStyle = imageStyle,
+            isTextImageStyle = isTextImageStyle,
+            bodyHighlightStyles = bodyHighlightStyles,
+            breakPageAfterImage = isSingleImageStyle,
+        )
         val chapterWordCount = StringUtils.wordCountFormat(wordCount.toString())
         bookChapter.wordCount = chapterWordCount
         appDb.bookChapterDao.upWordCount(bookChapter.bookUrl, bookChapter.url, chapterWordCount)
@@ -3078,6 +2936,8 @@ class TextChapterLayout(
             """createSvg2?\s*\((?:[^,)]*,){3}\s*([0-9]{1,8})""",
             RegexOption.IGNORE_CASE,
         )
+        /** 宽高均小于该值的图片按文字内嵌（text）样式排版 */
+        private const val SMALL_IMAGE_THRESHOLD_PX = 80
         const val PARAGRAPH_BUBBLE_PREFIX = "dp:"
         val FORCED_BUBBLE_TYPES = setOf(
             "qd",
