@@ -112,6 +112,7 @@ fun ExploreKindSelectSheet(
     }
 
     // 6 列加权网格行计算（对标 MD3-main calculateExploreKindRows，含 flexBasisPercent / wrapBefore / tailFill）
+    // 行计算还消费 kind.style()，而 ExploreKind 的判等已覆盖 style，按 filteredKinds 记忆是安全的
     val kindRows = remember(filteredKinds) {
         calculateExploreKindRows(filteredKinds, maxSpan = 6)
     }

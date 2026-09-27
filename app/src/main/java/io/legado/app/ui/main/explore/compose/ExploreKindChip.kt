@@ -90,7 +90,7 @@ internal fun ExploreKindToggleChip(
 ) {
     val style = kind.style()
     val name by rememberKindName(sourceUrl, kind, controller)
-    // 同 [ExploreKindSelectField]：候选项不能按 kind 记忆（equals 不比较 chars）
+    // 同 [ExploreKindSelectField]：候选项按 chars 记忆
     val chars = remember(kind.chars) { kind.charsOrDefault() }
     val infoMap = remember(sourceUrl, controller) { controller.infoMap(sourceUrl) }
     // 当前标记符以 infoMap 为准：页面切走再回来要停在用户上次的选择上

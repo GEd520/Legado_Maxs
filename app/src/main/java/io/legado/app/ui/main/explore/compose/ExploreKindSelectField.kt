@@ -46,9 +46,8 @@ internal fun ExploreKindSelectField(
     controller: ExploreKindsController,
 ) {
     val name by rememberKindName(sourceUrl, kind, controller)
-    // 候选项不能按 kind 记忆：[ExploreKind.equals] 不比较 chars，书源切换"模式"后
-    // 重建出的"平台"项各字段与切换前一致、只有候选列表不同，按 kind 记忆会一直复用旧列表；
-    // 改按 chars 数组的引用记忆（重建必然换新数组），避免每次重组都重新过滤一遍
+    // 候选项按 chars 记忆：书源切换"模式"后"平台"的候选列表会整体换掉（其余字段可能一样），
+    // 以候选自身为 key 才能保证下拉里拿到的是最新一版；同时省掉每次重组重新过滤
     val chars = remember(kind.chars) { kind.charsOrDefault() }
     val infoMap = remember(sourceUrl, controller) { controller.infoMap(sourceUrl) }
     var selected by remember(infoMap, kind.title, chars) {
