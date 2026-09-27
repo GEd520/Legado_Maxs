@@ -1,7 +1,7 @@
 # Compose UI 规范 — 主题与样式
 
 > 原 `UI-ARCHITECTURE.md`（2026-08-19）拆分产物：§7，章节编号沿用原编号，跨文件引用按「文件名 §编号」格式书写。生效范围、执行方式、老代码策略等通用约定见 [README.md](./README.md)。
-> **最后更新**：2026-09-10
+> **最后更新**：2026-09-27
 
 ---
 
@@ -169,8 +169,10 @@ TopAppBar(
 #### 7.8.1 重建路径选择（强制）
 
 - **必须**：主题切换需要重建页面的，统一接管 `recreate()` 为「销毁 + 全新 `startActivity`」——新实例在前，再 `finish()` 旧实例，使新窗口以 **全新启动路径** 建立，规避系统原地重建带来的 Compose 重组冻结。**禁止**直接调用 `super.recreate()` / `Activity.recreate()`。
-- **必须**：接管 `recreate()` 时应保留防重入守卫（`recreatePending` + `isFinishing`/`isDestroyed`），并在 `onCreate` 记录实例创建时刻；重建广播（`ThemeConfig.notifyRecreate` 1.5s 防抖后迟到的事件总线 `RECEIVE`）必须被「实例创建时刻 + 2s 宽限」拦截，避免二次重建打断正在建立的窗口。
-  参考实现：`ui/config/theme/manage/ThemeManageActivity`（`recreate()` 接管 + `RECREATE_IGNORE_MS = 2000L` 宽限）。
+- **必须**：接管 `recreate()` 时应保留防重入守卫（`recreatePending` + `isFinishing`/`isDestroyed`），并记录本次重启的时刻（接管点记在 `recreate()` 里，或在 `onCreate` 记录实例创建时刻）；重建广播（`ThemeConfig.notifyRecreate` 合并窗口后迟到的事件总线 `RECREATE`）必须被「重启时刻 + 2s 宽限」拦截，避免二次重建打断正在建立的窗口。
+- **必须**：宽限窗只对**主题状态未变**的请求生效——宽限窗内状态已变的请求是用户新的一次切换，必须放行。只按时间丢弃会把「配置已改、新窗口还是旧主题」的请求一并吞掉：回主界面时底栏与背景被 `onResume` 刷成新主题，内容区（Compose 页）却停在旧主题（表现为「底栏切换了、界面没切换」）。基线取「触发本次重启时生效的主题状态」，**模式与色板一起比对**：主题模式（日间/夜间/跟随系统/墨水屏）+ 日夜 + 主题名 + 主色/强调色/背景/底栏色 + 背景图（含模糊）+ 透明底栏。漏掉模式会把「日间 ↔ 墨水屏」当成没变化（两者的色板都读日间偏好，取值完全相同）。
+  参考实现：`ui/main/MainActivity`（`recreate()` 接管 + `RECREATE_IGNORE_MS = 2000L` + `isLateRecreateEcho()` 状态比对）。
+  例外（待补状态比对）：`ui/config/theme/manage/ThemeManageActivity` 有同样的接管与纯时间宽限，二次应用落在窗内时日夜切换仍由 AppCompat relaunch 生效，纯色变化会被延后重绘。
 
 #### 7.8.2 新建代码的优先方向（推荐）
 

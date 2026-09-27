@@ -614,6 +614,30 @@ class MainActivity :
     private var recreatePending = false
 
     /**
+     * 判断这条 RECREATE 是否只是「本窗口所依据的那次主题变更」的迟到回声。
+     *
+     * 一次主题变更可能广播两次：触发重建的即时广播，以及 [ThemeConfig] 合并窗口后的防抖广播。
+     * 后者到达时新窗口往往刚建立，放行会与窗口过渡对撞，需要丢弃。
+     *
+     * 判据是**主题状态有没有变**，而不是单纯的时间：紧接在重建之后的第二次真实切换同样落在
+     * 宽限窗内，只按时间丢弃会把「配置已改、窗口还是旧主题」的请求一起吞掉——回到主界面后底栏与
+     * 背景被 onResume 刷新成新主题，内容区（Compose 页）却停在旧主题，正是「底栏切换了、界面没切换」。
+     *
+     * 状态与本窗口建立时完全一致 → 是回声；只要有一项不同（见 [ThemeState] 的比对范围）→ 是新请求。
+     * 取不到基线时按「已变化」处理：宁可多重建一次，也不吞真实切换。
+     *
+     * 比对的是偏好值本身，因此 [ThemeConfig.applyTheme] 的纠正写入（如背景色明度与日夜不匹配时就地改写）
+     * 同样算作状态变化，会多放行一次重建——一次性开销，不成环。
+     */
+    private fun isLateRecreateEcho(): Boolean {
+        if (System.currentTimeMillis() - instanceCreateTime >= RECREATE_IGNORE_MS) {
+            return false
+        }
+        val atRestart = themeStateAtRestart ?: return false
+        return ThemeState(AppConfig.themeMode, ThemeConfig.getDurConfig(this)) == atRestart
+    }
+
+    /**
      * 主界面重建统一走「清任务 + 全新启动」（theme-styles.md §7.8.1 强制）。
      *
      * 原地 `super.recreate()` 建立的新窗口里，Compose 实例首帧组合后重组/重绘调度即冻结
@@ -628,6 +652,8 @@ class MainActivity :
         if (recreatePending || isFinishing || isDestroyed) return
         recreatePending = true
         instanceCreateTime = System.currentTimeMillis()
+        // 记下新窗口将依据的主题状态，供 isLateRecreateEcho() 识别这次变更的迟到回声
+        themeStateAtRestart = ThemeState(AppConfig.themeMode, ThemeConfig.getDurConfig(this))
         startActivity(
             Intent(this, MainActivity::class.java)
                 // 旧实例已做过自动更新目录，重启后不再重复（等价于原来 recreate 保留的
@@ -655,9 +681,8 @@ class MainActivity :
             onUpBooksBadgeView!!.setBadgeCount(it)
         }
         observeEvent<String>(EventBus.RECREATE) {
-            // 本实例刚由重启建立 → 该广播是同一次操作的迟到重复（如 ThemeConfig 的防抖广播），
-            // 放行会在新窗口建立过程中触发二次重启
-            if (System.currentTimeMillis() - instanceCreateTime < RECREATE_IGNORE_MS) {
+            // 只丢弃「同一次主题变更的迟到回声」，窗口内主题状态已变的请求必须放行（见 isLateRecreateEcho）
+            if (isLateRecreateEcho()) {
                 return@observeEvent
             }
             if (lifecycle.currentState == Lifecycle.State.RESUMED) {
@@ -1503,10 +1528,30 @@ class MainActivity :
         /**
          * 重启后迟到的 RECREATE 广播宽限窗。
          *
-         * 一次配置变更可能同时由事件总线与 ThemeConfig 防抖（1500ms）两条路触发，
-         * 窗口略大于防抖延迟即可兜住迟到广播，保证一次变更只经历一次重启。
+         * 一次主题变更可能同时由即时广播与 [ThemeConfig] 合并窗口（`recreateEditDelay`）后的
+         * 防抖广播两条路送达，窗口远大于防抖延迟即可兜住迟到广播。
+         *
+         * 窗口**只对主题状态未变的请求生效**（见 [isLateRecreateEcho]）：窗口内主题状态已变的
+         * 请求是用户新的一次切换，必须放行，否则界面会停在旧主题。
          */
         private const val RECREATE_IGNORE_MS = 2000L
+
+        /**
+         * 触发本次重启时生效的主题状态，见 [isLateRecreateEcho]。
+         *
+         * 必须是静态值：读取它的是重启后的**新**实例，实例字段无法跨实例传递；
+         * 在 [recreate] 里随 [instanceCreateTime] 一同刷新、配对使用，只在主线程读写。
+         */
+        private var themeStateAtRestart: ThemeState? = null
+
+        /**
+         * 一次重建所依据的主题状态：**模式 + 色板**。
+         *
+         * 两者必须一起比对——墨水屏模式与日间模式拿到的色板完全相同（都读日间偏好），
+         * 只比色板会把「日间 ↔ 墨水屏」当成没变化，那次切换就会在宽限窗内被吞掉。
+         * 色板比对范围：日夜、主题名、主色、强调色、背景、底栏色、背景图（含模糊）、透明底栏。
+         */
+        private data class ThemeState(val themeMode: String?, val config: ThemeConfig.Config)
 
         /**
          * 最近一次由重启建立的主界面实例时刻。
