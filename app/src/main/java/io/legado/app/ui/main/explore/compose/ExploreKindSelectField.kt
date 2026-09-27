@@ -46,15 +46,17 @@ internal fun ExploreKindSelectField(
     controller: ExploreKindsController,
 ) {
     val name by rememberKindName(sourceUrl, kind, controller)
-    val chars = remember(kind) { kind.charsOrDefault() }
+    // 候选项不能按 kind 记忆：[ExploreKind.equals] 不比较 chars，书源切换"模式"后
+    // 重建出的"平台"项各字段与切换前一致、只有候选列表不同，按 kind 记忆会一直复用旧列表
+    val chars = kind.charsOrDefault()
     val infoMap = remember(sourceUrl, controller) { controller.infoMap(sourceUrl) }
-    var selected by remember(kind, infoMap) {
-        mutableStateOf(
-            infoMap[kind.title].takeUnless { it.isNullOrEmpty() } ?: (kind.default ?: chars[0])
-        )
+    var selected by remember(infoMap, kind.title, chars) {
+        // 对齐原实现：已存值优先；不在当前候选里时回落到首项（原 setSelectionSafely 的 coerce 行为）
+        val saved = infoMap[kind.title].takeUnless { it.isNullOrEmpty() }
+        mutableStateOf((saved ?: (kind.default ?: chars[0])).takeIf { it in chars } ?: chars[0])
     }
     var expanded by remember(kind) { mutableStateOf(false) }
-    LaunchedEffect(kind) {
+    LaunchedEffect(selected) {
         infoMap[kind.title] = selected
     }
 
