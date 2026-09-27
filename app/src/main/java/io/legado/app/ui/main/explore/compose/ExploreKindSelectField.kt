@@ -47,17 +47,22 @@ internal fun ExploreKindSelectField(
 ) {
     val name by rememberKindName(sourceUrl, kind, controller)
     // 候选项不能按 kind 记忆：[ExploreKind.equals] 不比较 chars，书源切换"模式"后
-    // 重建出的"平台"项各字段与切换前一致、只有候选列表不同，按 kind 记忆会一直复用旧列表
-    val chars = kind.charsOrDefault()
+    // 重建出的"平台"项各字段与切换前一致、只有候选列表不同，按 kind 记忆会一直复用旧列表；
+    // 改按 chars 数组的引用记忆（重建必然换新数组），避免每次重组都重新过滤一遍
+    val chars = remember(kind.chars) { kind.charsOrDefault() }
     val infoMap = remember(sourceUrl, controller) { controller.infoMap(sourceUrl) }
     var selected by remember(infoMap, kind.title, chars) {
-        // 对齐原实现：已存值优先；不在当前候选里时回落到首项（原 setSelectionSafely 的 coerce 行为）
+        // 对齐原实现：已存值优先；不在当前候选里时收口到首项（原 setSelectionSafely 的 coerce 行为）
         val saved = infoMap[kind.title].takeUnless { it.isNullOrEmpty() }
         mutableStateOf((saved ?: (kind.default ?: chars[0])).takeIf { it in chars } ?: chars[0])
     }
     var expanded by remember(kind) { mutableStateOf(false) }
-    LaunchedEffect(selected) {
-        infoMap[kind.title] = selected
+    // 只在 infoMap 还没有值时才落默认值：原实现同样不改写已有值，
+    // 这样切到别的模式再切回来，用户上次选的项还在（越界值只影响显示，不污染规则读取）
+    LaunchedEffect(kind.title, chars) {
+        if (infoMap[kind.title].isNullOrEmpty()) {
+            infoMap[kind.title] = kind.default ?: chars[0]
+        }
     }
 
     Box(modifier = modifier) {
