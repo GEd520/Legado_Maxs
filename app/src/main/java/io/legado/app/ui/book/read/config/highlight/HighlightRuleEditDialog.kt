@@ -16,10 +16,13 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.ArrayAdapter
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.annotation.ColorInt
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.viewModels
@@ -35,14 +38,17 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.RealPathUtil
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.windowSize
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.utils.showDialogFragment
+import splitties.systemservices.windowManager
 import kotlin.math.roundToInt
 
 /**
@@ -89,12 +95,40 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
     /** 最近一次构建的预览规则，悬浮预览层出现时用它同步内容 */
     private var lastPreviewRule: HighlightRule? = null
 
-    /** 滚动/布局变化时重算悬浮预览的显隐 */
+    /** 上次布局时的输入法可见性，用来判断可视区是否因键盘变化 */
+    private var imeVisible = false
+
+    /** 上次布局时的滚动区尺寸，尺寸变化说明可视区变了，需要把正在编辑的输入框重新顶回可视区 */
+    private var editorViewportHeight = 0
+    private var editorViewportWidth = 0
+
+    /** 悬浮预览实测高度（含底边距），隐藏时用它推算悬浮层占位 */
+    private var floatingReserveHeight = 0
+
+    /** 已写入窗口的纵向位移，用来把窗口底边累计校正到可见区底边 */
+    private var appliedWindowOffsetY = 0
+
+    /** 滚动/布局/焦点变化时重算悬浮预览的显隐与可视区 */
     private val floatingPreviewWatcher = object :
         ViewTreeObserver.OnScrollChangedListener,
-        ViewTreeObserver.OnGlobalLayoutListener {
+        ViewTreeObserver.OnGlobalLayoutListener,
+        ViewTreeObserver.OnGlobalFocusChangeListener {
         override fun onScrollChanged() = updateFloatingPreview()
-        override fun onGlobalLayout() = updateFloatingPreview()
+        override fun onGlobalLayout() = updateEditorViewport()
+        override fun onGlobalFocusChanged(oldFocus: View?, newFocus: View?) {
+            updateFloatingPreview()
+            if (newFocus is EditText) scheduleFocusedInputScroll()
+        }
+    }
+
+    /** 焦点输入框的滚动回可视区排到下一帧：切换焦点时布局还没稳定，立刻滚会算错位置 */
+    private val focusedInputScroll = Runnable {
+        if (isAdded && view != null) scrollFocusedInputIntoView()
+    }
+
+    /** 输入法弹出时按可见区重算弹窗高度与位置 */
+    private val sheetViewportWatcher = ViewTreeObserver.OnGlobalLayoutListener {
+        applyImeAwareWindowMetrics()
     }
 
     private val selectImageResult = registerForActivityResult(HandleFileContract()) { result ->
@@ -112,7 +146,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
 
     override fun onStart() {
         super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, 0.85f)
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, SHEET_HEIGHT_RATIO)
         dialog?.window?.setGravity(Gravity.BOTTOM)
         dialog?.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         dialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -224,15 +258,34 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         bindEvents()
         updatePreview()
         binding.scrollView.viewTreeObserver.addOnScrollChangedListener(floatingPreviewWatcher)
+        // 卡片展开/收起（如高级标题、九宫格）会改变内容高度，布局变化时也要重算
         binding.scrollView.viewTreeObserver.addOnGlobalLayoutListener(floatingPreviewWatcher)
+        binding.scrollView.viewTreeObserver.addOnGlobalFocusChangeListener(floatingPreviewWatcher)
+        binding.root.viewTreeObserver.addOnGlobalLayoutListener(sheetViewportWatcher)
     }
 
     override fun onDestroyView() {
         // 视图已销毁还挂着下一帧的预览刷新会拿到已失效的 binding
         binding.root.removeCallbacks(spacingPreviewUpdate)
+        binding.root.removeCallbacks(focusedInputScroll)
         spacingPreviewPending = false
-        binding.scrollView.viewTreeObserver.removeOnScrollChangedListener(floatingPreviewWatcher)
-        binding.scrollView.viewTreeObserver.removeOnGlobalLayoutListener(floatingPreviewWatcher)
+        imeVisible = false
+        editorViewportHeight = 0
+        editorViewportWidth = 0
+        floatingReserveHeight = 0
+        appliedWindowOffsetY = 0
+        binding.scrollView.viewTreeObserver.let {
+            if (it.isAlive) {
+                it.removeOnScrollChangedListener(floatingPreviewWatcher)
+                it.removeOnGlobalLayoutListener(floatingPreviewWatcher)
+                it.removeOnGlobalFocusChangeListener(floatingPreviewWatcher)
+            }
+        }
+        binding.root.viewTreeObserver.let {
+            if (it.isAlive) {
+                it.removeOnGlobalLayoutListener(sheetViewportWatcher)
+            }
+        }
         super.onDestroyView()
     }
 
@@ -1451,6 +1504,95 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
     }
 
     /**
+     * 弹窗窗口高度是按屏高算死的，输入法弹出时它不会跟着缩短，而 sheet 底边始终贴在
+     * 窗口底边，于是预览卡片与悬浮预览会落到键盘后面。这里按窗口可见区重算高度，
+     * 并把窗口顶到可见区底边（输入法上沿）之上。
+     *
+     * 窗口位移按「当前底边与可见区底边的差值」累加校正：没有输入法（或窗口本来就没被
+     * 挡住）时差值为 0，不做任何改动；被挡住多少就上移多少，不会来回抖动。
+     */
+    private fun applyImeAwareWindowMetrics() {
+        if (!isAdded || view == null) return
+        val window = dialog?.window ?: return
+        val root = binding.root
+        if (root.height == 0) return
+        val visibleFrame = Rect()
+        root.getWindowVisibleDisplayFrame(visibleFrame)
+        if (visibleFrame.isEmpty) return
+        val location = IntArray(2)
+        root.getLocationOnScreen(location)
+        val rootBottom = location[1] + root.height
+        val defaultHeight =
+            (requireContext().windowManager.windowSize.heightPixels * SHEET_HEIGHT_RATIO).toInt()
+        val offsetY = (appliedWindowOffsetY - (rootBottom - visibleFrame.bottom))
+            .coerceIn(-defaultHeight, 0)
+        val height = minOf(defaultHeight, visibleFrame.height())
+        val attributes = window.attributes
+        if (attributes.height == height && attributes.y == offsetY) return
+        appliedWindowOffsetY = offsetY
+        attributes.y = offsetY
+        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, height)
+    }
+
+    /**
+     * 可视区尺寸或输入法可见性变化后，把正在编辑的输入框重新顶回可视区。
+     */
+    private fun updateEditorViewport() {
+        if (!isAdded || view == null) return
+        val scrollView = binding.scrollView
+        val keyboardVisible = ViewCompat.getRootWindowInsets(binding.root)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        val viewportChanged = editorViewportHeight != scrollView.height ||
+            editorViewportWidth != scrollView.width || imeVisible != keyboardVisible
+        editorViewportHeight = scrollView.height
+        editorViewportWidth = scrollView.width
+        imeVisible = keyboardVisible
+        updateFloatingPreview()
+        if (viewportChanged) scheduleFocusedInputScroll()
+    }
+
+    private fun scheduleFocusedInputScroll() {
+        binding.root.removeCallbacks(focusedInputScroll)
+        binding.root.post(focusedInputScroll)
+    }
+
+    private fun scrollFocusedInputIntoView() {
+        val input = binding.scrollView.findFocus() as? EditText ?: return
+        val gap = 12.dpToPx()
+        val availableHeight = binding.scrollView.height - gap * 2
+        if (availableHeight <= 0) return
+        // 预览文本和它的预览结果挨着，放得下就整体滚入，放不下优先保证输入框可见
+        val target = if (input === binding.etSampleText &&
+            binding.cardPreview.height <= availableHeight
+        ) binding.cardPreview else input
+        val bounds = Rect()
+        target.getDrawingRect(bounds)
+        bounds.inset(0, -gap)
+        // 悬浮预览盖在滚动区底部，目标矩形往下多留出它的高度，滚完不会正好停在它下面
+        if (binding.cardPreviewFloating.isVisible && target !== binding.cardPreview) {
+            bounds.bottom += floatingReserveHeight
+        }
+        target.requestRectangleOnScreen(bounds, true)
+    }
+
+    /**
+     * 焦点输入框在可视区内的部分是否会被悬浮预览盖住。
+     * 用几何关系兜底，不依赖 IME 可见性判断（低版本拿不到、部分机型不准）。
+     */
+    private fun focusedInputOverlapsFloating(): Boolean {
+        val scrollView = binding.scrollView
+        val input = scrollView.findFocus() as? EditText ?: return false
+        // 用缓存高度而不是当前高度：隐藏后 height 会变，拿它做判断会来回横跳
+        val reserve = floatingReserveHeight.takeIf { it > 0 } ?: DEFAULT_FLOATING_RESERVE.dpToPx()
+        val floatingTop = scrollView.height - reserve
+        if (floatingTop <= 0) return true
+        val bounds = Rect(0, 0, input.width, input.height)
+        scrollView.offsetDescendantRectToMyCoords(input, bounds)
+        bounds.offset(0, -scrollView.scrollY)
+        return bounds.bottom > floatingTop && bounds.top < scrollView.height
+    }
+
+    /**
      * 预览卡片是滚动内容的最后一项，调参时常被输入区挡住看不到效果。
      * 没滑到底时在底部悬浮一份同步预览，滑到底（原卡片已露出来）或原卡片底边已进入可视区就收起，
      * 避免同一份内容出现两次。
@@ -1465,12 +1607,28 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         scrollView.offsetDescendantRectToMyCoords(card, bounds)
         // bounds 是滚动内容坐标，减去 scrollY 得到原卡片底边在可视区内的位置
         val cardBottom = bounds.bottom - scrollView.scrollY
-        val shouldFloat = scrollView.canScrollVertically(1) && cardBottom > scrollView.height
-        if (shouldFloat == floating.isVisible) return
+        // 已经滑到底，或原卡片底边已进入可视区，都说明原卡片看得见了，不用再悬浮
+        // 键盘弹出时若悬浮层正好压住正在编辑的输入框，让位给输入框
+        val shouldFloat = scrollView.canScrollVertically(1) && cardBottom > scrollView.height &&
+            !binding.etSampleText.hasFocus() && !focusedInputOverlapsFloating()
+        if (shouldFloat == floating.isVisible) {
+            if (shouldFloat) rememberFloatingReserve()
+            return
+        }
         floating.isVisible = shouldFloat
         if (shouldFloat) {
             lastPreviewRule?.let { binding.tvPreviewFloating.setPreview(it, primaryTextColor) }
+            // 显示后量一次高度存起来，供 focusedInputOverlapsFloating 在隐藏状态下判断
+            floating.post { rememberFloatingReserve() }
         }
+    }
+
+    private fun rememberFloatingReserve() {
+        val floating = binding.cardPreviewFloating
+        if (floating.height <= 0) return
+        val bottomMargin =
+            (floating.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
+        floatingReserveHeight = floating.height + bottomMargin
     }
 
     private fun validatePattern(pattern: String): String? {
@@ -1545,5 +1703,13 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
 
     override fun onDialogDismissed(dialogId: Int) {
         // no-op
+    }
+
+    private companion object {
+        /** 弹窗默认高度占屏高的比例，与 onStart 的初始布局保持一致 */
+        const val SHEET_HEIGHT_RATIO = 0.85f
+
+        /** 悬浮预览还没量到高度时的保守估值 */
+        const val DEFAULT_FLOATING_RESERVE = 120
     }
 }
