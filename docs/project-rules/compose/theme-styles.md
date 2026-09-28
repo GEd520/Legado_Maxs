@@ -42,19 +42,21 @@ val AppShapes = Shapes(
 
 > **技术选型：本项目图片框架统一为 Glide**（存量技术栈，全项目已依赖）。不引入 Coil / Fresco 等第二套框架；如未来要换，属于架构级决策，必须全局迁移，禁止单个 PR 局部混用。
 
-- **必须**走 `ui/widget/components/` 下的统一封装组件加载图片，内部用 Glide 的 bitmap 链路。书籍/分组封面已落地为 `AppBookCover`（**已建立**，取图优先级与 View 版 `CoverImageView` 一致：封面图集 → 真实图片 → HTML 模板封面 → 默认封面，失败叠加书名作者）；其它图片场景的通用封装（暂名 `AppImage.kt`）仍是**目标态文件，当前尚未建立**，落地时创建并同步 `structure.md` §1 目录树。封装组件落地前，新 Compose 代码按下述链路模式实现，禁止用 View 版 API 过渡：
+- **必须**走 `ui/widget/components/` 下的统一封装组件加载图片，内部用 Glide 的 **Drawable 链路**。书籍/分组封面已落地为 `AppBookCover`（**已建立**，取图优先级与 View 版 `CoverImageView` 一致：封面图集 → 真实图片 → HTML 模板封面 → 默认封面，失败叠加书名作者）；其它图片场景的通用封装（暂名 `AppImage.kt`）仍是**目标态文件，当前尚未建立**，落地时创建并同步 `structure.md` §1 目录树。封装组件落地前，新 Compose 代码按下述链路模式实现，禁止用 View 版 API 过渡：
 
 ```kotlin
 Glide.with(context)
-    .asBitmap()
-    .load(source)
+    .load(source)                                        // RequestBuilder<Drawable>，不要 asBitmap()
     .apply(RequestOptions().override(widthPx, heightPx)) // 显式尺寸，禁止全尺寸解码
-    .into(pendingTarget)
+    .into(pendingTarget)                                 // CustomTarget<Drawable>
 ```
 
-- **必须**用自持的 `PendingTarget<Bitmap>` 承接结果并交给 `Image(bitmap)` 渲染，`DisposableEffect` 的 `onDispose` 里 `clear()` target 取消 in-flight 请求——页面滑走后 Glide 继续解码就是白烧内存和 CPU。
+> **为什么是 Drawable 而不是 Bitmap**：`asBitmap()` 对 GIF / 动画 WebP 只解出第一帧，动图在封面上不动——首页 `GlideImage` 与旧 View 版 `CoverImageView` 走的都是 Drawable，所以只有单独换了链路的页面出问题。静态图（含透明 PNG）两种链路行为一致。
+
+- **必须**用自持的 `CustomTarget<Drawable>` 承接结果，再交给自实现的 Drawable Painter 渲染（`Image(painter = ...)`；参考 `AppBookCover.kt` 里的 `AppDrawablePainter`——依赖里的 glide-compose 只有 `GlideImage`，没有可直接复用的 Drawable→Painter）。取消时 `clear()` target 取消 in-flight 请求——页面滑走后 Glide 继续解码就是白烧内存和 CPU。
+- **必须**在拿到 `Animatable`（GifDrawable / AnimatedImageDrawable）后显式 `setVisible(true, true)` + `start()`：View 版由 ImageView 代劳，Compose 侧没有这一层，漏了动图依旧不动。
 - **禁止**在 Composable / ViewModel 里手写 `withContext(Dispatchers.IO) { BitmapFactory.decode... }` 自己解码 bitmap 塞 `Image()`——缓存、采样率、请求去重、取消逻辑全要自己维护，纯造轮子。
-- **禁止**在 Compose 层使用 View 版 API（`Glide.with(...).into(imageView)`）；老 XML 代码里的存量调用不动，新代码一律走上面的 bitmap 链路。
+- **禁止**在 Compose 层使用 View 版 API（`Glide.with(...).into(imageView)`）；老 XML 代码里的存量调用不动，新代码一律走上面的链路。
 
 ### 7.4 字体与排版
 

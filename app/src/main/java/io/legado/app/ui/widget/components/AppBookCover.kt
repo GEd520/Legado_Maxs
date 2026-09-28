@@ -1,9 +1,9 @@
 package io.legado.app.ui.widget.components
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.Animatable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
@@ -18,14 +18,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -59,7 +63,8 @@ import kotlin.math.max
  * 封面图集默认封面 → HTML 模板封面 → "使用默认封面"开关 → 真实封面图片 → 默认封面；
  * 图片缺失或加载失败时在封面上叠加竖排书名与作者（由封面设置控制）。
  *
- * 加载按主题样式规范 §7.3 的 Compose 图片链路实现：Glide bitmap 链路 + 显式 override 尺寸，
+ * 加载走 Glide 的 **Drawable** 链路 + 显式 override 尺寸，与首页 `GlideImage`、旧 View 版
+ * `CoverImageView` 同一条链路（`asBitmap()` 会丢掉 GIF/WebP 的动画帧）；
  * 组合离开时取消在途请求（`LaunchedEffect` 取消 → `clear` target），不借用 View 版 API。
  *
  * @param name 书名 / 分组名，用于默认封面的竖排书名与 HTML 模板变量
@@ -99,16 +104,16 @@ fun AppBookCover(
     val requestKey = listOf(realPath, sourceOrigin, htmlCover, useDefaultCover, name, author)
         .joinToString("|")
     // 初值就是默认封面：与 View 版 placeholder(defaultDrawable) 一致，避免加载期间露出壁纸
-    var bitmap by remember(requestKey) { mutableStateOf(defaultCoverBitmap()) }
+    var drawable by remember(requestKey) { mutableStateOf(defaultCoverDrawable()) }
     var loadFailed by remember(requestKey) { mutableStateOf(false) }
 
     LaunchedEffect(requestKey, bounds) {
         // 等控件测量出尺寸后再发请求，保证 override 的是真实显示尺寸
         if (bounds.width <= 0 || bounds.height <= 0) return@LaunchedEffect
         val loaded = when {
-            htmlCover -> HtmlCoverRenderer.load(name.orEmpty(), author)
-            useDefaultCover -> defaultCoverBitmap()
-            realPath != null -> loadCoverBitmap(
+            htmlCover -> htmlCoverDrawable(context, name.orEmpty(), author)
+            useDefaultCover -> defaultCoverDrawable()
+            realPath != null -> loadCoverDrawable(
                 context = context,
                 path = realPath,
                 sourceOrigin = sourceOrigin,
@@ -116,10 +121,12 @@ fun AppBookCover(
                 requestSize = bounds,
             )
 
-            else -> defaultCoverBitmap()
+            else -> defaultCoverDrawable()
         }
         // 加载失败回退默认封面（同名叠层由 defaultCoverShown/loadFailed 决定）
-        bitmap = loaded ?: defaultCoverBitmap()
+        val shown = loaded ?: defaultCoverDrawable()
+        drawable = shown
+        startIfAnimatable(shown)
         loadFailed = loaded == null
     }
 
@@ -132,9 +139,10 @@ fun AppBookCover(
             )
             .onSizeChanged { bounds = it }
     ) {
-        bitmap?.let {
+        val cover = drawable
+        if (cover != null) {
             Image(
-                bitmap = it.asImageBitmap(),
+                painter = remember(cover) { AppDrawablePainter(cover) },
                 contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -237,24 +245,28 @@ internal fun BookCoverTextOverlay(
 }
 
 /**
- * 加载真实封面图片为 Bitmap。
+ * 加载真实封面图片为 [Drawable]。
+ *
+ * 必须走 Drawable 而不是 Bitmap：Glide 的 `asBitmap()` 对 GIF/WebP 动图只解出第一帧，
+ * 动画信息在目标类型处就丢了。Drawable 链路与旧 View 版 `CoverImageView`、首页 `GlideImage`
+ * 一致，动图能正常播放，静态图（含透明 PNG）行为也不变。
  *
  * 取消时清掉 target，避免列表滑走后 Glide 继续解码；`onResourceReady` 与 `onLoadFailed`
  * 可能被先后调用（后台恢复时 Glide 会重新调度资源），用 [AtomicBoolean] 保证只 resume 一次。
  */
-private suspend fun loadCoverBitmap(
+private suspend fun loadCoverDrawable(
     context: Context,
     path: String,
     sourceOrigin: String?,
     loadOnlyWifi: Boolean,
     requestSize: IntSize,
-): Bitmap? = suspendCancellableCoroutine { cont ->
+): Drawable? = suspendCancellableCoroutine { cont ->
     // 先在协程存活时取到 RequestManager：取消回调里 Activity 可能已 destroy，
     // 那时再 Glide.with(context) 会抛 "You cannot start a load for a destroyed activity"
     val requestManager = Glide.with(context)
     val resumed = AtomicBoolean(false)
-    val target = object : CustomTarget<Bitmap>() {
-        override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+    val target = object : CustomTarget<Drawable>() {
+        override fun onResourceReady(resource: Drawable, transition: Transition<in Drawable>?) {
             if (resumed.compareAndSet(false, true) && cont.isActive) {
                 cont.resume(resource)
             }
@@ -275,7 +287,7 @@ private suspend fun loadCoverBitmap(
     if (sourceOrigin != null) {
         options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
     }
-    var builder = ImageLoader.loadBitmap(context, path).apply(options).centerCrop()
+    var builder = ImageLoader.load(context, path).apply(options).centerCrop()
     // 高清封面设置开启时不做降采样，与 View 版行为一致；
     // override 返回的是同一个 RequestBuilder（原地修改），这里回写只是让 CheckResult 告警消失
     if (!AppConfig.loadCoverHighQuality) {
@@ -285,12 +297,71 @@ private suspend fun loadCoverBitmap(
 }
 
 /**
- * 默认封面位图。
+ * 默认封面 Drawable。
  *
- * [BookCover.defaultDrawable] 由 600x900 的位图或内置 jpg 构造，两种情况都是 [BitmapDrawable]，
- * 直接取底层位图引用即可，不做像素级处理。
+ * [BookCover.defaultDrawable] 由 600x900 的位图或内置 jpg 构造，两种情况下都是 BitmapDrawable，
+ * 直接沿用这个实例即可（与 View 版 `placeholder(defaultDrawable)` 取的是同一个对象）。
  */
-private fun defaultCoverBitmap(): Bitmap? = (BookCover.defaultDrawable as? BitmapDrawable)?.bitmap
+private fun defaultCoverDrawable(): Drawable? = runCatching { BookCover.defaultDrawable }.getOrNull()
+
+/** HTML 模板封面渲染成位图后包成 Drawable，与真实封面走同一条绘制链路 */
+private suspend fun htmlCoverDrawable(context: Context, name: String, author: String?): Drawable? =
+    runCatching { HtmlCoverRenderer.load(name, author) }
+        .getOrNull()
+        ?.let { BitmapDrawable(context.resources, it) }
+
+/**
+ * 把 [Drawable] 画进 Compose 的最小 Painter 实现。
+ *
+ * Glide 的 Compose 集成（1.0.0-beta08）只暴露 `GlideImage`，没有可直接复用的
+ * Drawable→Painter；而封面还要承载 HTML 模板封面、加载失败叠加书名等自有状态，
+ * 无法整体交给 `GlideImage`。这里注册 [Drawable.Callback] 接收动图每帧的
+ * `invalidateDrawable` 回调驱动重绘，静态图则只在换图时重绘。
+ */
+private class AppDrawablePainter(private val drawable: Drawable) : Painter() {
+
+    /** 动画帧计数：动图每帧回调递增，读取它即可建立绘制依赖 */
+    private var frameTick by mutableIntStateOf(0)
+
+    private val callback = object : Drawable.Callback {
+        override fun invalidateDrawable(who: Drawable) {
+            frameTick++
+        }
+
+        override fun scheduleDrawable(who: Drawable, what: Runnable, when_: Long) = Unit
+
+        override fun unscheduleDrawable(who: Drawable, what: Runnable) = Unit
+    }
+
+    init {
+        drawable.callback = callback
+    }
+
+    override val intrinsicSize: Size
+        @Suppress("UNUSED_EXPRESSION")
+        get() {
+            frameTick
+            return Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
+        }
+
+    override fun DrawScope.onDraw() {
+        @Suppress("UNUSED_EXPRESSION")
+        frameTick
+        if (size.width <= 0f || size.height <= 0f) return
+        drawable.setBounds(0, 0, size.width.toInt(), size.height.toInt())
+        drawIntoCanvas { canvas -> drawable.draw(canvas.nativeCanvas) }
+    }
+}
+
+/**
+ * 动图（GIF / Animated WebP / AnimatedImageDrawable）载入后要显式开始播放：
+ * View 版由 ImageView 调 `setVisible(true, true)` 触发，Compose 侧没有这一层，得自己来。
+ */
+private fun startIfAnimatable(drawable: Drawable?) {
+    val animatable = drawable as? Animatable ?: return
+    drawable.setVisible(true, true)
+    runCatching { animatable.start() }
+}
 
 // ── 预览（navigation-preview.md §10.1 强制）────────────────────────────────
 
