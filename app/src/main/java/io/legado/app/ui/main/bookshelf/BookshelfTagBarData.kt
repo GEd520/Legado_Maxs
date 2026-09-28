@@ -48,6 +48,23 @@ internal suspend fun loadBookshelfTagBarData(
 }
 
 /**
+ * 在重算后的标签列表里找回上次选中的标签，找不到时回落到「全部」（索引 0）。
+ *
+ * 标签栏会随书籍标签变更、主题切换等原因整份重算，重算时不能用固定索引（下标会错位），
+ * 也不能无条件回到「全部」——那会把用户的筛选状态冲掉。只有**同一分组内**重载才该调用，
+ * 不同分组各有各的标签列表，跨分组沿用没有意义。
+ *
+ * @param tag 上次选中的标签名，空串/null 代表「全部」
+ */
+internal fun List<String>.restoreTagSelection(tag: String?): Int {
+    if (tag.isNullOrEmpty()) return 0
+    val exact = indexOf(tag)
+    if (exact >= 0) return exact
+    val ignoreCase = indexOfFirst { it.equals(tag, ignoreCase = true) }
+    return if (ignoreCase >= 0) ignoreCase else 0
+}
+
+/**
  * 按分组筛选书籍标签信息，逻辑与 [BookshelfTagManageViewModel.booksInGroup] 一致。
  * 默认分组（负数 ID）基于 [BookType] 筛选，用户分组（正数 ID）基于 group 位掩码筛选。
  */

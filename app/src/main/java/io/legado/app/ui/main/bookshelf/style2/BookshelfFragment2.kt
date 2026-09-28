@@ -31,6 +31,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.loadBookshelfTagBarData
+import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.compose.BookshelfBookEntry
 import io.legado.app.ui.main.bookshelf.compose.BookshelfDisplayConfig
 import io.legado.app.ui.main.bookshelf.compose.BookshelfEntry
@@ -85,6 +86,9 @@ class BookshelfFragment2() :
     private var tagBar: RoundedTagBarView? = null
     private var tagSelectedIndex = -1
     private var currentTagList: List<String> = emptyList()
+
+    /** [tagSelectedIndex] 所属的分组；切分组时选中态要回到「全部」，同一分组内重载则保留 */
+    private var tagBarGroupId: Long? = null
 
     /** 二级标签栏数据是否已就绪；显隐变化统一推迟到列表提交同帧生效，消除转场残留帧 */
     private var tagBarLoaded = false
@@ -333,12 +337,17 @@ class BookshelfFragment2() :
             tagBarLoaded = false
             tagSelectedIndex = -1
             currentTagList = emptyList()
+            tagBarGroupId = null
             tagFilter = null
             // 不在此处 restartBooksFlow，由调用方 initBooksData 负责
             return
         }
         val currentGroupId = groupId
         val context = requireContext()
+        // 同一分组内重载（详情页改标签、主题切换等）要保留用户选中的标签，
+        // 无条件回到「全部」会把筛选状态冲掉
+        val previousTag = currentTagList.getOrNull(tagSelectedIndex)
+        val keepSelection = tagBarGroupId == currentGroupId
         viewLifecycleOwner.lifecycleScope.launch {
             val allText = getString(R.string.bookshelf_tag_all)
             val (tags, tagCounts) = loadBookshelfTagBarData(context, currentGroupId)
@@ -346,7 +355,13 @@ class BookshelfFragment2() :
             if (currentGroupId != groupId) return@launch
             // 在标签列表前插入空字符串作为"全部"标签
             currentTagList = listOf("") + tags
-            tagSelectedIndex = 0
+            val selectedIndex = if (keepSelection) {
+                currentTagList.restoreTagSelection(previousTag)
+            } else {
+                0
+            }
+            tagSelectedIndex = selectedIndex
+            tagBarGroupId = currentGroupId
             tagBar?.applyTopBarStyle(force = true)
             tagBar?.submitItems(
                 currentTagList.map { tag ->
@@ -354,17 +369,18 @@ class BookshelfFragment2() :
                         BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
                     )
                 },
-                0,
+                selectedIndex,
             )
-            tagBar?.setSelectedIndex(0, false)
+            tagBar?.setSelectedIndex(selectedIndex, false)
             tagBarLoaded = true
             // 仅当列表内容已切换到当前分组时立即显示；
             // 否则等待 rebuildEntries 在内容提交同帧显示，避免标签栏先于内容出现
             updateTagBarVisibility()
-            // 标签栏加载完成后，默认选"全部"（tagFilter=null）。
-            // 仅在 tagFilter 有非空旧值时才需重启数据流，避免不必要的取消/重启导致列表闪烁。
-            if (tagFilter != null) {
-                tagFilter = null
+            // 选中的标签可能已消失（被删除/关闭）而回落到"全部"，此时筛选态要跟着变；
+            // 只有确实变化时才重启数据流，避免不必要的取消/重启导致列表闪烁。
+            val newFilter = currentTagList.getOrNull(selectedIndex)?.takeIf { it.isNotEmpty() }
+            if (tagFilter != newFilter) {
+                tagFilter = newFilter
                 restartBooksFlow()
             }
         }

@@ -32,6 +32,7 @@ import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.loadBookshelfTagBarData
+import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.utils.isCreated
@@ -77,6 +78,9 @@ class BookshelfFragment1() :
     private var tagBar: RoundedTagBarView? = null
     private var tagSelectedIndex = -1
     private var currentTagList: List<String> = emptyList()
+
+    /** [tagSelectedIndex] 所属的分组；切分组时选中态要回到「全部」，同一分组内重载则保留 */
+    private var tagBarGroupId: Long? = null
     private val bookGroups = mutableListOf<BookGroup>()
     private val fragmentMap = hashMapOf<Long, BooksFragment>()
     private var currentPosition = 0
@@ -316,17 +320,28 @@ class BookshelfFragment1() :
             tagBar?.visibility = View.GONE
             tagSelectedIndex = -1
             currentTagList = emptyList()
+            tagBarGroupId = null
             fragmentMap[groupId]?.filterByTag(null)
             return
         }
         val currentGroupId = groupId
         val context = requireContext()
+        // 同一分组内重载（详情页改标签、主题切换等都会触发）要保留用户选中的标签，
+        // 无条件回到「全部」会把筛选状态冲掉
+        val previousTag = currentTagList.getOrNull(tagSelectedIndex)
+        val keepSelection = tagBarGroupId == currentGroupId
         viewLifecycleOwner.lifecycleScope.launch {
             val allText = getString(R.string.bookshelf_tag_all)
             val (tags, tagCounts) = loadBookshelfTagBarData(context, currentGroupId)
             // 在标签列表前插入空字符串作为“全部”标签，显示时转为 allText
             currentTagList = listOf("") + tags
-            tagSelectedIndex = 0
+            val selectedIndex = if (keepSelection) {
+                currentTagList.restoreTagSelection(previousTag)
+            } else {
+                0
+            }
+            tagSelectedIndex = selectedIndex
+            tagBarGroupId = currentGroupId
             tagBar?.visibility = View.VISIBLE
             tagBar?.applyTopBarStyle(force = true)
             tagBar?.submitItems(
@@ -335,9 +350,9 @@ class BookshelfFragment1() :
                         BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
                     )
                 },
-                0,
+                selectedIndex,
             )
-            tagBar?.setSelectedIndex(0, false)
+            tagBar?.setSelectedIndex(selectedIndex, false)
             refreshBooksByTag()
         }
     }
