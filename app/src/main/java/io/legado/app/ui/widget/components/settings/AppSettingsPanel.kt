@@ -13,7 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.theme.composePanelShape
-import io.legado.app.ui.theme.pageCardElevatedContainerColor
+import io.legado.app.ui.theme.pagePanelContainerColor
 import io.legado.app.ui.theme.pageSecondaryTextColor
 
 /**
@@ -35,7 +35,7 @@ fun AppSettingsPanel(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .background(pageCardElevatedContainerColor())
+            .background(pagePanelContainerColor())
             .border(AppDimens.dividerThickness, MaterialTheme.colorScheme.outlineVariant, shape),
         content = content
     )

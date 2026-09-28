@@ -210,6 +210,18 @@ fun pageCardElevatedContainerColor(): Color {
     }
 }
 
+/**
+ * 分组面板容器色（设置类页面的成组卡片）。
+ *
+ * 与首页模块卡片 `GlassCard` 的默认容器色取同一口径：半透明 `surfaceVariant`，
+ * 让壁纸透出来——设置页与首页都是"壁纸上的卡片"，透明度不一致会显得两套观感。
+ * 暗色下不做加亮：首页那套同样只调 alpha，保持一致才能"像首页一样"。
+ */
+@Composable
+fun pagePanelContainerColor(): Color {
+    return MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+}
+
 @Composable
 fun pageHeaderContainerColor(): Color {
     val background = MaterialTheme.colorScheme.background
