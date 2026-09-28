@@ -1985,9 +1985,10 @@ class TextChapterLayout(
             for (index in words.indices) {
                 val char = words[index]
                 val cw = textWidths[index]
-                // 命中字距：留白加在命中段与邻字之间，不计入字符列本身，背景也就不会跟着变宽
-                val matchStyle = charStyles?.getOrNull(lineStart + index)
-                x += matchStyle?.letterSpacingBefore ?: 0f
+                // 命中字距：留白加在命中段与邻字之间（命中段跨行时行首/行尾同样让出），
+                // 不计入字符列本身，背景也就不会跟着变宽
+                val charIndex = lineStart + index
+                x += charStyles.lineSpacingBefore(charIndex, index == 0)
                 val x1 = if (char == " ") {
                     if (index != words.lastIndex) (x + cw + d) else (x + cw)
                 } else {
@@ -1996,9 +1997,9 @@ class TextChapterLayout(
                 addCharToLine(
                     book, absStartX, textLine, char,
                     x, x1, index + 1 == words.size, srcList,
-                    clickList, charStyles, lineStart + index,
+                    clickList, charStyles, charIndex,
                 )
-                x = x1 + (matchStyle?.letterSpacingAfter ?: 0f)
+                x = x1 + charStyles.lineSpacingAfter(charIndex, index == words.lastIndex)
             }
         } else {
             val gapCount: Int = words.lastIndex
@@ -2009,16 +2010,17 @@ class TextChapterLayout(
             for (index in words.indices) {
                 val char = words[index]
                 val cw = textWidths[index]
-                // 命中字距：留白加在命中段与邻字之间，不计入字符列本身，背景也就不会跟着变宽
-                val matchStyle = charStyles?.getOrNull(lineStart + index)
-                x += matchStyle?.letterSpacingBefore ?: 0f
+                // 命中字距：留白加在命中段与邻字之间（命中段跨行时行首/行尾同样让出），
+                // 不计入字符列本身，背景也就不会跟着变宽
+                val charIndex = lineStart + index
+                x += charStyles.lineSpacingBefore(charIndex, index == 0)
                 val x1 = if (index != words.lastIndex) (x + cw + d) else (x + cw)
                 addCharToLine(
                     book, absStartX, textLine, char,
                     x, x1, index + 1 == words.size, srcList,
-                    clickList, charStyles, lineStart + index,
+                    clickList, charStyles, charIndex,
                 )
-                x = x1 + (matchStyle?.letterSpacingAfter ?: 0f)
+                x = x1 + charStyles.lineSpacingAfter(charIndex, index == words.lastIndex)
             }
         }
         exceed(absStartX, textLine, words)
@@ -2046,9 +2048,10 @@ class TextChapterLayout(
         for (index in words.indices) {
             val char = words[index]
             val cw = textWidths[index]
-            // 命中字距：留白加在命中段与邻字之间，不计入字符列本身，背景也就不会跟着变宽
-            val matchStyle = charStyles?.getOrNull(lineStart + index)
-            x += matchStyle?.letterSpacingBefore ?: 0f
+            // 命中字距：留白加在命中段与邻字之间（命中段跨行时行首/行尾同样让出），
+            // 不计入字符列本身，背景也就不会跟着变宽
+            val charIndex = lineStart + index
+            x += charStyles.lineSpacingBefore(charIndex, index == 0)
             val x1 = x + cw
             addCharToLine(
                 book,
@@ -2061,9 +2064,9 @@ class TextChapterLayout(
                 srcList,
                 clickList,
                 charStyles,
-                lineStart + index,
+                charIndex,
             )
-            x = x1 + (matchStyle?.letterSpacingAfter ?: 0f)
+            x = x1 + charStyles.lineSpacingAfter(charIndex, index == words.lastIndex)
             if (hasIndent && index == indentLength - 1) {
                 textLine.indentWidth = x
             }
