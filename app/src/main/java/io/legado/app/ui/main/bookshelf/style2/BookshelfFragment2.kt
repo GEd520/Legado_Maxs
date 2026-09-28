@@ -32,6 +32,7 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.BookshelfTagSelection
 import io.legado.app.ui.main.bookshelf.loadBookshelfTagBarData
+import io.legado.app.ui.main.bookshelf.observeBookshelfTagSource
 import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.compose.BookshelfBookEntry
 import io.legado.app.ui.main.bookshelf.compose.BookshelfDisplayConfig
@@ -118,6 +119,8 @@ class BookshelfFragment2() :
         initComposeShelf()
         initBookGroupData()
         initBooksData()
+        // 智能标签数量随阅读进度等字段变化，写入方多且分散，靠事件必然漏发（见该函数说明）
+        observeBookshelfTagSource { loadTagBar() }
     }
 
     private fun initComposeShelf() {

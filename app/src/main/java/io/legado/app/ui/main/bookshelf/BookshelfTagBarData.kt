@@ -1,6 +1,8 @@
 package io.legado.app.ui.main.bookshelf
 
 import android.content.Context
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.BookType
 import io.legado.app.data.appDb
 import io.legado.app.data.dao.BookTagInfo
@@ -10,7 +12,11 @@ import io.legado.app.help.book.BookTagManagement
 import io.legado.app.help.book.BookTagMatcher
 import io.legado.app.help.book.toSmartTagSnapshot
 import io.legado.app.help.config.AppConfig
+import io.legado.app.utils.flowWithLifecycleFirst
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -45,6 +51,31 @@ internal suspend fun loadBookshelfTagBarData(
         smartRules,
     ) + ("" to groupBooks.size)
     mergedTags to counts
+}
+
+/**
+ * 让二级标签栏跟随 `books` 表变化重算。
+ *
+ * 智能标签（未读/在读/读完/有更新…）的数量由书籍字段决定，这些字段的写入散落在
+ * 阅读进度保存（[io.legado.app.model.ReadBook.saveRead]）、目录更新、换源、导入等许多地方，
+ * 靠写入方逐个补发 `EventBus.BOOKSHELF_REFRESH` 必然漏发——表现就是"书读完回到书架，
+ * 未读标签的数量还是旧的，切一次分组才更新"（切分组会重新走 [loadBookshelfTagBarData]）。
+ *
+ * 因此这里不看事件，直接盯住 [appDb.bookDao.flowAllTagInfos]：标签判定相关的列变了就重算。
+ * 投影列与 [BookTagInfo] 一致，`distinctUntilChanged` 会把与标签无关的写入
+ * （封面、简介、阅读时间等）滤掉，不会让封面缓存之类的心跳触发无谓重算。
+ *
+ * 必须在视图已创建后调用（用到 [Fragment.viewLifecycleOwner] 的生命周期与协程作用域）。
+ */
+internal fun Fragment.observeBookshelfTagSource(onTagSourceChanged: () -> Unit) {
+    val owner = viewLifecycleOwner
+    owner.lifecycleScope.launch {
+        appDb.bookDao.flowAllTagInfos
+            .flowWithLifecycleFirst(owner.lifecycle)
+            .conflate()
+            .distinctUntilChanged()
+            .collect { onTagSourceChanged() }
+    }
 }
 
 /**

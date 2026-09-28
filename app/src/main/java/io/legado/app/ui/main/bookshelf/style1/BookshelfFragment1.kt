@@ -33,6 +33,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
 import io.legado.app.ui.main.bookshelf.BookshelfTagSelection
 import io.legado.app.ui.main.bookshelf.loadBookshelfTagBarData
+import io.legado.app.ui.main.bookshelf.observeBookshelfTagSource
 import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
 import io.legado.app.ui.widget.RoundedTagBarView
@@ -107,6 +108,8 @@ class BookshelfFragment1() :
         setSupportToolbar(binding.titleBar.toolbar)
         initView()
         initBookGroupData()
+        // 智能标签数量随阅读进度等字段变化，写入方多且分散，靠事件必然漏发（见该函数说明）
+        observeBookshelfTagSource { loadTagBar() }
     }
 
     private val selectedGroup: BookGroup?
