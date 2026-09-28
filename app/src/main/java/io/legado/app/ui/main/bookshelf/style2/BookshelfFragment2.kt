@@ -30,6 +30,7 @@ import io.legado.app.ui.book.info.BookInfoActivity
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
+import io.legado.app.ui.main.bookshelf.BookshelfTagSelection
 import io.legado.app.ui.main.bookshelf.loadBookshelfTagBarData
 import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.compose.BookshelfBookEntry
@@ -111,6 +112,7 @@ class BookshelfFragment2() :
         tagBar?.setOnTagClickListener { index ->
             tagSelectedIndex = index
             tagBar?.setSelectedIndex(index)
+            BookshelfTagSelection.remember(groupId, currentTagList.getOrNull(index))
             applyTagFilter()
         }
         initComposeShelf()
@@ -344,10 +346,14 @@ class BookshelfFragment2() :
         }
         val currentGroupId = groupId
         val context = requireContext()
-        // 同一分组内重载（详情页改标签、主题切换等）要保留用户选中的标签，
-        // 无条件回到「全部」会把筛选状态冲掉
-        val previousTag = currentTagList.getOrNull(tagSelectedIndex)
-        val keepSelection = tagBarGroupId == currentGroupId
+        // 同一分组内重载（详情页改标签、改主题等）要保留用户选中的标签，
+        // 无条件回到「全部」会把筛选状态冲掉；跨主界面重建的恢复由 BookshelfTagSelection 承载，
+        // 分组确实换了则不再沿用（别的分组的标签列表不是同一套）
+        val previousTag = if (tagBarGroupId == currentGroupId) {
+            currentTagList.getOrNull(tagSelectedIndex)
+        } else {
+            BookshelfTagSelection.consume(currentGroupId)
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             val allText = getString(R.string.bookshelf_tag_all)
             val (tags, tagCounts) = loadBookshelfTagBarData(context, currentGroupId)
@@ -355,13 +361,10 @@ class BookshelfFragment2() :
             if (currentGroupId != groupId) return@launch
             // 在标签列表前插入空字符串作为"全部"标签
             currentTagList = listOf("") + tags
-            val selectedIndex = if (keepSelection) {
-                currentTagList.restoreTagSelection(previousTag)
-            } else {
-                0
-            }
+            val selectedIndex = currentTagList.restoreTagSelection(previousTag)
             tagSelectedIndex = selectedIndex
             tagBarGroupId = currentGroupId
+            BookshelfTagSelection.remember(currentGroupId, currentTagList.getOrNull(selectedIndex))
             tagBar?.applyTopBarStyle(force = true)
             tagBar?.submitItems(
                 currentTagList.map { tag ->

@@ -31,6 +31,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
+import io.legado.app.ui.main.bookshelf.BookshelfTagSelection
 import io.legado.app.ui.main.bookshelf.loadBookshelfTagBarData
 import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
@@ -119,6 +120,7 @@ class BookshelfFragment1() :
         tagBar?.setOnTagClickListener { index ->
             tagSelectedIndex = index
             tagBar?.setSelectedIndex(index)
+            BookshelfTagSelection.remember(groupId, currentTagList.getOrNull(index))
             refreshBooksByTag()
         }
         // 根据"下拉选择分组"开关动态添加布局到 TitleBar
@@ -326,22 +328,23 @@ class BookshelfFragment1() :
         }
         val currentGroupId = groupId
         val context = requireContext()
-        // 同一分组内重载（详情页改标签、主题切换等都会触发）要保留用户选中的标签，
-        // 无条件回到「全部」会把筛选状态冲掉
-        val previousTag = currentTagList.getOrNull(tagSelectedIndex)
-        val keepSelection = tagBarGroupId == currentGroupId
+        // 同一分组内重载（详情页改标签、改主题等都会触发）要保留用户选中的标签，
+        // 无条件回到「全部」会把筛选状态冲掉；跨主界面重建的恢复由 BookshelfTagSelection 承载，
+        // 分组确实换了则不再沿用（别的分组的标签列表不是同一套）
+        val previousTag = if (tagBarGroupId == currentGroupId) {
+            currentTagList.getOrNull(tagSelectedIndex)
+        } else {
+            BookshelfTagSelection.consume(currentGroupId)
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             val allText = getString(R.string.bookshelf_tag_all)
             val (tags, tagCounts) = loadBookshelfTagBarData(context, currentGroupId)
             // 在标签列表前插入空字符串作为“全部”标签，显示时转为 allText
             currentTagList = listOf("") + tags
-            val selectedIndex = if (keepSelection) {
-                currentTagList.restoreTagSelection(previousTag)
-            } else {
-                0
-            }
+            val selectedIndex = currentTagList.restoreTagSelection(previousTag)
             tagSelectedIndex = selectedIndex
             tagBarGroupId = currentGroupId
+            BookshelfTagSelection.remember(currentGroupId, currentTagList.getOrNull(selectedIndex))
             tagBar?.visibility = View.VISIBLE
             tagBar?.applyTopBarStyle(force = true)
             tagBar?.submitItems(
@@ -422,7 +425,8 @@ class BookshelfFragment1() :
         override fun getItem(position: Int): Fragment {
             val group = bookGroups[position]
             onlyUpdateRead = group.onlyUpdateRead
-            return BooksFragment(position, group)
+            // 主界面重建后待恢复的选中标签：首帧就带上，列表不必先渲染未筛选内容再纠正
+            return BooksFragment(position, group, BookshelfTagSelection.peek(group.groupId))
         }
 
         override fun getCount(): Int = bookGroups.size

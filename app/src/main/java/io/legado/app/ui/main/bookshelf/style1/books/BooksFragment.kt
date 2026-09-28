@@ -62,13 +62,18 @@ import kotlin.math.max
  */
 class BooksFragment() : BaseFragment(R.layout.fragment_books) {
 
-    constructor(position: Int, group: BookGroup) : this() {
+    /**
+     * @param initialTag 首帧就要应用的标签筛选。主界面重建后父级会带上待恢复的选中标签，
+     *   让列表一开始就按它过滤，避免"先显示全部再被筛掉"那一下闪烁
+     */
+    constructor(position: Int, group: BookGroup, initialTag: String? = null) : this() {
         val bundle = Bundle()
         bundle.putInt("position", position)
         bundle.putLong("groupId", group.groupId)
         bundle.putInt("bookSort", group.getRealBookSort())
         bundle.putBoolean("enableRefresh", group.enableRefresh)
         bundle.putBoolean("onlyUpdateRead", group.onlyUpdateRead)
+        bundle.putString("initialTag", initialTag)
         arguments = bundle
     }
 
@@ -102,6 +107,8 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books) {
             bookSort = it.getInt("bookSort", 0)
             enableRefresh = it.getBoolean("enableRefresh", true)
             onlyUpdateRead = it.getBoolean("onlyUpdateRead", false)
+            // 首次数据加载前就带上筛选，避免重建后先渲染未筛选列表再纠正
+            tagFilter = it.getString("initialTag")
             binding.refreshLayout.isEnabled = enableRefresh
         }
         updateMainBottomPadding((activity as? MainActivity)?.mainContentBottomPadding() ?: 0)

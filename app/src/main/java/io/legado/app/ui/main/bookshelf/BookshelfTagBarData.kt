@@ -48,6 +48,42 @@ internal suspend fun loadBookshelfTagBarData(
 }
 
 /**
+ * 主界面重建后要恢复的二级标签选中态（进程级暂存）。
+ *
+ * 切日夜主题时 `MainActivity` 走「清任务 + 全新启动」重建（见 `MainActivity.recreate`），
+ * 书架 Fragment 会被重建，而 CLEAR_TASK 启动拿不到 savedInstanceState——与
+ * `MainActivity.lastTabFragmentId` 同理，这类「重建后要保持的界面状态」只能放进程级存储。
+ *
+ * 一次性语义：只在重建后**第一次**加载那个分组的标签栏时消费，消费后即清空，
+ * 这样用户手动切分组仍会回到「全部」（沿用别的分组的筛选没有意义）。
+ * 进程被杀后自然清空，重进 App 回到「全部」是符合预期的。
+ */
+internal object BookshelfTagSelection {
+
+    private var pendingGroupId: Long? = null
+    private var pendingTag: String? = null
+
+    /** 记下某分组当前选中的标签（空串表示「全部」），供下次重建恢复 */
+    fun remember(groupId: Long, tag: String?) {
+        pendingGroupId = groupId
+        pendingTag = tag
+    }
+
+    /** 取出该分组待恢复的选中标签；分组不匹配或没有记录时返回 null（调用方按「全部」处理） */
+    fun consume(groupId: Long): String? {
+        if (pendingGroupId != groupId) return null
+        val tag = pendingTag
+        pendingGroupId = null
+        pendingTag = null
+        return tag
+    }
+
+    /** 只看不取：给孩子页当初始筛选用，不能影响 [consume] 的一次性语义 */
+    fun peek(groupId: Long): String? =
+        if (pendingGroupId == groupId) pendingTag?.takeIf { it.isNotEmpty() } else null
+}
+
+/**
  * 在重算后的标签列表里找回上次选中的标签，找不到时回落到「全部」（索引 0）。
  *
  * 标签栏会随书籍标签变更、主题切换等原因整份重算，重算时不能用固定索引（下标会错位），
