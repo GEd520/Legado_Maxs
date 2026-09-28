@@ -41,6 +41,14 @@
    - `postEventDelay` 只用于确定性时序（重试退避、延迟刷新），禁止当"防抖"用——防抖用协程 `delay` 或 `flow.debounce`，总线延迟事件在宿主销毁后仍会派发，时序不可控。
    - `postEventOrderly` 用于"多个同类事件必须按序到达"的场景（批量刷新），默认 `post` 不保证顺序，发序列事件前先想清楚顺序是否重要。
 
+9. **从数据库派生的展示数据，不要靠"写完发事件"保持一致。**
+   写入点分散在多个模块时逐个补 `postEvent` 必然漏发——例如书籍阅读进度会被 `ReadBook.saveRead`、
+   目录更新、换源、导入等多处改写，漏一处就是"读完回到书架，智能标签的数量还是旧的，切一次分组才更新"。
+   做法：展示数据直接跟随对应表的 Flow（`flowWithLifecycleFirst` + `distinctUntilChanged` + `conflate`），
+   参考 `observeBookshelfTagSource`（`ui/main/bookshelf/BookshelfTagBarData.kt`）——投影列只取判定所需字段，
+   `distinctUntilChanged` 就能把无关写入（封面、简介）滤掉。
+   事件留给**不落库的配置类**变更（标签配置、隐藏标签、智能标签开关、布局开关等，Flow 收不到）。
+
 ## 3. 双轨选型边界（LiveEventBus vs `Channel<Event>`）
 
 | 维度 | LiveEventBus | `Channel<Event>`（Compose） |
