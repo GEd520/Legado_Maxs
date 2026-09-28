@@ -271,6 +271,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             ).catch {
                 AppLog.put("发现界面更新数据出错", it)
             }.conflate().flowOn(IO).collect { data ->
+                // 书源表失效时作废控制器里缓存的书源对象，否则改了发现配置也只会读到旧对象
+                kindsController.invalidateBookSources()
                 sourceItems = data
                 displayItems = data.toExploreSourceItems()
                 // 搜索中不显示空态：搜索框里的字还没清掉，列表空着是正常的

@@ -61,6 +61,24 @@ class ExploreKindsController(
         refreshTicks[sourceUrl] = (refreshTicks[sourceUrl] ?: 0) + 1
     }
 
+    /**
+     * 书源表变化后作废已缓存的书源对象与 JS 桥。
+     *
+     * 分类缓存的 key 含 `exploreUrl`（见 `BookSource.getExploreKindsKey`），本意是"改了配置
+     * key 自然变、不用手动刷"；但缓存里存的是 `BookSource` **对象本身**，书源被编辑后旧对象
+     * 仍在，重算出的还是旧 key，于是永远命中旧分类——表现为改了发现配置后要重启 App 才生效，
+     * 长按菜单的"刷新"也因为读的是旧对象而无效。这里在表失效时把用过的书源对象丢掉，
+     * 并递增重建信号让已展开的行重新求值。
+     */
+    fun invalidateBookSources() {
+        if (sources.isEmpty()) return
+        val urls = sources.keys.toList()
+        sources.clear()
+        jsExtensions.clear()
+        jsExtensionCallbacks.clear()
+        urls.forEach(::requestRefresh)
+    }
+
     /** 读取书源的发现分类；[exploreKinds] 自带进程内缓存，这里不再叠一层缓存。 */
     suspend fun loadKinds(sourceUrl: String): List<ExploreKind> {
         val source = bookSource(sourceUrl) ?: return emptyList()
