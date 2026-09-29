@@ -138,6 +138,7 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         initSearchView()
         initComposeContent()
         initGroupData()
+        initBookSourceInvalidation()
         upExploreData(searchView.query?.toString())
     }
 
@@ -223,6 +224,27 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         }
     }
 
+    /**
+     * 订阅书源表的失效事件，真写库时才作废控制器缓存的书源对象（否则改了发现配置只会读到旧对象）。
+     *
+     * 不能挂在 `upExploreData` 的数据流上：那条流每次回到本页都会重发一次数据
+     * （[flowWithLifecycleAndDatabaseChange] 的初始信号会随生命周期重启再发），
+     * 在那里作废会递增重建信号、让已展开书源重新求值——`@js:` 书源（如"起点中文网(按钮筛选)"）
+     * 于是在"进一次分类再返回"这种与数据无关的往返里重跑分类脚本，重复弹提示 / 重复发请求。
+     *
+     * 这里用 `emitInitialState = false`：订阅瞬间不补发，只收真实写入；并且**不挂**
+     * `repeatOnLifecycle`——编辑书源期间本页处于 STOPPED，若按可见性收起订阅，
+     * 保存产生的那次写入会落在订阅之外（Room 的失效流只对比订阅期间的版本号，不补发历史变更），
+     * 缓存就再也追不上新数据了。订阅本身只跟踪版本号，不查库，常驻没有额外开销。
+     */
+    private fun initBookSourceInvalidation() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            appDb.invalidationTracker
+                .createFlow(AppDatabase.BOOK_SOURCE_TABLE_NAME, emitInitialState = false)
+                .collect { kindsController.invalidateBookSources() }
+        }
+    }
+
     private fun upExploreData(searchKey: String? = null) {
         exploreFlowJob?.cancel()
         exploreFlowJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -271,8 +293,6 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             ).catch {
                 AppLog.put("发现界面更新数据出错", it)
             }.conflate().flowOn(IO).collect { data ->
-                // 书源表失效时作废控制器里缓存的书源对象，否则改了发现配置也只会读到旧对象
-                kindsController.invalidateBookSources()
                 sourceItems = data
                 displayItems = data.toExploreSourceItems()
                 // 搜索中不显示空态：搜索框里的字还没清掉，列表空着是正常的

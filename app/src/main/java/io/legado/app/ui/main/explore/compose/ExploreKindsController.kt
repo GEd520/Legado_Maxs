@@ -62,13 +62,17 @@ class ExploreKindsController(
     }
 
     /**
-     * 书源表变化后作废已缓存的书源对象与 JS 桥。
+     * 书源表**真的被写入**后作废已缓存的书源对象与 JS 桥。
      *
      * 分类缓存的 key 含 `exploreUrl`（见 `BookSource.getExploreKindsKey`），本意是"改了配置
      * key 自然变、不用手动刷"；但缓存里存的是 `BookSource` **对象本身**，书源被编辑后旧对象
      * 仍在，重算出的还是旧 key，于是永远命中旧分类——表现为改了发现配置后要重启 App 才生效，
      * 长按菜单的"刷新"也因为读的是旧对象而无效。这里在表失效时把用过的书源对象丢掉，
      * 并递增重建信号让已展开的行重新求值。
+     *
+     * 调用方必须是"库表失效事件"（见 `ExploreFragment.initBookSourceInvalidation`），
+     * 不能是发现列表的数据流：那条流每次回到本页都会重发数据，在这里作废会让已展开的书源
+     * 与服务端来回无关地重跑分类脚本（`@js:` 书源会重复弹提示、重复发请求）。
      */
     fun invalidateBookSources() {
         if (sources.isEmpty()) return
