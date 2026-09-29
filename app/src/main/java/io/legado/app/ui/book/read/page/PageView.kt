@@ -23,6 +23,7 @@ import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.config.ReaderInfoValues
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.TextPos
@@ -475,6 +476,13 @@ class PageView(context: Context) : FrameLayout(context) {
         anchor.x += imgBgPaddingStart
         anchor.y += headerHeight
         return anchor
+    }
+
+    /**
+     * 翻页（含翻页动画）导致页窗口位移后，跨页选择的选区两端跟着平移
+     */
+    fun shiftSelectByPageTurn(direction: PageDirection) {
+        binding.contentTextView.shiftSelectByPageTurn(direction)
     }
 
     /**

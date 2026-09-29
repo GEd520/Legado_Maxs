@@ -142,7 +142,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private var magnifierAnchorX = 0f
     private var magnifierAnchorY = 0f
 
-    /** 放大镜绘制参数：气泡圆角、放大倍数、锚点在气泡内的纵向占比（上方放不下时翻到下方） */
+    /** 放大镜绘制参数：圆形气泡、与文字的间隙、放大倍数、锚点在气泡内的偏移占比 */
     private val magnifierRect = RectF()
     private val magnifierPath = Path()
     private val magnifierBgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -150,10 +150,12 @@ class ReadView(context: Context, attrs: AttributeSet) :
         style = Paint.Style.STROKE
         strokeWidth = 1.dpToPx().toFloat()
     }
-    private val magnifierRadius = 8.dpToPx().toFloat()
     private val magnifierZoom = 1.6f
-    private val magnifierAnchorAboveRatio = 0.72f
-    private val magnifierAnchorBelowRatio = 0.30f
+    private val magnifierAnchorInsideRatio = 0.45f
+
+    /** 气泡直径按屏幕取，保证不同字号下都能看到几个字；与行的间隙按行高取 */
+    private val magnifierSizeRatio = 0.45f
+    private val magnifierGapRatio = 0.25f
     val autoPager = AutoPager(this)  // 自动翻页器
     val isAutoPage get() = autoPager.isRunning  // 是否正在自动翻页
 
@@ -514,40 +516,43 @@ class ReadView(context: Context, attrs: AttributeSet) :
     /**
      * 画选区放大镜（由 [SelectionMagnifierView] 调用）
      *
-     * 直接把正文内容按比例画进气泡，气泡里看到的就是当前帧的真实文字与选中高亮，
-     * 不存在"实际选中了气泡里没高亮"的情况。
+     * 圆形气泡，整体浮在端点所在行的上方（手指在行上、气泡在行上方，不会挡住），
+     * 上方放不下时才放到该行下方。气泡里直接画当前页正文，和屏幕同一帧同一份选中状态。
      */
     fun drawSelectionMagnifier(canvas: Canvas) {
         if (!magnifierVisible || !isTextSelected) return
         val page = curPage
         val lineHeight = page.textPage.lines.firstOrNull()?.height ?: 0f
         if (lineHeight <= 0f) return
-        val bubbleWidth = min(width * 0.76f, ChapterProvider.visibleWidth * 0.72f)
-        val bubbleHeight = lineHeight * magnifierZoom * 1.3f
-        if (bubbleWidth <= 0f || bubbleHeight <= 0f) return
-        val left = (magnifierAnchorX - bubbleWidth / 2f).coerceIn(0f, max(0f, width - bubbleWidth))
-        val topIfAbove = magnifierAnchorY - bubbleHeight * magnifierAnchorAboveRatio
-        val anchorRatio: Float
-        val top: Float
-        if (topIfAbove >= 0f) {
-            anchorRatio = magnifierAnchorAboveRatio
-            top = topIfAbove
+        val diameter = min(width * magnifierSizeRatio, height * 0.26f)
+        if (diameter <= 0f) return
+        val gap = lineHeight * magnifierGapRatio
+        val radius = diameter / 2f
+        val centerX = (magnifierAnchorX - radius).coerceIn(0f, max(0f, width - diameter)) + radius
+        val lineTop = magnifierAnchorY - lineHeight / 2f
+        val lineBottom = magnifierAnchorY + lineHeight / 2f
+        val topIfAbove = lineTop - gap - diameter
+        val above = topIfAbove >= 0f
+        val top = if (above) {
+            topIfAbove
         } else {
-            // 上方放不下就放到锚点下方，锚点仍映射到气泡内固定位置
-            anchorRatio = magnifierAnchorBelowRatio
-            top = (magnifierAnchorY - bubbleHeight * magnifierAnchorBelowRatio)
-                .coerceIn(0f, max(0f, height - bubbleHeight))
+            (lineBottom + gap).coerceIn(0f, max(0f, height - diameter))
         }
-        magnifierRect.set(left, top, left + bubbleWidth, top + bubbleHeight)
-        magnifierPath.reset()
-        magnifierPath.addRoundRect(
-            magnifierRect, magnifierRadius, magnifierRadius, Path.Direction.CW
+        magnifierRect.set(
+            centerX - radius, top, centerX + radius, top + diameter
         )
+        magnifierPath.reset()
+        magnifierPath.addCircle(centerX, top + radius, radius, Path.Direction.CW)
+        // 锚点映射到圆心偏下（气泡在行上方）/偏上（气泡在行下方），文字朝远离手指的方向铺开
+        val anchorInsideY = top + radius + if (above) {
+            radius * magnifierAnchorInsideRatio
+        } else {
+            -radius * magnifierAnchorInsideRatio
+        }
         canvas.withClip(magnifierPath) {
             magnifierBgPaint.color = ReadBookConfig.bgMeanColor
-            drawRect(magnifierRect, magnifierBgPaint)
-            // 把锚点搬到气泡内的固定位置，再按倍数放大后复用正文的绘制
-            withTranslation(left + bubbleWidth / 2f, top + bubbleHeight * anchorRatio) {
+            drawCircle(centerX, top + radius, radius, magnifierBgPaint)
+            withTranslation(centerX, anchorInsideY) {
                 scale(magnifierZoom, magnifierZoom)
                 translate(-magnifierAnchorX, -magnifierAnchorY)
                 page.drawContentText(this)
@@ -702,7 +707,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
      * @param direction 翻页方向
      */
     fun fillPage(direction: PageDirection): Boolean {
-        return when (direction) {
+        val moved = when (direction) {
             PageDirection.PREV -> {
                 pageFactory.moveToPrev(true)
             }
@@ -713,6 +718,11 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
             else -> false
         }
+        // 跨页选择时页窗口位移（含翻页动画结束后的位移），选区两端跟着平移，锚点仍指向原文字
+        if (moved && isTextSelected) {
+            curPage.shiftSelectByPageTurn(direction)
+        }
+        return moved
     }
 
     /**

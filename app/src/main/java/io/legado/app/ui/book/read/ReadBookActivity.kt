@@ -259,6 +259,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override val pageDelegate get() = binding.readView.pageDelegate
     override val headerHeight: Int get() = binding.readView.curPage.headerHeight
     override val imgBgPaddingStart: Int get() = binding.readView.curPage.imgBgPaddingStart
+    override val pageAnimationSpeed: Int get() = binding.readView.defaultAnimationSpeed
     private val nextPageDebounce by lazy { Debounce { keyPage(PageDirection.NEXT) } }
     private val prevPageDebounce by lazy { Debounce { keyPage(PageDirection.PREV) } }
     private var bookChanged = false
@@ -961,6 +962,13 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun onSelectAutoPageTurned(dragStartPoint: Boolean) {
         showCursorMagnifier(dragStartPoint)
+    }
+
+    /**
+     * 跨页选择开始翻页：翻页动画期间先收起放大镜，动画结束再按新端点显示
+     */
+    override fun onSelectPageTurnStart() {
+        binding.readView.dismissSelectionMagnifier()
     }
 
     /**
