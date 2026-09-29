@@ -105,6 +105,8 @@ private fun BookshelfListContent(
     onEntryLongClick: (BookshelfEntry) -> Unit,
 ) {
     val spacing = rememberShelfSpacing(displayConfig.marginPx, bottomPaddingPx)
+    // 底栏浮在内容之上，滚动条轨道要一起收在底栏之上，滚到底部时拖柄才不会被盖住
+    val scrollbarBottomInset = with(LocalDensity.current) { bottomPaddingPx.toDp() }
     val canScrollBack by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
@@ -146,6 +148,7 @@ private fun BookshelfListContent(
         if (displayConfig.fastScrollerEnabled) {
             VerticalScrollbar(
                 state = listState,
+                bottomInset = scrollbarBottomInset,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }
@@ -166,6 +169,7 @@ private fun BookshelfGridContent(
     onEntryLongClick: (BookshelfEntry) -> Unit,
 ) {
     val spacing = rememberShelfSpacing(displayConfig.marginPx, bottomPaddingPx)
+    val scrollbarBottomInset = with(LocalDensity.current) { bottomPaddingPx.toDp() }
     val canScrollBack by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
@@ -218,6 +222,7 @@ private fun BookshelfGridContent(
         if (displayConfig.fastScrollerEnabled) {
             VerticalScrollbar(
                 state = listState,
+                bottomInset = scrollbarBottomInset,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )
         }

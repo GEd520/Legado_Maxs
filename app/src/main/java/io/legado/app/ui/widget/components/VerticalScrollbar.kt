@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
@@ -43,7 +44,9 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.utils.ColorUtils
@@ -85,11 +88,15 @@ private const val ScrollbarHideDelayMillis = 1_000L
  *
  * @param state 被控制内容的滚动状态，拖拽按比例反过来驱动它
  * @param modifier 施加在拖拽感应区上的修饰符，调用点通常只做 `align(Alignment.CenterEnd)`
+ * @param bottomInset 轨道底部内缩。主界面 Tab 页的底栏是浮在内容之上的，
+ *   传底栏高度（`MainActivity.mainContentBottomPadding()` 下发的 px 换算成 dp）可让拖柄行程止于底栏之上；
+ *   弹窗、独立 Activity 内容不被底栏遮挡，保持默认 0
  */
 @Composable
 fun VerticalScrollbar(
     state: LazyListState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp
 ) {
     val canScroll = state.canScrollForward || state.canScrollBackward
     // 像素口径：内容总高与已滚距离都用"可见项平均高度"估算，两者同口径，
@@ -132,7 +139,8 @@ fun VerticalScrollbar(
                 }
             }
         },
-        modifier = modifier
+        modifier = modifier,
+        bottomInset = bottomInset
     )
 }
 
@@ -141,7 +149,8 @@ fun VerticalScrollbar(
 @Composable
 fun VerticalScrollbar(
     state: LazyGridState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp
 ) {
     val canScroll = state.canScrollForward || state.canScrollBackward
     // 网格要按"行"算：item 下标每行跳列数次，直接用下标会让拖柄一行一行地窜，
@@ -187,7 +196,8 @@ fun VerticalScrollbar(
                 }
             }
         },
-        modifier = modifier
+        modifier = modifier,
+        bottomInset = bottomInset
     )
 }
 
@@ -202,7 +212,8 @@ private fun columnsInFirstRow(visibleItems: List<LazyGridItemInfo>): Int {
 @Composable
 fun VerticalScrollbar(
     state: ScrollState,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp
 ) {
     val canScroll = state.maxValue > 0
     val scrollFraction by remember(state) {
@@ -227,7 +238,8 @@ fun VerticalScrollbar(
                 scrollJob = scope.launch { state.scrollTo((fraction * maxValue).roundToInt()) }
             }
         },
-        modifier = modifier
+        modifier = modifier,
+        bottomInset = bottomInset
     )
 }
 
@@ -239,7 +251,8 @@ private fun ScrollbarHandle(
     canScroll: Boolean,
     isScrollInProgress: Boolean,
     onScrollFractionChange: (Float) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp
 ) {
     var dragging by remember { mutableStateOf(false) }
     var visible by remember { mutableStateOf(false) }
@@ -305,6 +318,8 @@ private fun ScrollbarHandle(
         modifier = modifier
             .width(AppDimens.scrollbarRailWidth)
             .fillMaxHeight()
+            // 底栏浮在内容之上时把轨道整体收在底栏之上，否则滚到底部拖柄会被底栏盖住
+            .padding(bottom = bottomInset)
             .onSizeChanged { railHeightPx = it.height.toFloat() }
             .then(
                 // 淡出后不吃触摸，避免挡住内容右缘的点击与滑动

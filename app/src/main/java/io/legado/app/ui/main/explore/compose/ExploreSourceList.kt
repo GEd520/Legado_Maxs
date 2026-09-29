@@ -38,6 +38,8 @@ internal fun ExploreSourceList(
     val bottomPadding = remember(bottomPaddingPx, density) {
         with(density) { bottomPaddingPx.toDp() + AppDimens.exploreRowBottomPadding }
     }
+    // 底栏浮在内容之上，滚动条轨道要一起收在底栏之上，滚到底部时拖柄才不会被盖住
+    val scrollbarBottomInset = with(density) { bottomPaddingPx.toDp() }
 
     // 展开后把该行滚到列表顶部，对齐原实现的 scrollToPositionWithOffset(pos, 0)：
     // 分类区是往上长出来的，不滚上去会被底栏挡住
@@ -69,6 +71,7 @@ internal fun ExploreSourceList(
         }
         VerticalScrollbar(
             state = listState,
+            bottomInset = scrollbarBottomInset,
             modifier = Modifier.align(Alignment.CenterEnd),
         )
     }
