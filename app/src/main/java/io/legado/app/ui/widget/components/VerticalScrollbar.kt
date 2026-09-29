@@ -1,38 +1,53 @@
 package io.legado.app.ui.widget.components
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-private val ScrollbarWidth = 6.dp
-private val ScrollbarMinThumbHeightPx = 32f
-private val ScrollbarShape = RoundedCornerShape(3.dp)
+/** 拖拽区（轨道区）宽度，覆盖在内容右缘之上。 */
+private val ScrollbarRailWidth = 24.dp
+private val ScrollbarTrackWidth = 2.dp
+private val ScrollbarThumbWidth = 8.dp
+private val ScrollbarThumbHeight = 40.dp
+private val ScrollbarVerticalPadding = 8.dp
+private const val ScrollbarTrackAlpha = 0.30f
+private const val ScrollbarHideDelayMillis = 1_000L
 
 /**
  * 通用的可拖拽垂直滚动条。
+ *
+ * 外观与显隐节奏对齐 NG 版书籍目录的快速滚动块：2dp 细轨道 + 8dp×40dp 主题色拖柄；
+ * 内容不可滚动时完全不显示，滚动中或拖拽中显示、停止 1s 后淡出，淡出后不拦截触摸。
  *
  * 用法：将滚动条和内容放在同一个 Box 中，滚动条对齐右侧。
  *
@@ -52,33 +67,39 @@ fun VerticalScrollbar(
     state: LazyListState,
     modifier: Modifier = Modifier
 ) {
-    val info = state.layoutInfo
-    val totalItems = info.totalItemsCount
-    if (totalItems == 0) return
-
-    val visible = info.visibleItemsInfo
-    if (visible.size >= totalItems) return
-
-    val viewportHeight = info.viewportSize.height.toFloat()
-    if (viewportHeight <= 0f) return
-
-    val avgItemHeight = visible.sumOf { it.size }.toFloat() / visible.size
-    val totalHeight = avgItemHeight * totalItems
-    val maxScroll = totalHeight - viewportHeight
-    if (maxScroll <= 0f) return
-
-    val scrollOffset = state.firstVisibleItemIndex * avgItemHeight + state.firstVisibleItemScrollOffset
-    val scrollFraction = (scrollOffset / maxScroll).coerceIn(0f, 1f)
-    val contentFraction = (viewportHeight / totalHeight).coerceIn(0.05f, 1f)
-
+    val canScroll by remember(state) {
+        derivedStateOf {
+            val info = state.layoutInfo
+            info.visibleItemsInfo.isNotEmpty() && info.totalItemsCount > info.visibleItemsInfo.size
+        }
+    }
+    val scrollFraction by remember(state) {
+        derivedStateOf {
+            val info = state.layoutInfo
+            val visibleItems = info.visibleItemsInfo
+            val first = visibleItems.firstOrNull()
+            val maxFirstIndex = (info.totalItemsCount - visibleItems.size).coerceAtLeast(1)
+            if (first == null || first.size <= 0) {
+                0f
+            } else {
+                val itemOffset = (-first.offset).toFloat() / first.size
+                ((first.index + itemOffset) / maxFirstIndex).coerceIn(0f, 1f)
+            }
+        }
+    }
+    val scope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
     ScrollbarThumb(
-        contentFraction = contentFraction,
         scrollFraction = scrollFraction,
-        onDragFraction = { fraction ->
-            val targetOffset = fraction * maxScroll
-            val targetIndex = (targetOffset / avgItemHeight).toInt().coerceIn(0, totalItems - 1)
-            val itemOffset = (targetOffset - targetIndex * avgItemHeight).toInt()
-            state.requestScrollToItem(targetIndex, itemOffset)
+        canScroll = canScroll,
+        isScrollInProgress = state.isScrollInProgress,
+        onScrollFractionChange = { fraction ->
+            val totalItems = state.layoutInfo.totalItemsCount
+            if (totalItems > 0) {
+                val index = (fraction * (totalItems - 1)).roundToInt().coerceIn(0, totalItems - 1)
+                scrollJob?.cancel()
+                scrollJob = scope.launch { state.scrollToItem(index) }
+            }
         },
         modifier = modifier
     )
@@ -91,34 +112,40 @@ fun VerticalScrollbar(
     state: LazyGridState,
     modifier: Modifier = Modifier
 ) {
-    val info = state.layoutInfo
-    val totalItems = info.totalItemsCount
-    if (totalItems == 0) return
-
-    val visible = info.visibleItemsInfo
-    if (visible.isEmpty() || visible.size >= totalItems) return
-
-    val viewportHeight = info.viewportSize.height.toFloat()
-    if (viewportHeight <= 0f) return
-
-    // 网格的行高用可见项平均高度近似：同一行内各项高度一致，误差只来自首末未对齐的滚动行
-    val avgItemHeight = visible.sumOf { it.size.height }.toFloat() / visible.size
-    val totalHeight = avgItemHeight * totalItems
-    val maxScroll = totalHeight - viewportHeight
-    if (maxScroll <= 0f) return
-
-    val scrollOffset = state.firstVisibleItemIndex * avgItemHeight + state.firstVisibleItemScrollOffset
-    val scrollFraction = (scrollOffset / maxScroll).coerceIn(0f, 1f)
-    val contentFraction = (viewportHeight / totalHeight).coerceIn(0.05f, 1f)
-
+    val canScroll by remember(state) {
+        derivedStateOf {
+            val info = state.layoutInfo
+            info.visibleItemsInfo.isNotEmpty() && info.totalItemsCount > info.visibleItemsInfo.size
+        }
+    }
+    val scrollFraction by remember(state) {
+        derivedStateOf {
+            val info = state.layoutInfo
+            val visibleItems = info.visibleItemsInfo
+            // 网格按行滚动：首行高度即该行的行高，用它在行内插值
+            val first = visibleItems.firstOrNull()
+            val maxFirstIndex = (info.totalItemsCount - visibleItems.size).coerceAtLeast(1)
+            if (first == null || first.size.height <= 0) {
+                0f
+            } else {
+                val itemOffset = (-first.offset.y).toFloat() / first.size.height
+                ((first.index + itemOffset) / maxFirstIndex).coerceIn(0f, 1f)
+            }
+        }
+    }
+    val scope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
     ScrollbarThumb(
-        contentFraction = contentFraction,
         scrollFraction = scrollFraction,
-        onDragFraction = { fraction ->
-            val targetOffset = fraction * maxScroll
-            val targetIndex = (targetOffset / avgItemHeight).toInt().coerceIn(0, totalItems - 1)
-            val itemOffset = (targetOffset - targetIndex * avgItemHeight).toInt()
-            state.requestScrollToItem(targetIndex, itemOffset)
+        canScroll = canScroll,
+        isScrollInProgress = state.isScrollInProgress,
+        onScrollFractionChange = { fraction ->
+            val totalItems = state.layoutInfo.totalItemsCount
+            if (totalItems > 0) {
+                val index = (fraction * (totalItems - 1)).roundToInt().coerceIn(0, totalItems - 1)
+                scrollJob?.cancel()
+                scrollJob = scope.launch { state.scrollToItem(index) }
+            }
         },
         modifier = modifier
     )
@@ -131,18 +158,32 @@ fun VerticalScrollbar(
     state: ScrollState,
     modifier: Modifier = Modifier
 ) {
-    val maxValue = state.maxValue
-    if (maxValue <= 0) return
-
+    val canScroll by remember(state) {
+        derivedStateOf { state.maxValue > 0 }
+    }
+    val scrollFraction by remember(state) {
+        derivedStateOf {
+            if (state.maxValue > 0) {
+                (state.value.toFloat() / state.maxValue).coerceIn(0f, 1f)
+            } else {
+                0f
+            }
+        }
+    }
+    val scope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
     ScrollbarThumb(
-        contentFraction = null,
-        scrollFraction = (state.value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f),
-        onDragFraction = { fraction ->
-            val target = (fraction * maxValue).toInt()
-            state.dispatchRawDelta((target - state.value).toFloat())
+        scrollFraction = scrollFraction,
+        canScroll = canScroll,
+        isScrollInProgress = state.isScrollInProgress,
+        onScrollFractionChange = { fraction ->
+            val maxValue = state.maxValue
+            if (maxValue > 0) {
+                scrollJob?.cancel()
+                scrollJob = scope.launch { state.scrollTo((fraction * maxValue).roundToInt()) }
+            }
         },
-        modifier = modifier,
-        scrollStateMaxValue = maxValue
+        modifier = modifier
     )
 }
 
@@ -150,65 +191,95 @@ fun VerticalScrollbar(
 
 @Composable
 private fun ScrollbarThumb(
-    contentFraction: Float?,
     scrollFraction: Float,
-    onDragFraction: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-    scrollStateMaxValue: Int = 0
+    canScroll: Boolean,
+    isScrollInProgress: Boolean,
+    onScrollFractionChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    var trackHeightPx by remember { mutableStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    var visible by remember { mutableStateOf(false) }
+    // 显隐节奏：不能滚动就永不出现；滚动中/拖拽中立即出现；静止满 1s 后淡出
+    LaunchedEffect(canScroll, isScrollInProgress, dragging) {
+        when {
+            !canScroll -> visible = false
+            isScrollInProgress || dragging -> visible = true
+            else -> {
+                delay(ScrollbarHideDelayMillis)
+                visible = false
+            }
+        }
+    }
+    val alpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        label = "VerticalScrollbarAlpha"
+    )
+    val currentOnScrollFractionChange by rememberUpdatedState(onScrollFractionChange)
     val density = LocalDensity.current
-    val thumbColor = MaterialTheme.colorScheme.onSurface
+    val trackColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val handleColor = MaterialTheme.colorScheme.primary
+    var railHeightPx by remember { mutableStateOf(0f) }
+    val paddingPx = with(density) { ScrollbarVerticalPadding.toPx() }
+    val thumbHeightPx = with(density) { ScrollbarThumbHeight.toPx() }
+    val travelPx = (railHeightPx - paddingPx * 2f - thumbHeightPx).coerceAtLeast(1f)
 
     Box(
         modifier = modifier
-            .width(ScrollbarWidth)
+            .width(ScrollbarRailWidth)
             .fillMaxHeight()
-            .onSizeChanged { trackHeightPx = it.height.toFloat() }
-            .pointerInput(Unit) {
-                // 关键：在拖拽开始时快照 scrollFraction 到局部变量
-                // 这样拖拽过程中即使 Compose 重组改变了 scrollFraction，
-                // 我们仍然基于按下瞬间的位置计算，避免反馈循环
-                detectVerticalDragGestures(
-                    onDragStart = { _ ->
-                    },
-                    onDragEnd = {},
-                    onDragCancel = {},
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        if (trackHeightPx <= 0f) return@detectVerticalDragGestures
-                        // 用手指绝对位置：change.position.y / trackHeightPx
-                        // 这样手指在 track 顶部 = 滚到开头，底部 = 滚到结尾
-                        val fingerFraction = (change.position.y / trackHeightPx).coerceIn(0f, 1f)
-                        onDragFraction(fingerFraction)
+            .onSizeChanged { railHeightPx = it.height.toFloat() }
+            .then(
+                // 淡出期间不吃触摸，避免挡住内容右缘的点击
+                if (visible && canScroll) {
+                    Modifier.pointerInput(canScroll, railHeightPx) {
+                        // 手指绝对位置映射到滚动比例：轨道顶部=开头，底部=结尾
+                        fun scrollTo(positionY: Float) {
+                            val fraction = ((positionY - paddingPx - thumbHeightPx / 2f) / travelPx)
+                                .coerceIn(0f, 1f)
+                            currentOnScrollFractionChange(fraction)
+                        }
+
+                        detectDragGestures(
+                            onDragStart = {
+                                dragging = true
+                                scrollTo(it.y)
+                            },
+                            onDragEnd = { dragging = false },
+                            onDragCancel = { dragging = false },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                scrollTo(change.position.y)
+                            }
+                        )
                     }
-                )
-            }
+                } else {
+                    Modifier
+                }
+            )
     ) {
-        // 只在 trackHeightPx 有效时绘制 thumb
-        if (trackHeightPx > 0f) {
-            val thumbFrac = if (contentFraction != null) {
-                contentFraction
-            } else {
-                val totalHeight = trackHeightPx + scrollStateMaxValue.toFloat()
-                (trackHeightPx / totalHeight).coerceIn(0.05f, 1f)
-            }
-
-            if (thumbFrac < 0.99f) {
-                val thumbHeightPx = (trackHeightPx * thumbFrac).coerceAtLeast(ScrollbarMinThumbHeightPx)
-                val maxOffset = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
-                val thumbOffsetPx = scrollFraction * maxOffset
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset { IntOffset(0, thumbOffsetPx.roundToInt()) }
-                        .width(ScrollbarWidth)
-                        .height(with(density) { thumbHeightPx.toDp() })
-                        .clip(ScrollbarShape)
-                        .background(thumbColor.copy(alpha = 0.5f), ScrollbarShape)
-                )
-            }
+        // 只在拿到真实高度后绘制，避免首帧用 0 计算偏移
+        if (railHeightPx > 0f) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(vertical = ScrollbarVerticalPadding)
+                    .width(ScrollbarTrackWidth)
+                    .fillMaxHeight()
+                    .background(trackColor.copy(alpha = ScrollbarTrackAlpha * alpha))
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset {
+                        IntOffset(
+                            x = 0,
+                            y = (paddingPx + travelPx * scrollFraction.coerceIn(0f, 1f)).roundToInt()
+                        )
+                    }
+                    .width(ScrollbarThumbWidth)
+                    .height(ScrollbarThumbHeight)
+                    .background(handleColor.copy(alpha = alpha))
+            )
         }
     }
 }
