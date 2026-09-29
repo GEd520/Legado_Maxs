@@ -893,11 +893,16 @@ class ReadBookActivity : BaseReadBookActivity(),
 
             MotionEvent.ACTION_UP -> {
                 readView.dismissSelectionMagnifier()
+                // 松手时取消排队中的跨页翻页，避免手指已经抬起还继续翻
+                readView.curPage.cancelSelectAutoPage()
                 readView.curPage.resetReverseCursor()
                 showTextActionMenu()
             }
 
-            MotionEvent.ACTION_CANCEL -> readView.dismissSelectionMagnifier()
+            MotionEvent.ACTION_CANCEL -> {
+                readView.dismissSelectionMagnifier()
+                readView.curPage.cancelSelectAutoPage()
+            }
         }
         return true
     }
@@ -946,6 +951,13 @@ class ReadBookActivity : BaseReadBookActivity(),
      */
     override fun onSelectPageShift(offset: Int) {
         binding.readView.shiftSelectAnchor(offset)
+    }
+
+    /**
+     * 跨页选择自动翻页后端点落到新页，放大镜跟着移到新的端点行
+     */
+    override fun onSelectAutoPageTurned(dragStartPoint: Boolean) {
+        showCursorMagnifier(dragStartPoint)
     }
 
     /**

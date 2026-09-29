@@ -3,7 +3,6 @@ package io.legado.app.ui.book.read.page
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -60,8 +59,17 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     var longScreenshot = false
     var reverseStartCursor = false
     var reverseEndCursor = false
-    /** 上次因选择端点顶到内容区边缘而自动翻页的时间，用于控制连续翻页的节奏 */
-    private var lastSelectAutoPageTime = 0L
+    /** 排队中的跨页选择翻页方向（null 表示当前没有排队） */
+    private var pendingSelectAutoPageForward: Boolean? = null
+    /** 跨页选择排队时记下的手指位置与拖动端，翻页到点后继续用它更新选择 */
+    private var lastSelectTouchX = 0f
+    private var lastSelectTouchY = 0f
+    private var lastSelectDragStartPoint = false
+    /** 端点停在内容区边缘够久后执行的翻页 */
+    private val selectAutoPageRunnable = Runnable {
+        pendingSelectAutoPageForward = null
+        selectAutoPage()
+    }
 
     //滚动参数
     private val pageFactory get() = callBack.pageFactory
@@ -426,28 +434,66 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     /**
-     * 选择端点被拖到内容区上下边缘外时自动翻页，翻页后在新页上继续选择（跨页选择）
+     * 选择端点被拖到内容区上下边缘外时排队翻页，翻页后在新页上继续选择（跨页选择）
      *
+     * 端点停在边缘达到 [selectAutoPageDelay] 才翻页：手指中途移回内容区会取消排队，
+     * 一直停在边缘则按同样节奏继续翻页。这样不会手一抖扫过边缘就一下翻好几页。
      * 各种翻页动画都支持：非滚动模式直接切到相邻页（不做动画，保证选区状态与页窗口同步切换），
      * 滚动模式滚动一页；只在同一章内翻页，避免选区的锚点落到取不到文字的页上。
-     * 页窗口整体位移后选区两端一起平移，锚点仍指向原来那段文字。
      *
      * @param x 手指位置（内容视图坐标系）
      * @param y 手指位置（内容视图坐标系）
      * @param dragStartPoint 拖动的是选择起点还是终点
-     * @return 是否发生了翻页
      */
-    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean): Boolean {
-        if (!selectStart.isSelected() && !selectEnd.isSelected()) return false
+    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean) {
+        if (!selectStart.isSelected() && !selectEnd.isSelected()) {
+            cancelSelectAutoPage()
+            return
+        }
+        lastSelectTouchX = x
+        lastSelectTouchY = y
+        lastSelectDragStartPoint = dragStartPoint
         val forward = y >= ChapterProvider.visibleBottom
-        // 手指没越过内容区上下边缘，不翻页
-        if (!forward && y > ChapterProvider.paddingTop) return false
-        val now = SystemClock.uptimeMillis()
-        if (now - lastSelectAutoPageTime < selectAutoPageInterval) return false
+        val backward = !forward && y <= ChapterProvider.paddingTop
+        // 手指没越过内容区上下边缘，取消排队中的翻页
+        if (!forward && !backward) {
+            cancelSelectAutoPage()
+            return
+        }
+        // 已经按同一方向排队了，等它到点即可
+        if (pendingSelectAutoPageForward == forward) return
+        cancelSelectAutoPage()
+        pendingSelectAutoPageForward = forward
+        postDelayed(selectAutoPageRunnable, selectAutoPageDelay)
+    }
+
+    /**
+     * 取消排队中的跨页选择翻页（手指移回内容区、抬起或取消选择时调用）
+     */
+    fun cancelSelectAutoPage() {
+        if (pendingSelectAutoPageForward == null) return
+        pendingSelectAutoPageForward = null
+        removeCallbacks(selectAutoPageRunnable)
+    }
+
+    /**
+     * 端点停在边缘够久了，翻一页并在新页上继续选择
+     */
+    private fun selectAutoPage() {
+        if (!selectStart.isSelected() && !selectEnd.isSelected()) return
+        val y = lastSelectTouchY
+        val forward = y >= ChapterProvider.visibleBottom
+        if (!forward && y > ChapterProvider.paddingTop) return
         val relativePos = if (forward) 1 else -1
         val targetPage = relativePage(relativePos)
-        // 只在同一章内、且目标页已排版时翻页
-        if (targetPage.textChapter !== textPage.textChapter || targetPage.lines.isEmpty()) return false
+        // 只在同一章内翻页
+        if (targetPage.textChapter !== textPage.textChapter || targetPage.lines.isEmpty()) {
+            // 章节还没排版完说明只是目标页还在排版中，等下一轮再试；排完就没有下一页了
+            if (!textPage.textChapter.isCompleted) {
+                reArmSelectAutoPage(forward)
+            }
+            return
+        }
         if (callBack.isScroll) {
             // 滚动模式滚动到相邻页，scroll() 内部同步选区位置
             val distance = if (forward) {
@@ -462,19 +508,39 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             } else {
                 callBack.pageFactory.moveToPrev(true)
             }
-            if (!moved) return false
-            // 页窗口位移，选区随之平移
+            if (!moved) return
+            // 非滚动模式页窗口直接位移，选区随之平移（滚动模式由 scroll() 平移）
             shiftSelectPage(-relativePos)
         }
-        lastSelectAutoPageTime = now
         // 手指还在内容区外，端点落到新页的首/末行，手柄继续跟着手指
         val selectY = clampSelectY(y, forward)
-        if (dragStartPoint) {
-            selectStartMove(x, selectY)
+        if (lastSelectDragStartPoint) {
+            selectStartMove(lastSelectTouchX, selectY)
         } else {
-            selectEndMove(x, selectY)
+            selectEndMove(lastSelectTouchX, selectY)
         }
-        return true
+        // 端点已经落到新页，通知界面把放大镜移到新的端点行
+        callBack.onSelectAutoPageTurned(lastSelectDragStartPoint)
+        // 手指仍停在边缘，按同样节奏继续翻页
+        reArmSelectAutoPage(forward)
+    }
+
+    /**
+     * 手指还停在边缘，按同样节奏再排一次跨页选择翻页
+     */
+    private fun reArmSelectAutoPage(forward: Boolean) {
+        pendingSelectAutoPageForward = forward
+        postDelayed(selectAutoPageRunnable, selectAutoPageDelay)
+    }
+
+    /**
+     * 选择端点所在行的中线 y（本视图坐标）
+     * 放大镜据此对准正在拖动的那一端文字，而不是手指落点，避免放大镜里看到的选中状态和实际不一致
+     */
+    fun getSelectEndpointLineCenterY(textPos: TextPos): Float {
+        val page = relativePage(textPos.relativePagePos)
+        val line = page.getLine(textPos.lineIndex)
+        return relativeOffset(textPos.relativePagePos) + (line.lineTop + line.lineBottom) / 2f
     }
 
     /**
@@ -830,6 +896,7 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
         selectStart.reset()
         selectEnd.reset()
+        cancelSelectAutoPage()
         postInvalidate()
         callBack.onCancelSelect()
     }
@@ -968,10 +1035,10 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
         private val cursorWidth = 24.dpToPx()
 
-        /** 跨页选择时两次自动翻页的最小间隔（毫秒） */
-        private const val selectAutoPageInterval = 220L
+        /** 跨页选择时端点停在内容区边缘多久后翻页（毫秒） */
+        private const val selectAutoPageDelay = 800L
 
-        /** 相对页越界时的占位空页 */
+        /** 相对页越界时的只读占位空页 */
         private val emptyPage = TextPage()
     }
 
@@ -985,6 +1052,12 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         fun upSelectedStart(x: Float, y: Float, top: Float)
         fun upSelectedEnd(x: Float, y: Float, top: Float)
         fun onSelectPageShift(offset: Int)
+
+        /**
+         * 跨页选择自动翻页后端点落到新页
+         * @param dragStartPoint 拖动的是选择起点还是终点
+         */
+        fun onSelectAutoPageTurned(dragStartPoint: Boolean)
         fun onImageLongPress(x: Float, y: Float, src: String)
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean

@@ -448,13 +448,26 @@ class PageView(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * 选择端点拖到内容区上下边缘时自动翻页（跨页选择）
-     * @return 是否发生了翻页
+     * 选择端点拖到内容区上下边缘时排队自动翻页（跨页选择）
      */
-    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean): Boolean {
-        return binding.contentTextView.checkSelectAutoPage(
+    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean) {
+        binding.contentTextView.checkSelectAutoPage(
             x - imgBgPaddingStart, y - headerHeight, dragStartPoint
         )
+    }
+
+    /**
+     * 取消排队中的跨页选择翻页
+     */
+    fun cancelSelectAutoPage() {
+        binding.contentTextView.cancelSelectAutoPage()
+    }
+
+    /**
+     * 选择端点所在行的中线 y（本视图坐标），用于让放大镜对准正在拖动的那一端文字
+     */
+    fun getSelectEndpointLineCenterY(textPos: TextPos): Float {
+        return binding.contentTextView.getSelectEndpointLineCenterY(textPos) + headerHeight
     }
 
     fun selectEndMoveIndex(

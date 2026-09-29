@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.RectF
 import android.os.Build
 import android.util.AttributeSet
+import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.WindowInsets
@@ -128,6 +129,14 @@ class ReadView(context: Context, attrs: AttributeSet) :
     private val upProgressThrottle = throttle(200) { post { upProgress() } }
     
     private var selectionMagnifier: Magnifier? = null
+
+    /** 待显示的放大镜位置（等这一帧的选区高亮画完再显示） */
+    private var magnifierShowPending = false
+    private var magnifierShowX = 0f
+    private var magnifierShowY = 0f
+
+    /** 放大镜显示序号，松手或取消选择后作废已经排队的显示 */
+    private var magnifierShowToken = 0
     val autoPager = AutoPager(this)  // 自动翻页器
     val isAutoPage get() = autoPager.isRunning  // 是否正在自动翻页
 
@@ -180,6 +189,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
         super.dispatchDraw(canvas)
         pageDelegate?.onDraw(canvas)
         autoPager.onDraw(canvas)
+        showSelectionMagnifierAfterDraw()
     }
 
     override fun computeScroll() {
@@ -256,9 +266,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     longPressed = false
                     removeCallbacks(longPressRunnable)
                     if (isTextSelected) {
-                        // 如果已选择文本，更新选择范围
+                        // 如果已选择文本，更新选择范围（放大镜在 selectText 内按端点行定位）
                         selectText(event.x, event.y)
-                        showSelectionMagnifier(event.x, event.y)
                     } else {
                         // 否则执行翻页动画
                         pageDelegate?.onTouch(event)
@@ -268,6 +277,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
             MotionEvent.ACTION_UP -> {
                 dismissSelectionMagnifier()
+                // 松手时取消排队中的跨页翻页，避免手指已经抬起还继续翻
+                curPage.cancelSelectAutoPage()
                 callBack.screenOffTimerStart()
                 removeCallbacks(longPressRunnable)
                 if (!pressDown) return true
@@ -292,6 +303,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
             MotionEvent.ACTION_CANCEL -> {
                 dismissSelectionMagnifier()
+                curPage.cancelSelectAutoPage()
                 removeCallbacks(longPressRunnable)
                 if (!pressDown) return true
                 pressDown = false
@@ -447,7 +459,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 // 设置选择起始和结束位置
                 curPage.selectStartMoveIndex(startPos)
                 curPage.selectEndMoveIndex(endPos)
-                showSelectionMagnifier(startX, startY)
+                // 放大镜对准选择端点所在的行，避免放大镜与手指落点不在同一行时看到的选区不一致
+                showSelectionMagnifier(startX, curPage.getSelectEndpointLineCenterY(startPos))
             }
         }
     }
@@ -459,9 +472,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
      */
     fun showSelectionMagnifier(x: Float, y: Float) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !isAttachedToWindow) return
-        val safeX = x.coerceIn(0f, width.toFloat())
-        val safeY = y.coerceIn(0f, height.toFloat())
-        (selectionMagnifier ?: Magnifier(this).also { selectionMagnifier = it }).show(safeX, safeY)
+        magnifierShowX = x.coerceIn(0f, width.toFloat())
+        magnifierShowY = y.coerceIn(0f, height.toFloat())
+        magnifierShowPending = true
+        invalidate()
     }
 
     /**
@@ -469,7 +483,28 @@ class ReadView(context: Context, attrs: AttributeSet) :
      */
     fun dismissSelectionMagnifier() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        magnifierShowPending = false
+        magnifierShowToken++
         selectionMagnifier?.dismiss()
+    }
+
+    /**
+     * 放大镜抓的是屏幕上正在显示的画面，而选区高亮是 invalidate 之后才画上的，
+     * 立即 show 会看到上一帧（放大镜里的选中状态和实际不一致），所以等这一帧画完再显示
+     */
+    private fun showSelectionMagnifierAfterDraw() {
+        if (!magnifierShowPending) return
+        magnifierShowPending = false
+        val token = ++magnifierShowToken
+        Choreographer.getInstance().postFrameCallback { showSelectionMagnifierNow(token) }
+    }
+
+    private fun showSelectionMagnifierNow(token: Int) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
+        // 排队期间已经松手或取消了选择，就不用再显示了
+        if (token != magnifierShowToken || !isAttachedToWindow || !isTextSelected) return
+        (selectionMagnifier ?: Magnifier(this).also { selectionMagnifier = it })
+            .show(magnifierShowX, magnifierShowY)
     }
 
     /**
@@ -587,6 +622,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     curPage.selectEndMoveIndex(textPos)
                 }
             }
+            // 放大镜对准端点所在的行（手指落在行间空隙时端点会吸附到相邻行），与高亮位置保持一致
+            showSelectionMagnifier(x, curPage.getSelectEndpointLineCenterY(textPos))
         }
         curPage.checkSelectAutoPage(x, y, dragStartPoint)
     }
