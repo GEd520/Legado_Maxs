@@ -3,15 +3,20 @@ package io.legado.app.ui.book.read.page
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.os.Build
 import android.util.AttributeSet
-import android.view.Choreographer
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import android.widget.Magnifier
+import androidx.core.graphics.withClip
+import androidx.core.graphics.withTranslation
+import kotlin.math.max
+import kotlin.math.min
 import io.legado.app.R
 import io.legado.app.constant.PageAnim
 import io.legado.app.constant.ReadConstants
@@ -40,6 +45,7 @@ import io.legado.app.ui.book.read.page.provider.ChapterProvider
 import io.legado.app.ui.book.read.page.provider.LayoutProgressListener
 import io.legado.app.ui.book.read.page.provider.TextPageFactory
 import io.legado.app.utils.activity
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.invisible
 import io.legado.app.utils.longToastOnUi
 import io.legado.app.utils.showDialogFragment
@@ -128,15 +134,26 @@ class ReadView(context: Context, attrs: AttributeSet) :
     /** 节流更新的进度回调 */
     private val upProgressThrottle = throttle(200) { post { upProgress() } }
     
-    private var selectionMagnifier: Magnifier? = null
+    /** 选区放大镜浮层，由 Activity 在布局里放在选择手柄之上 */
+    var magnifierOverlay: SelectionMagnifierView? = null
 
-    /** 待显示的放大镜位置（等这一帧的选区高亮画完再显示） */
-    private var magnifierShowPending = false
-    private var magnifierShowX = 0f
-    private var magnifierShowY = 0f
+    /** 放大镜是否显示、取景锚点（本视图坐标，取选择端点的选区边界与行中线） */
+    private var magnifierVisible = false
+    private var magnifierAnchorX = 0f
+    private var magnifierAnchorY = 0f
 
-    /** 放大镜显示序号，松手或取消选择后作废已经排队的显示 */
-    private var magnifierShowToken = 0
+    /** 放大镜绘制参数：气泡圆角、放大倍数、锚点在气泡内的纵向占比（上方放不下时翻到下方） */
+    private val magnifierRect = RectF()
+    private val magnifierPath = Path()
+    private val magnifierBgPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val magnifierBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.dpToPx().toFloat()
+    }
+    private val magnifierRadius = 8.dpToPx().toFloat()
+    private val magnifierZoom = 1.6f
+    private val magnifierAnchorAboveRatio = 0.72f
+    private val magnifierAnchorBelowRatio = 0.30f
     val autoPager = AutoPager(this)  // 自动翻页器
     val isAutoPage get() = autoPager.isRunning  // 是否正在自动翻页
 
@@ -189,7 +206,8 @@ class ReadView(context: Context, attrs: AttributeSet) :
         super.dispatchDraw(canvas)
         pageDelegate?.onDraw(canvas)
         autoPager.onDraw(canvas)
-        showSelectionMagnifierAfterDraw()
+        // 放大镜是自绘的（气泡里画的是当前正文），内容滚动时跟着重画，保持和页面同一帧
+        if (magnifierVisible) magnifierOverlay?.invalidate()
     }
 
     override fun computeScroll() {
@@ -459,8 +477,9 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 // 设置选择起始和结束位置
                 curPage.selectStartMoveIndex(startPos)
                 curPage.selectEndMoveIndex(endPos)
-                // 放大镜对准选择端点所在的行，避免放大镜与手指落点不在同一行时看到的选区不一致
-                showSelectionMagnifier(startX, curPage.getSelectEndpointLineCenterY(startPos))
+                // 放大镜按选择端点取景（选区边界 + 所在行中线），不按手指落点
+                val anchor = curPage.getSelectEndpointAnchor(startPos, true)
+                showSelectionMagnifier(anchor.x, anchor.y)
             }
         }
     }
@@ -468,43 +487,75 @@ class ReadView(context: Context, attrs: AttributeSet) :
     /**
      * 显示选区放大镜
      * 在文本选择过程中跟随手指/选择手柄位置显示放大镜，方便用户查看选区位置
-     * 仅在 Android 9.0 (API 28) 及以上版本可用
+     *
+     * @param anchorX 取景锚点 x（选择端点的选区边界）
+     * @param anchorY 取景锚点 y（选择端点所在行的中线）
      */
-    fun showSelectionMagnifier(x: Float, y: Float) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !isAttachedToWindow) return
-        magnifierShowX = x.coerceIn(0f, width.toFloat())
-        magnifierShowY = y.coerceIn(0f, height.toFloat())
-        magnifierShowPending = true
-        invalidate()
+    fun showSelectionMagnifier(anchorX: Float, anchorY: Float) {
+        magnifierAnchorX = anchorX.coerceIn(0f, width.toFloat())
+        magnifierAnchorY = anchorY.coerceIn(0f, height.toFloat())
+        val overlay = magnifierOverlay ?: return
+        if (!magnifierVisible) {
+            magnifierVisible = true
+            overlay.visibility = View.VISIBLE
+        }
+        overlay.invalidate()
     }
 
     /**
      * 隐藏选区放大镜
      */
     fun dismissSelectionMagnifier() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
-        magnifierShowPending = false
-        magnifierShowToken++
-        selectionMagnifier?.dismiss()
+        if (!magnifierVisible) return
+        magnifierVisible = false
+        magnifierOverlay?.visibility = View.GONE
     }
 
     /**
-     * 放大镜抓的是屏幕上正在显示的画面，而选区高亮是 invalidate 之后才画上的，
-     * 立即 show 会看到上一帧（放大镜里的选中状态和实际不一致），所以等这一帧画完再显示
+     * 画选区放大镜（由 [SelectionMagnifierView] 调用）
+     *
+     * 直接把正文内容按比例画进气泡，气泡里看到的就是当前帧的真实文字与选中高亮，
+     * 不存在"实际选中了气泡里没高亮"的情况。
      */
-    private fun showSelectionMagnifierAfterDraw() {
-        if (!magnifierShowPending) return
-        magnifierShowPending = false
-        val token = ++magnifierShowToken
-        Choreographer.getInstance().postFrameCallback { showSelectionMagnifierNow(token) }
-    }
-
-    private fun showSelectionMagnifierNow(token: Int) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
-        // 排队期间已经松手或取消了选择，就不用再显示了
-        if (token != magnifierShowToken || !isAttachedToWindow || !isTextSelected) return
-        (selectionMagnifier ?: Magnifier(this).also { selectionMagnifier = it })
-            .show(magnifierShowX, magnifierShowY)
+    fun drawSelectionMagnifier(canvas: Canvas) {
+        if (!magnifierVisible || !isTextSelected) return
+        val page = curPage
+        val lineHeight = page.textPage.lines.firstOrNull()?.height ?: 0f
+        if (lineHeight <= 0f) return
+        val bubbleWidth = min(width * 0.76f, ChapterProvider.visibleWidth * 0.72f)
+        val bubbleHeight = lineHeight * magnifierZoom * 1.3f
+        if (bubbleWidth <= 0f || bubbleHeight <= 0f) return
+        val left = (magnifierAnchorX - bubbleWidth / 2f).coerceIn(0f, max(0f, width - bubbleWidth))
+        val topIfAbove = magnifierAnchorY - bubbleHeight * magnifierAnchorAboveRatio
+        val anchorRatio: Float
+        val top: Float
+        if (topIfAbove >= 0f) {
+            anchorRatio = magnifierAnchorAboveRatio
+            top = topIfAbove
+        } else {
+            // 上方放不下就放到锚点下方，锚点仍映射到气泡内固定位置
+            anchorRatio = magnifierAnchorBelowRatio
+            top = (magnifierAnchorY - bubbleHeight * magnifierAnchorBelowRatio)
+                .coerceIn(0f, max(0f, height - bubbleHeight))
+        }
+        magnifierRect.set(left, top, left + bubbleWidth, top + bubbleHeight)
+        magnifierPath.reset()
+        magnifierPath.addRoundRect(
+            magnifierRect, magnifierRadius, magnifierRadius, Path.Direction.CW
+        )
+        canvas.withClip(magnifierPath) {
+            magnifierBgPaint.color = ReadBookConfig.bgMeanColor
+            drawRect(magnifierRect, magnifierBgPaint)
+            // 把锚点搬到气泡内的固定位置，再按倍数放大后复用正文的绘制
+            withTranslation(left + bubbleWidth / 2f, top + bubbleHeight * anchorRatio) {
+                scale(magnifierZoom, magnifierZoom)
+                translate(-magnifierAnchorX, -magnifierAnchorY)
+                page.drawContentText(this)
+            }
+        }
+        magnifierBorderPaint.color = ReadBookConfig.textColor
+        magnifierBorderPaint.alpha = 0x40
+        canvas.drawPath(magnifierPath, magnifierBorderPaint)
     }
 
     /**
@@ -622,8 +673,9 @@ class ReadView(context: Context, attrs: AttributeSet) :
                     curPage.selectEndMoveIndex(textPos)
                 }
             }
-            // 放大镜对准端点所在的行（手指落在行间空隙时端点会吸附到相邻行），与高亮位置保持一致
-            showSelectionMagnifier(x, curPage.getSelectEndpointLineCenterY(textPos))
+            // 放大镜按端点锚点取景（手指落在行间空隙时端点会吸附到相邻行/列），与高亮位置严格一致
+            val anchor = curPage.getSelectEndpointAnchor(textPos, dragStartPoint)
+            showSelectionMagnifier(anchor.x, anchor.y)
         }
         curPage.checkSelectAutoPage(x, y, dragStartPoint)
     }

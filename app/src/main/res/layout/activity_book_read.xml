@@ -32,6 +32,13 @@
         android:src="@drawable/ic_cursor_right"
         android:visibility="invisible" />
 
+    <!-- 选区放大镜，自绘正文内容，放在手柄之上保证气泡不被手柄压住 -->
+    <io.legado.app.ui.book.read.page.SelectionMagnifierView
+        android:id="@+id/selection_magnifier"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
     <io.legado.app.ui.book.read.ReadMenu
         android:id="@+id/read_menu"
         android:layout_width="match_parent"

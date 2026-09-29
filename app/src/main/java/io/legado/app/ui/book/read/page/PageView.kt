@@ -1,11 +1,14 @@
 package io.legado.app.ui.book.read.page
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.PointF
 import android.graphics.drawable.LayerDrawable
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.withTranslation
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
@@ -464,10 +467,24 @@ class PageView(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * 选择端点所在行的中线 y（本视图坐标），用于让放大镜对准正在拖动的那一端文字
+     * 选择端点的锚点（本视图坐标）：选区边界 x + 端点所在行的中线 y
+     * 放大镜按这个点取景，气泡里看到的选中状态才能和实际选区一致
      */
-    fun getSelectEndpointLineCenterY(textPos: TextPos): Float {
-        return binding.contentTextView.getSelectEndpointLineCenterY(textPos) + headerHeight
+    fun getSelectEndpointAnchor(textPos: TextPos, startPoint: Boolean): PointF {
+        val anchor = binding.contentTextView.getSelectEndpointAnchor(textPos, startPoint)
+        anchor.x += imgBgPaddingStart
+        anchor.y += headerHeight
+        return anchor
+    }
+
+    /**
+     * 把正文内容画到画布上（不含页眉页脚与手柄），供自绘放大镜复用
+     */
+    fun drawContentText(canvas: Canvas) {
+        val content = binding.contentTextView
+        canvas.withTranslation(content.left.toFloat(), content.top.toFloat()) {
+            content.draw(this)
+        }
     }
 
     fun selectEndMoveIndex(
