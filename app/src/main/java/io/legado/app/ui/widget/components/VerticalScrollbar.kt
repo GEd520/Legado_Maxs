@@ -1,5 +1,7 @@
 package io.legado.app.ui.widget.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -28,26 +30,28 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
+import io.legado.app.ui.theme.AppDimens
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-/** 拖拽区（轨道区）宽度，覆盖在内容右缘之上。 */
-private val ScrollbarRailWidth = 24.dp
-private val ScrollbarTrackWidth = 2.dp
-private val ScrollbarThumbWidth = 8.dp
-private val ScrollbarThumbHeight = 40.dp
-private val ScrollbarVerticalPadding = 8.dp
-private const val ScrollbarTrackAlpha = 0.30f
+/**
+ * 停止滚动后拖柄淡出的等待时长。
+ *
+ * 这是参考分支 NG_main 书籍目录滚动块的显隐节奏（业务节奏，不属于动画时长档位），
+ * 不是可以随手调小的过渡值：太大显得滚动条赖着不走，太小会在惯性滚动间隙闪断。
+ */
 private const val ScrollbarHideDelayMillis = 1_000L
+
+// ==================== LazyListState ====================
 
 /**
  * 通用的可拖拽垂直滚动条。
  *
- * 外观与显隐节奏对齐 NG 版书籍目录的快速滚动块：2dp 细轨道 + 8dp×40dp 主题色拖柄；
- * 内容不可滚动时完全不显示，滚动中或拖拽中显示、停止 1s 后淡出，淡出后不拦截触摸。
+ * 外观与显隐节奏对齐参考分支 NG_main 书籍目录的快速滚动块：细轨道 + 主题色短拖柄；
+ * 内容不可滚动时完全不显示，滚动中或拖拽中显示、停止 [ScrollbarHideDelayMillis] 后淡出，
+ * 淡出后不再拦截触摸。尺寸见 [AppDimens] 的 scrollbar* 令牌，颜色取自 [MaterialTheme]。
  *
  * 用法：将滚动条和内容放在同一个 Box 中，滚动条对齐右侧。
  *
@@ -58,10 +62,12 @@ private const val ScrollbarHideDelayMillis = 1_000L
  *     VerticalScrollbar(state = state, modifier = Modifier.align(Alignment.CenterEnd))
  * }
  * ```
+ *
+ * 另有 [LazyGridState] 与 [ScrollState] 两个重载，行为一致。
+ *
+ * @param state 被控制内容的滚动状态，拖拽按比例反过来驱动它
+ * @param modifier 施加在拖拽感应区上的修饰符，调用点通常只做 `align(Alignment.CenterEnd)`
  */
-
-// ==================== LazyListState ====================
-
 @Composable
 fun VerticalScrollbar(
     state: LazyListState,
@@ -78,6 +84,7 @@ fun VerticalScrollbar(
             val info = state.layoutInfo
             val visibleItems = info.visibleItemsInfo
             val first = visibleItems.firstOrNull()
+            // 分母取"首个可见项能达到的最大下标"，滚到底时刚好是 1
             val maxFirstIndex = (info.totalItemsCount - visibleItems.size).coerceAtLeast(1)
             if (first == null || first.size <= 0) {
                 0f
@@ -94,9 +101,12 @@ fun VerticalScrollbar(
         canScroll = canScroll,
         isScrollInProgress = state.isScrollInProgress,
         onScrollFractionChange = { fraction ->
-            val totalItems = state.layoutInfo.totalItemsCount
+            val info = state.layoutInfo
+            val totalItems = info.totalItemsCount
             if (totalItems > 0) {
-                val index = (fraction * (totalItems - 1)).roundToInt().coerceIn(0, totalItems - 1)
+                // 分母与上面显示用的保持一致，拖柄才会停在手指所在的位置
+                val maxFirstIndex = (totalItems - info.visibleItemsInfo.size).coerceAtLeast(1)
+                val index = (fraction * maxFirstIndex).roundToInt().coerceIn(0, totalItems - 1)
                 scrollJob?.cancel()
                 scrollJob = scope.launch { state.scrollToItem(index) }
             }
@@ -122,7 +132,7 @@ fun VerticalScrollbar(
         derivedStateOf {
             val info = state.layoutInfo
             val visibleItems = info.visibleItemsInfo
-            // 网格按行滚动：首行高度即该行的行高，用它在行内插值
+            // 网格按行滚动：首个可见项所在行的行高就是插值单位
             val first = visibleItems.firstOrNull()
             val maxFirstIndex = (info.totalItemsCount - visibleItems.size).coerceAtLeast(1)
             if (first == null || first.size.height <= 0) {
@@ -140,9 +150,11 @@ fun VerticalScrollbar(
         canScroll = canScroll,
         isScrollInProgress = state.isScrollInProgress,
         onScrollFractionChange = { fraction ->
-            val totalItems = state.layoutInfo.totalItemsCount
+            val info = state.layoutInfo
+            val totalItems = info.totalItemsCount
             if (totalItems > 0) {
-                val index = (fraction * (totalItems - 1)).roundToInt().coerceIn(0, totalItems - 1)
+                val maxFirstIndex = (totalItems - info.visibleItemsInfo.size).coerceAtLeast(1)
+                val index = (fraction * maxFirstIndex).roundToInt().coerceIn(0, totalItems - 1)
                 scrollJob?.cancel()
                 scrollJob = scope.launch { state.scrollToItem(index) }
             }
@@ -199,7 +211,7 @@ private fun ScrollbarThumb(
 ) {
     var dragging by remember { mutableStateOf(false) }
     var visible by remember { mutableStateOf(false) }
-    // 显隐节奏：不能滚动就永不出现；滚动中/拖拽中立即出现；静止满 1s 后淡出
+    // 显隐节奏：不能滚动就永不出现；滚动中/拖拽中立即出现；静止满 ScrollbarHideDelayMillis 后淡出
     LaunchedEffect(canScroll, isScrollInProgress, dragging) {
         when {
             !canScroll -> visible = false
@@ -212,6 +224,7 @@ private fun ScrollbarThumb(
     }
     val alpha by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
+        animationSpec = SpringSpec(stiffness = Spring.StiffnessMediumLow),
         label = "VerticalScrollbarAlpha"
     )
     val currentOnScrollFractionChange by rememberUpdatedState(onScrollFractionChange)
@@ -219,20 +232,20 @@ private fun ScrollbarThumb(
     val trackColor = MaterialTheme.colorScheme.onSurfaceVariant
     val handleColor = MaterialTheme.colorScheme.primary
     var railHeightPx by remember { mutableStateOf(0f) }
-    val paddingPx = with(density) { ScrollbarVerticalPadding.toPx() }
-    val thumbHeightPx = with(density) { ScrollbarThumbHeight.toPx() }
+    val paddingPx = with(density) { AppDimens.scrollbarVerticalPadding.toPx() }
+    val thumbHeightPx = with(density) { AppDimens.scrollbarThumbHeight.toPx() }
     val travelPx = (railHeightPx - paddingPx * 2f - thumbHeightPx).coerceAtLeast(1f)
 
     Box(
         modifier = modifier
-            .width(ScrollbarRailWidth)
+            .width(AppDimens.scrollbarRailWidth)
             .fillMaxHeight()
             .onSizeChanged { railHeightPx = it.height.toFloat() }
             .then(
-                // 淡出期间不吃触摸，避免挡住内容右缘的点击
+                // 淡出期间不吃触摸，避免挡住内容右缘的点击与滑动
                 if (visible && canScroll) {
                     Modifier.pointerInput(canScroll, railHeightPx) {
-                        // 手指绝对位置映射到滚动比例：轨道顶部=开头，底部=结尾
+                        // 手指绝对位置映射到滚动比例：轨道顶部 = 开头，底部 = 结尾
                         fun scrollTo(positionY: Float) {
                             val fraction = ((positionY - paddingPx - thumbHeightPx / 2f) / travelPx)
                                 .coerceIn(0f, 1f)
@@ -262,10 +275,10 @@ private fun ScrollbarThumb(
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(vertical = ScrollbarVerticalPadding)
-                    .width(ScrollbarTrackWidth)
+                    .padding(vertical = AppDimens.scrollbarVerticalPadding)
+                    .width(AppDimens.scrollbarTrackWidth)
                     .fillMaxHeight()
-                    .background(trackColor.copy(alpha = ScrollbarTrackAlpha * alpha))
+                    .background(trackColor.copy(alpha = AppDimens.SCROLLBAR_TRACK_ALPHA * alpha))
             )
             Box(
                 modifier = Modifier
@@ -276,8 +289,8 @@ private fun ScrollbarThumb(
                             y = (paddingPx + travelPx * scrollFraction.coerceIn(0f, 1f)).roundToInt()
                         )
                     }
-                    .width(ScrollbarThumbWidth)
-                    .height(ScrollbarThumbHeight)
+                    .width(AppDimens.scrollbarThumbWidth)
+                    .height(AppDimens.scrollbarThumbHeight)
                     .background(handleColor.copy(alpha = alpha))
             )
         }

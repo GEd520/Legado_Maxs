@@ -279,4 +279,25 @@ object AppDimens {
 
     /** 单选列表弹窗的选项区最大高度，超出后滚动，避免弹窗顶穿屏幕 */
     val dialogOptionsMaxHeight: Dp = 320.dp
+
+    // ── 通用快速滚动条（VerticalScrollbar）──
+    // 尺寸对齐参考分支 NG_main 书籍目录的快速滚动块（NgLazyListFastScroller 的 TRACK 变体）
+
+    /** 拖拽感应区（轨道区）宽度，覆盖在内容右缘之上 */
+    val scrollbarRailWidth: Dp = 24.dp
+
+    /** 轨道线宽 */
+    val scrollbarTrackWidth: Dp = 2.dp
+
+    /** 拖柄宽度 */
+    val scrollbarThumbWidth: Dp = 8.dp
+
+    /** 拖柄高度：比轨道宽得多，保证在长列表里也够粗可点 */
+    val scrollbarThumbHeight: Dp = 40.dp
+
+    /** 轨道区上下内缩：拖柄不会贴到列表首尾 */
+    val scrollbarVerticalPadding: Dp = 8.dp
+
+    /** 轨道透明度（叠加 onSurfaceVariant，对齐参考分支的 30%） */
+    const val SCROLLBAR_TRACK_ALPHA = 0.30f
 }
