@@ -281,23 +281,53 @@ object AppDimens {
     val dialogOptionsMaxHeight: Dp = 320.dp
 
     // ── 通用快速滚动条（VerticalScrollbar）──
-    // 尺寸对齐参考分支 NG_main 书籍目录的快速滚动块（NgLazyListFastScroller 的 TRACK 变体）
+    // 对齐参考分支 NG_main 阅读页目录抽屉的快速滚动块（NgLazyListFastScroller 的 FLOATING_HANDLE 变体）：
+    // 无常驻轨道，只有一块带上下箭头的浮动拖柄
 
-    /** 拖拽感应区（轨道区）宽度，覆盖在内容右缘之上 */
-    val scrollbarRailWidth: Dp = 24.dp
+    /** 拖拽感应区宽度（比拖柄宽，拖柄贴右缘） */
+    val scrollbarRailWidth: Dp = 28.dp
 
-    /** 轨道线宽 */
-    val scrollbarTrackWidth: Dp = 2.dp
+    /** 浮动拖柄宽度 */
+    val scrollbarHandleWidth: Dp = 24.dp
 
-    /** 拖柄宽度 */
-    val scrollbarThumbWidth: Dp = 8.dp
+    /** 浮动拖柄高度：能放下上下两个箭头 */
+    val scrollbarHandleHeight: Dp = 56.dp
 
-    /** 拖柄高度：比轨道宽得多，保证在长列表里也够粗可点 */
-    val scrollbarThumbHeight: Dp = 40.dp
+    /** 浮动拖柄圆角 */
+    val scrollbarHandleCornerRadius: Dp = 12.dp
 
-    /** 轨道区上下内缩：拖柄不会贴到列表首尾 */
+    /** 浮动拖柄描边粗细 */
+    val scrollbarHandleBorderWidth: Dp = 0.5.dp
+
+    /** 拖柄内箭头尺寸 */
+    val scrollbarChevronSize: Dp = 16.dp
+
+    /** 两个箭头之间的间距 */
+    val scrollbarChevronSpacing: Dp = 2.dp
+
+    /** 拖柄上下内缩：拖柄不会贴到列表首尾 */
     val scrollbarVerticalPadding: Dp = 8.dp
 
-    /** 轨道透明度（叠加 onSurfaceVariant，对齐参考分支的 30%） */
-    const val SCROLLBAR_TRACK_ALPHA = 0.30f
+    /** 拖柄投阴影高度（墨水屏用 0） */
+    val scrollbarHandleShadowElevation: Dp = 2.dp
+    val scrollbarHandleShadowElevationEInk: Dp = 0.dp
+
+    /** 拖柄底色掺入主题主色的比例（日间 / 夜间），让拖柄比纯容器色更"活"一点 */
+    const val SCROLLBAR_HANDLE_BLEND_LIGHT = 0.06f
+    const val SCROLLBAR_HANDLE_BLEND_DARK = 0.12f
+
+    /** 拖柄整体透明度（日间 / 夜间；墨水屏不透明） */
+    const val SCROLLBAR_HANDLE_ALPHA_LIGHT = 0.90f
+    const val SCROLLBAR_HANDLE_ALPHA_DARK = 0.94f
+
+    /** 拖柄描边色透明度（常规 / 墨水屏） */
+    const val SCROLLBAR_HANDLE_BORDER_ALPHA = 0.14f
+    const val SCROLLBAR_HANDLE_BORDER_ALPHA_EINK = 0.42f
+
+    /** 拖柄阴影色透明度（日间 / 夜间） */
+    const val SCROLLBAR_HANDLE_SHADOW_ALPHA_LIGHT = 0.12f
+    const val SCROLLBAR_HANDLE_SHADOW_ALPHA_DARK = 0.28f
+
+    /** 拖柄内箭头颜色相对主色的透明度 */
+    const val SCROLLBAR_HANDLE_ICON_ALPHA = 0.86f
 }
