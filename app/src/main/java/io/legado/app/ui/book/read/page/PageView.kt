@@ -447,6 +447,16 @@ class PageView(context: Context) : FrameLayout(context) {
         binding.contentTextView.selectEndMove(x - imgBgPaddingStart, y - headerHeight)
     }
 
+    /**
+     * 选择端点拖到内容区上下边缘时自动翻页（跨页选择）
+     * @return 是否发生了翻页
+     */
+    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean): Boolean {
+        return binding.contentTextView.checkSelectAutoPage(
+            x - imgBgPaddingStart, y - headerHeight, dragStartPoint
+        )
+    }
+
     fun selectEndMoveIndex(
         relativePagePos: Int,
         lineIndex: Int,

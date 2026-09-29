@@ -3,6 +3,7 @@ package io.legado.app.ui.book.read.page
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -59,6 +60,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     var longScreenshot = false
     var reverseStartCursor = false
     var reverseEndCursor = false
+    /** 上次因选择端点顶到内容区边缘而自动翻页的时间，用于控制连续翻页的节奏 */
+    private var lastSelectAutoPageTime = 0L
 
     //滚动参数
     private val pageFactory get() = callBack.pageFactory
@@ -167,6 +170,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         } else if (pageOffset > 0) {
             if (pageFactory.moveToPrev(true)) {
                 pageOffset -= textPage.height.toInt()
+                // 页窗口向后翻，跨页选择的选区随之平移
+                shiftSelectPage(1)
             } else {
                 pageOffset = 0
                 pageDelegate?.abortAnim()
@@ -175,6 +180,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             val height = textPage.height
             if (pageFactory.moveToNext(upContent = true)) {
                 pageOffset += height.toInt()
+                // 页窗口向前翻，跨页选择的选区随之平移
+                shiftSelectPage(-1)
             } else {
                 pageOffset = -height.toInt()
                 pageDelegate?.abortAnim()
@@ -419,6 +426,88 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     /**
+     * 选择端点被拖到内容区上下边缘外时自动翻页，翻页后在新页上继续选择（跨页选择）
+     *
+     * 各种翻页动画都支持：非滚动模式直接切到相邻页（不做动画，保证选区状态与页窗口同步切换），
+     * 滚动模式滚动一页；只在同一章内翻页，避免选区的锚点落到取不到文字的页上。
+     * 页窗口整体位移后选区两端一起平移，锚点仍指向原来那段文字。
+     *
+     * @param x 手指位置（内容视图坐标系）
+     * @param y 手指位置（内容视图坐标系）
+     * @param dragStartPoint 拖动的是选择起点还是终点
+     * @return 是否发生了翻页
+     */
+    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean): Boolean {
+        if (!selectStart.isSelected() && !selectEnd.isSelected()) return false
+        val forward = y >= ChapterProvider.visibleBottom
+        // 手指没越过内容区上下边缘，不翻页
+        if (!forward && y > ChapterProvider.paddingTop) return false
+        val now = SystemClock.uptimeMillis()
+        if (now - lastSelectAutoPageTime < selectAutoPageInterval) return false
+        val relativePos = if (forward) 1 else -1
+        val targetPage = relativePage(relativePos)
+        // 只在同一章内、且目标页已排版时翻页
+        if (targetPage.textChapter !== textPage.textChapter || targetPage.lines.isEmpty()) return false
+        if (callBack.isScroll) {
+            // 滚动模式滚动到相邻页，scroll() 内部同步选区位置
+            val distance = if (forward) {
+                -(textPage.height + pageOffset).toInt() - 1
+            } else {
+                -pageOffset + 1
+            }
+            scroll(distance)
+        } else {
+            val moved = if (forward) {
+                callBack.pageFactory.moveToNext(true)
+            } else {
+                callBack.pageFactory.moveToPrev(true)
+            }
+            if (!moved) return false
+            // 页窗口位移，选区随之平移
+            shiftSelectPage(-relativePos)
+        }
+        lastSelectAutoPageTime = now
+        // 手指还在内容区外，端点落到新页的首/末行，手柄继续跟着手指
+        val selectY = clampSelectY(y, forward)
+        if (dragStartPoint) {
+            selectStartMove(x, selectY)
+        } else {
+            selectEndMove(x, selectY)
+        }
+        return true
+    }
+
+    /**
+     * 页窗口整体位移后同步选区两端的位置，让锚点仍指向原来那段文字
+     * @param offset 选区相对位置需要叠加的位移（翻到下一页为 -1，翻到上一页为 1）
+     */
+    private fun shiftSelectPage(offset: Int) {
+        if (offset == 0) return
+        if (selectStart.isSelected()) {
+            selectStart.relativePagePos += offset
+        }
+        if (selectEnd.isSelected()) {
+            selectEnd.relativePagePos += offset
+        }
+        callBack.onSelectPageShift(offset)
+        upSelectChars()
+    }
+
+    /**
+     * 手指落在内容区外时，把坐标夹回新页的首行/末行，保证端点能解析到文字
+     */
+    private fun clampSelectY(y: Float, forward: Boolean): Float {
+        if (textPage.lineSize == 0) return y
+        return if (forward) {
+            val lastLineBottom = pageOffset + textPage.getLine(textPage.lineSize - 1).lineBottom
+            min(y, min(lastLineBottom, ChapterProvider.visibleBottom.toFloat()) - 1f)
+        } else {
+            val firstLineTop = pageOffset + textPage.getLine(0).lineTop
+            max(y, max(firstLineTop, ChapterProvider.paddingTop.toFloat()) + 1f)
+        }
+    }
+
+    /**
      * 触碰位置信息
      * @param touched 回调
      */
@@ -464,6 +553,9 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     /**
      * 触碰位置信息
      * 文本选择专用
+     *
+     * 手指落在行间空隙或内容区上下边缘之外时，就近吸附到 y 上方最近的一行，
+     * 保证拖动选择端点时手柄始终跟着手指走（跨页选择顶到边缘也不会丢失端点）。
      * @param touched 回调
      */
     private fun touchRough(
@@ -478,50 +570,94 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         ) -> Unit
     ) {
         var relativeOffset: Float
+        // y 上方最近的一行，未命中任何行时用它兜底
+        var fallbackPos = -1
+        var fallbackLineIndex = -1
+        var fallbackOffset = 0f
         for (relativePos in 0..2) {
             relativeOffset = relativeOffset(relativePos)
             if (relativePos > 0) {
                 //滚动翻页
-                if (!callBack.isScroll) return
-                if (relativeOffset >= ChapterProvider.visibleHeight) return
+                if (!callBack.isScroll) break
+                if (relativeOffset >= ChapterProvider.visibleHeight) break
             }
             val textPage = relativePage(relativePos)
             for (lineIndex in textPage.lines.indices) {
                 val textLine = textPage.getLine(lineIndex)
                 if (textLine.isTouchY(y, relativeOffset)) {
-                    if (textPage.doublePage) {
-                        val halfWidth = width / 2
-                        if (textLine.isLeftLine && x > halfWidth) {
-                            continue
-                        }
-                        if (!textLine.isLeftLine && x < halfWidth) {
-                            continue
-                        }
-                    }
-                    val columns = textLine.columns
-                    for (charIndex in columns.indices) {
-                        val textColumn = columns[charIndex]
-                        if (textColumn.isTouch(x)) {
-                            touched.invoke(
-                                relativeOffset,
-                                TextPos(relativePos, lineIndex, charIndex),
-                                textPage, textLine, textColumn
-                            )
-                            return
-                        }
-                    }
-                    val isLast = columns.first().start < x
-                    val charIndex = if (isLast) columns.lastIndex + 1 else -1
-                    val textColumn = if (isLast) columns.last() else columns.first()
-                    touched.invoke(
-                        relativeOffset,
-                        TextPos(relativePos, lineIndex, charIndex),
-                        textPage, textLine, textColumn
+                    touchRoughOnLine(
+                        x, relativePos, relativeOffset, textPage, lineIndex, textLine, touched
                     )
                     return
                 }
+                if (textLine.lineTop + relativeOffset <= y) {
+                    fallbackPos = relativePos
+                    fallbackLineIndex = lineIndex
+                    fallbackOffset = relativeOffset
+                }
             }
         }
+        if (fallbackPos < 0) return
+        val fallbackPage = relativePage(fallbackPos)
+        touchRoughOnLine(
+            x,
+            fallbackPos,
+            fallbackOffset,
+            fallbackPage,
+            fallbackLineIndex,
+            fallbackPage.getLine(fallbackLineIndex),
+            touched
+        )
+    }
+
+    /**
+     * 解析行内触摸到的列并回调
+     */
+    private fun touchRoughOnLine(
+        x: Float,
+        relativePos: Int,
+        relativeOffset: Float,
+        textPage: TextPage,
+        lineIndex: Int,
+        textLine: TextLine,
+        touched: (
+            relativeOffset: Float,
+            textPos: TextPos,
+            textPage: TextPage,
+            textLine: TextLine,
+            column: BaseColumn
+        ) -> Unit
+    ) {
+        if (textPage.doublePage) {
+            val halfWidth = width / 2
+            if (textLine.isLeftLine && x > halfWidth) {
+                return
+            }
+            if (!textLine.isLeftLine && x < halfWidth) {
+                return
+            }
+        }
+        val columns = textLine.columns
+        if (columns.isEmpty()) return
+        for (charIndex in columns.indices) {
+            val textColumn = columns[charIndex]
+            if (textColumn.isTouch(x)) {
+                touched.invoke(
+                    relativeOffset,
+                    TextPos(relativePos, lineIndex, charIndex),
+                    textPage, textLine, textColumn
+                )
+                return
+            }
+        }
+        val isLast = columns.first().start < x
+        val charIndex = if (isLast) columns.lastIndex + 1 else -1
+        val textColumn = if (isLast) columns.last() else columns.first()
+        touched.invoke(
+            relativeOffset,
+            TextPos(relativePos, lineIndex, charIndex),
+            textPage, textLine, textColumn
+        )
     }
 
     fun getCurVisiblePage(): TextPage {
@@ -615,7 +751,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val textColumn = textLine.getColumn(charIndex)
         upSelectedEnd(
             if (charIndex > -1) textColumn.end else textColumn.start,
-            textLine.lineBottom + relativeOffset(relativePage)
+            textLine.lineBottom + relativeOffset(relativePage),
+            textLine.lineTop + relativeOffset(relativePage)
         )
         upSelectChars()
     }
@@ -660,9 +797,9 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         }
     }
 
-    private fun upSelectedEnd(x: Float, y: Float) {
+    private fun upSelectedEnd(x: Float, y: Float, top: Float) {
         callBack.run {
-            upSelectedEnd(x + imgBgPaddingStart, y + headerHeight)
+            upSelectedEnd(x + imgBgPaddingStart, y + headerHeight, top + headerHeight)
         }
     }
 
@@ -672,8 +809,11 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
     }
 
     fun cancelSelect(clearSearchResult: Boolean = false) {
-        val last = if (callBack.isScroll) 2 else 0
-        for (relativePos in 0..last) {
+        val windowEnd = if (callBack.isScroll) 2 else 0
+        // 跨页选择时选区两端可能落在当前页窗口之外，按选区范围清理，避免旧页残留选中态
+        val from = if (selectStart.isSelected()) min(selectStart.relativePagePos, 0) else 0
+        val to = if (selectEnd.isSelected()) max(selectEnd.relativePagePos, windowEnd) else windowEnd
+        for (relativePos in from..to) {
             val textPage = relativePage(relativePos)
             textPage.lines.forEach { textLine ->
                 textLine.columns.forEach {
@@ -753,19 +893,43 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         return null
     }
 
+    /**
+     * 相对当前页的绘制偏移
+     * 支持章节内任意相对页（跨页选择时锚点会落在当前页窗口之外）
+     */
     private fun relativeOffset(relativePos: Int): Float {
-        return when (relativePos) {
-            0 -> pageOffset.toFloat()
-            1 -> pageOffset + textPage.height
-            else -> pageOffset + textPage.height + pageFactory.nextPage.height
+        return when {
+            relativePos == 0 -> pageOffset.toFloat()
+            relativePos > 0 -> {
+                var offset = pageOffset.toFloat()
+                for (pos in 0 until relativePos) {
+                    offset += relativePage(pos).height
+                }
+                offset
+            }
+
+            else -> {
+                var offset = pageOffset.toFloat()
+                for (pos in -1 downTo relativePos) {
+                    offset -= relativePage(pos).height
+                }
+                offset
+            }
         }
     }
 
+    /**
+     * 获取相对当前页的页面
+     * 0/1/2 走页工厂（含跨章兜底），更远的相对页直接取本章对应的页，
+     * 取不到时给空页，避免跨页选择时越界崩溃
+     */
     fun relativePage(relativePos: Int): TextPage {
         return when (relativePos) {
             0 -> textPage
             1 -> pageFactory.nextPage
-            else -> pageFactory.nextPlusPage
+            2 -> pageFactory.nextPlusPage
+            -1 -> pageFactory.prevPage
+            else -> textPage.getTextChapter().getPage(textPage.index + relativePos) ?: emptyPage
         }
     }
 
@@ -803,6 +967,12 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
             }
         }
         private val cursorWidth = 24.dpToPx()
+
+        /** 跨页选择时两次自动翻页的最小间隔（毫秒） */
+        private const val selectAutoPageInterval = 220L
+
+        /** 相对页越界时的占位空页 */
+        private val emptyPage = TextPage()
     }
 
     interface CallBack {
@@ -813,7 +983,8 @@ class ContentTextView(context: Context, attrs: AttributeSet?) : View(context, at
         val isScroll: Boolean
         var isSelectingSearchResult: Boolean
         fun upSelectedStart(x: Float, y: Float, top: Float)
-        fun upSelectedEnd(x: Float, y: Float)
+        fun upSelectedEnd(x: Float, y: Float, top: Float)
+        fun onSelectPageShift(offset: Int)
         fun onImageLongPress(x: Float, y: Float, src: String)
         fun onCancelSelect()
         fun onLongScreenshotTouchEvent(event: MotionEvent): Boolean

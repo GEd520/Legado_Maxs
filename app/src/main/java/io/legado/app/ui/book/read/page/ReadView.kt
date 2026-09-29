@@ -454,10 +454,10 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
     /**
      * 显示选区放大镜
-     * 在文本选择过程中跟随手指位置显示放大镜，方便用户查看选区位置
+     * 在文本选择过程中跟随手指/选择手柄位置显示放大镜，方便用户查看选区位置
      * 仅在 Android 9.0 (API 28) 及以上版本可用
      */
-    private fun showSelectionMagnifier(x: Float, y: Float) {
+    fun showSelectionMagnifier(x: Float, y: Float) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || !isAttachedToWindow) return
         val safeX = x.coerceIn(0f, width.toFloat())
         val safeY = y.coerceIn(0f, height.toFloat())
@@ -467,7 +467,7 @@ class ReadView(context: Context, attrs: AttributeSet) :
     /**
      * 隐藏选区放大镜
      */
-    private fun dismissSelectionMagnifier() {
+    fun dismissSelectionMagnifier() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         selectionMagnifier?.dismiss()
     }
@@ -560,14 +560,16 @@ class ReadView(context: Context, attrs: AttributeSet) :
 
     /**
      * 选择文本
-     * 根据触摸位置更新文本选择范围
-     * 
+     * 根据触摸位置更新文本选择范围，手指顶到内容区上下边缘时会自动翻页继续选择
+     *
      * @param x 触摸点X坐标
      * @param y 触摸点Y坐标
      */
     private fun selectText(x: Float, y: Float) {
+        var dragStartPoint = false
         curPage.selectText(x, y) { textPos ->
             val compare = initialTextPos.compare(textPos)
+            dragStartPoint = compare > 0
             when {
                 compare > 0 -> {
                     // 新位置在初始位置之前，更新起始位置
@@ -586,6 +588,14 @@ class ReadView(context: Context, attrs: AttributeSet) :
                 }
             }
         }
+        curPage.checkSelectAutoPage(x, y, dragStartPoint)
+    }
+
+    /**
+     * 页窗口位移（跨页选择翻页）后同步选择锚点，避免锚点错位
+     */
+    fun shiftSelectAnchor(offset: Int) {
+        initialTextPos.relativePagePos += offset
     }
 
     /**
