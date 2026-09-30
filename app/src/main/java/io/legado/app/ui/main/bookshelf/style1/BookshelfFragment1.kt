@@ -81,6 +81,9 @@ class BookshelfFragment1() :
     private var tagSelectedIndex = -1
     private var currentTagList: List<String> = emptyList()
 
+    /** 最近一次提交到标签栏的命中数量，用于判断重算结果是否与上次完全一致（见 [loadTagBar]） */
+    private var tagBarCounts: Map<String, Int> = emptyMap()
+
     /** [tagSelectedIndex] 所属的分组；切分组时选中态要回到「全部」，同一分组内重载则保留 */
     private var tagBarGroupId: Long? = null
     private val bookGroups = mutableListOf<BookGroup>()
@@ -343,22 +346,33 @@ class BookshelfFragment1() :
             val allText = getString(R.string.bookshelf_tag_all)
             val (tags, tagCounts) = loadBookshelfTagBarData(context, currentGroupId)
             // 在标签列表前插入空字符串作为“全部”标签，显示时转为 allText
-            currentTagList = listOf("") + tags
-            val selectedIndex = currentTagList.restoreTagSelection(previousTag)
+            val newTagList = listOf("") + tags
+            val selectedIndex = newTagList.restoreTagSelection(previousTag)
+            // 标签源每次变化都会走到这里，但重算结果往往和上次完全一样（例如只改了与标签无关的
+            // 计数）。整份重建 chip、强制重刷样式、再走一遍筛选既没有视觉差异，又会在
+            // 每次阅读进度写入时白干一遍，所以内容未变就只更新状态、不碰视图。
+            val unchanged = tagBarGroupId == currentGroupId &&
+                newTagList == currentTagList &&
+                selectedIndex == tagSelectedIndex &&
+                tagCounts == tagBarCounts
+            currentTagList = newTagList
             tagSelectedIndex = selectedIndex
             tagBarGroupId = currentGroupId
+            tagBarCounts = tagCounts
             BookshelfTagSelection.remember(currentGroupId, currentTagList.getOrNull(selectedIndex))
-            tagBar?.visibility = View.VISIBLE
-            tagBar?.applyTopBarStyle(force = true)
-            tagBar?.submitItems(
-                currentTagList.map { tag ->
-                    RoundedTagBarView.Item(
-                        BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
-                    )
-                },
-                selectedIndex,
-            )
-            tagBar?.setSelectedIndex(selectedIndex, false)
+            if (!unchanged) {
+                tagBar?.visibility = View.VISIBLE
+                tagBar?.applyTopBarStyle()
+                tagBar?.submitItems(
+                    currentTagList.map { tag ->
+                        RoundedTagBarView.Item(
+                            BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
+                        )
+                    },
+                    selectedIndex,
+                )
+                tagBar?.setSelectedIndex(selectedIndex, false)
+            }
             refreshBooksByTag()
         }
     }

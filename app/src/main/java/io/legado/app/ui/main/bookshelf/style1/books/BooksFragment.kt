@@ -264,8 +264,15 @@ class BooksFragment() : BaseFragment(R.layout.fragment_books) {
 
     fun getBooksCount(): Int = shelfItems.size
 
-    /** 按标签筛选书籍。传 null 表示清除筛选。 */
+    /**
+     * 按标签筛选书籍。传 null 表示清除筛选。
+     *
+     * 筛选值没变时直接返回：父页的 [loadTagBar] 会在标签源每次变化后重跑并回调到这里，
+     * 而标签源变化本身就会让 [upRecyclerData] 的数据流重新发射——再取消/重启一次
+     * 就是白跑一遍全表查询、排序与条目重建（分组切换/阅读进度写入时都能感觉到）。
+     */
     fun filterByTag(tag: String?) {
+        if (tag == tagFilter) return
         tagFilter = tag
         upRecyclerData()
     }

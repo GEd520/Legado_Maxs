@@ -89,6 +89,9 @@ class BookshelfFragment2() :
     private var tagSelectedIndex = -1
     private var currentTagList: List<String> = emptyList()
 
+    /** 最近一次提交到标签栏的命中数量，用于判断重算结果是否与上次完全一致（见 [loadTagBar]） */
+    private var tagBarCounts: Map<String, Int> = emptyMap()
+
     /** [tagSelectedIndex] 所属的分组；切分组时选中态要回到「全部」，同一分组内重载则保留 */
     private var tagBarGroupId: Long? = null
 
@@ -363,21 +366,31 @@ class BookshelfFragment2() :
             // 查询期间已切换分组（如快速进出分组），丢弃过期结果
             if (currentGroupId != groupId) return@launch
             // 在标签列表前插入空字符串作为"全部"标签
-            currentTagList = listOf("") + tags
-            val selectedIndex = currentTagList.restoreTagSelection(previousTag)
+            val newTagList = listOf("") + tags
+            val selectedIndex = newTagList.restoreTagSelection(previousTag)
+            // 标签源每次变化都会走到这里，但重算结果常与上次完全一致（只改了与标签无关的计数）：
+            // 整份重建 chip、强制重刷样式没有视觉差异，却会在每次阅读进度写入时白干一遍
+            val unchanged = tagBarGroupId == currentGroupId &&
+                newTagList == currentTagList &&
+                selectedIndex == tagSelectedIndex &&
+                tagCounts == tagBarCounts
+            currentTagList = newTagList
             tagSelectedIndex = selectedIndex
             tagBarGroupId = currentGroupId
+            tagBarCounts = tagCounts
             BookshelfTagSelection.remember(currentGroupId, currentTagList.getOrNull(selectedIndex))
-            tagBar?.applyTopBarStyle(force = true)
-            tagBar?.submitItems(
-                currentTagList.map { tag ->
-                    RoundedTagBarView.Item(
-                        BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
-                    )
-                },
-                selectedIndex,
-            )
-            tagBar?.setSelectedIndex(selectedIndex, false)
+            if (!unchanged) {
+                tagBar?.applyTopBarStyle()
+                tagBar?.submitItems(
+                    currentTagList.map { tag ->
+                        RoundedTagBarView.Item(
+                            BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
+                        )
+                    },
+                    selectedIndex,
+                )
+                tagBar?.setSelectedIndex(selectedIndex, false)
+            }
             tagBarLoaded = true
             // 仅当列表内容已切换到当前分组时立即显示；
             // 否则等待 rebuildEntries 在内容提交同帧显示，避免标签栏先于内容出现
@@ -399,11 +412,14 @@ class BookshelfFragment2() :
      */
     private fun applyTagFilter() {
         val selectedIndex = tagSelectedIndex
-        tagFilter = if (selectedIndex <= 0 || selectedIndex >= currentTagList.size) {
+        val newFilter = if (selectedIndex <= 0 || selectedIndex >= currentTagList.size) {
             null
         } else {
             currentTagList[selectedIndex]
         }
+        // 点的是当前已生效的标签：不必取消/重启整条数据流（重启会重查、重排、重建全部条目）
+        if (newFilter == tagFilter) return
+        tagFilter = newFilter
         // 只重启数据流，不调用 initBooksData，避免 loadTagBar → initBooksData → loadTagBar 循环
         restartBooksFlow()
     }

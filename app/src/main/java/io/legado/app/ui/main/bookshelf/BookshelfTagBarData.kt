@@ -1,23 +1,42 @@
 package io.legado.app.ui.main.bookshelf
 
 import android.content.Context
+import androidx.collection.LruCache
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import io.legado.app.constant.BookType
+import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.data.dao.BookTagInfo
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.book.BookTagManagement
 import io.legado.app.help.book.BookTagMatcher
+import io.legado.app.help.book.SmartTagConfig
 import io.legado.app.help.book.toSmartTagSnapshot
 import io.legado.app.help.config.AppConfig
 import io.legado.app.utils.flowWithLifecycleFirst
+import io.legado.app.utils.getPrefString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import splitties.init.appCtx
+
+/** 标签源（`books` 表标签相关列）的修订号，每次投影变化自增，见 [observeBookshelfTagSource] */
+@Volatile
+private var tagSourceRevision = 0
+
+/**
+ * 标签栏计算结果的进程级缓存。
+ *
+ * 一次计算要遍历全表投影、逐本解析标签、跑智能标签规则与计数（O(书数×规则数)）；
+ * 而「切分组来回」「标签源每次变化」都会重新走一遍。同一分组 + 同一标签源/配置下的结果
+ * 完全相同，这里按这两类廉价值做缓存，避免反复全量重算。
+ */
+private val tagBarDataCache = LruCache<String, Pair<List<String>, Map<String, Int>>>(8)
 
 /**
  * 书架二级标签栏的数据计算（style1 与 style2 共用同一份实现）。
@@ -32,6 +51,43 @@ internal suspend fun loadBookshelfTagBarData(
     context: Context,
     groupId: Long,
 ): Pair<List<String>, Map<String, Int>> = withContext(Dispatchers.IO) {
+    val key = tagBarCacheKey(groupId)
+    tagBarDataCache[key]?.let { return@withContext it }
+    val value = computeBookshelfTagBarData(context, groupId)
+    tagBarDataCache.put(key, value)
+    value
+}
+
+/**
+ * 缓存键：结果只与「书本标签列（[tagSourceRevision]）+ 智能标签配置（[SmartTagConfig.revision]、
+ * 总开关）+ 该分组的标签/隐藏标签偏好 + 用户分组位掩码」有关，这些都能用廉价值表达，
+ * 不必真的把全表标签算一遍。
+ *
+ * 位掩码只为「网络未分组 / 本地未分组」参与判定（见 [filterBookshelfTagInfosByGroup]），
+ * 其余分组传 0 以避免多余的分组表查询；这两个分组读一次小表也很便宜。
+ */
+private fun tagBarCacheKey(groupId: Long): String {
+    val needMask = groupId == BookGroup.IdNetNone || groupId == BookGroup.IdLocalNone
+    return buildString {
+        append(groupId).append('|')
+        append(tagSourceRevision).append('|')
+        append(SmartTagConfig.revision).append('|')
+        append(SmartTagConfig.isEnabled(appCtx)).append('|')
+        append(appCtx.getPrefString(PreferKey.bookshelfGroupTags)).append('|')
+        append(appCtx.getPrefString(PreferKey.bookshelfHiddenTags)).append('|')
+        if (needMask) append(userGroupMask())
+    }
+}
+
+/** 用户分组位掩码（正 groupId 的并集），"未分组"判定与标签栏缓存键共用 */
+private fun userGroupMask(): Long = appDb.bookGroupDao.all
+    .filter { it.groupId > 0 }
+    .fold(0L) { acc, group -> acc or group.groupId }
+
+private fun computeBookshelfTagBarData(
+    context: Context,
+    groupId: Long,
+): Pair<List<String>, Map<String, Int>> {
     val configured = AppConfig.bookshelfGroupTags[groupId].orEmpty()
     val hidden = AppConfig.bookshelfHiddenTags[groupId].orEmpty()
     val groupBooks = filterBookshelfTagInfosByGroup(appDb.bookDao.allTagInfos, groupId)
@@ -50,7 +106,7 @@ internal suspend fun loadBookshelfTagBarData(
         snapshots,
         smartRules,
     ) + ("" to groupBooks.size)
-    mergedTags to counts
+    return mergedTags to counts
 }
 
 /**
@@ -65,6 +121,9 @@ internal suspend fun loadBookshelfTagBarData(
  * 投影列与 [BookTagInfo] 一致，`distinctUntilChanged` 会把与标签无关的写入
  * （封面、简介、阅读时间等）滤掉，不会让封面缓存之类的心跳触发无谓重算。
  *
+ * 全表投影的查询与逐项比对放在 `Dispatchers.Default` 上：书多时这两步在主线程序列化
+ * 一整份列表会明显卡顿（与 [io.legado.app.ui.main.bookshelf.style1.books.BooksFragment] 同口径）。
+ *
  * 必须在视图已创建后调用（用到 [Fragment.viewLifecycleOwner] 的生命周期与协程作用域）。
  */
 internal fun Fragment.observeBookshelfTagSource(onTagSourceChanged: () -> Unit) {
@@ -73,8 +132,13 @@ internal fun Fragment.observeBookshelfTagSource(onTagSourceChanged: () -> Unit) 
         appDb.bookDao.flowAllTagInfos
             .flowWithLifecycleFirst(owner.lifecycle)
             .conflate()
+            .flowOn(Dispatchers.Default)
             .distinctUntilChanged()
-            .collect { onTagSourceChanged() }
+            .collect {
+                // 投影变了才自增：让标签栏计算缓存失效，同时通知调用方重算
+                tagSourceRevision++
+                onTagSourceChanged()
+            }
     }
 }
 
@@ -145,9 +209,7 @@ internal fun filterBookshelfTagInfosByGroup(
     BookGroup.IdVideo -> books.filter { it.type and BookType.video > 0 }
     BookGroup.IdError -> books.filter { it.type and BookType.updateError > 0 }
     else -> {
-        val userGroupMask = appDb.bookGroupDao.all
-            .filter { it.groupId > 0 }
-            .fold(0L) { acc, group -> acc or group.groupId }
+        val userGroupMask = userGroupMask()
         when (groupId) {
             BookGroup.IdNetNone -> books.filter {
                 it.type and BookType.audio == 0 &&
