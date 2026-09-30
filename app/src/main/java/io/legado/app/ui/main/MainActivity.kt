@@ -11,6 +11,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
@@ -138,6 +139,9 @@ class MainActivity :
     }
     private var onUpBooksBadgeView: BadgeView? = null
     private var bottomNavigationConfigSignature: String? = null
+
+    /** 首屏分步放开常驻范围是否已开始，见 [ensureFullOffscreenPageLimit] */
+    private var offscreenLimitStaged = false
     private var bottomNavigationInset = 0
 
     /** 背景图签名缓存，配合 [currentBackgroundSignature] 避免每次 onResume 重复解码 */
@@ -349,6 +353,9 @@ class MainActivity :
     }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean = binding.run {
+        // 用户真的要切页了：先恢复满值，避免首屏分步放开期间跨页切换销毁远处 Fragment
+        // （FragmentStatePagerAdapter 会销毁超出范围的页面，书架重建会重走 upGroup 产生分组闪烁）
+        ensureFullOffscreenPageLimit()
         when (item.itemId) {
             R.id.menu_bookshelf ->
                 viewPagerMain.setCurrentItem(bookshelfPosition(), false)
@@ -388,12 +395,72 @@ class MainActivity :
         }
     }
 
+    /**
+     * 首屏分步放开常驻范围（见 [initView] 的说明）。
+     *
+     * 只往上调、不往下调：`setOffscreenPageLimit` 只在值变化时才 `populate()`，
+     * 反向调小会把已经建好的页面销毁，反而比一次性建满更慢（实测会销毁并重建"我的"页）。
+     */
+    private fun stepOffscreenPageLimitUp() {
+        if (isFinishing || isDestroyed) return
+        binding.viewPagerMain.let { pager ->
+            if (pager.offscreenPageLimit < 2) pager.offscreenPageLimit = 2
+            pager.postDelayed({
+                if (isFinishing || isDestroyed) return@postDelayed
+                if (pager.offscreenPageLimit < 3) pager.offscreenPageLimit = 3
+                pager.postDelayed({
+                    if (isFinishing || isDestroyed) return@postDelayed
+                    if (pager.offscreenPageLimit < FULL_OFFSCREEN_PAGE_LIMIT) {
+                        pager.offscreenPageLimit = FULL_OFFSCREEN_PAGE_LIMIT
+                    }
+                }, OFFSCREEN_PAGE_STEP_DELAY)
+            }, OFFSCREEN_PAGE_STEP_DELAY)
+        }
+    }
+
+    /**
+     * 把 ViewPager 的常驻范围立刻拉满（见 [FULL_OFFSCREEN_PAGE_LIMIT]）。
+     *
+     * 用在"用户真的要切页"的入口上：首屏分步放开期间若发生跨页切换，
+     * FragmentStatePagerAdapter 会销毁超出范围的页面，远处页面（书架）重建会重走 upGroup
+     * 产生分组闪烁。提前拉满后，切换路径与改动前完全一致。
+     *
+     * 分步放开尚未开始时一律忽略（[offscreenLimitStaged]）：启动流程自己会在
+     * `onActivityCreated` 里 `setCurrentItem` 恢复上次的 Tab，那次也会走到
+     * `onPageSelected`，若在这里拉满就等于首屏又把 5 个页面全建一遍，阶梯形同失效。
+     */
+    private fun ensureFullOffscreenPageLimit() {
+        if (!offscreenLimitStaged) return
+        if (binding.viewPagerMain.offscreenPageLimit < FULL_OFFSCREEN_PAGE_LIMIT) {
+            binding.viewPagerMain.offscreenPageLimit = FULL_OFFSCREEN_PAGE_LIMIT
+        }
+    }
+
     private fun initView() = binding.run {
         viewPagerMain.setEdgeEffectColor(primaryColor)
-        // offscreenPageLimit 设为 4，确保 5 个 Tab 互相切换时 Fragment 都不会被销毁重建。
+        // offscreenPageLimit 满值设为 4，确保 5 个 Tab 互相切换时 Fragment 都不会被销毁重建。
         // 之前值为 3 时，从 position 4（我的）切到 position 0（书架）距离为 4 超过预加载范围，
         // 导致书架 Fragment 被销毁重建，重新走 upGroup 流程产生分组闪烁。
-        viewPagerMain.offscreenPageLimit = 4
+        //
+        // 但一开始就给满值，意味着首屏要把 5 个页面全部创建并完成首次布局：
+        // 冷启动/主题重建/从后台恢复时这一段会在首帧里压出一段长帧。
+        // 因此首屏只保留当前页与相邻页，首帧画出来后按 1 → 2 → 3 → 4 分步放开；
+        // 用户一旦真的切页（[ensureFullOffscreenPageLimit]）立刻恢复满值，
+        // 所以"跨页切换不销毁 Fragment"的既有保证不受影响。
+        viewPagerMain.offscreenPageLimit = INITIAL_OFFSCREEN_PAGE_LIMIT
+        viewPagerMain.viewTreeObserver.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    viewPagerMain.viewTreeObserver.removeOnPreDrawListener(this)
+                    // 首帧已按"当前页 + 相邻页"画完，从下一帧起分步放开其余页面：
+                    // 阶梯只升不降（setOffscreenPageLimit 只在值变化时才 populate），
+                    // 避免把已经建好的页面又销毁掉
+                    offscreenLimitStaged = true
+                    viewPagerMain.post { stepOffscreenPageLimitUp() }
+                    return true
+                }
+            }
+        )
         viewPagerMain.adapter = adapter
         viewPagerMain.addOnPageChangeListener(PageChangeCallback())
         bottomNavigationView.setOnNavigationItemSelectedListener(this@MainActivity)
@@ -805,6 +872,8 @@ class MainActivity :
 
         override fun onPageSelected(position: Int) {
             pagePosition = position
+            // 已经发生切页（含滑动切换）：立刻拉满常驻范围，后续切换不再销毁远处 Fragment
+            ensureFullOffscreenPageLimit()
             // recreate() 不带 savedInstanceState，这里实时记录，重建后才能回到本页
             lastTabFragmentId = realPositions[position]
             val fragmentId = realPositions[position]
@@ -1535,6 +1604,20 @@ class MainActivity :
          * 请求是用户新的一次切换，必须放行，否则界面会停在旧主题。
          */
         private const val RECREATE_IGNORE_MS = 2000L
+
+        /**
+         * 底栏页面全量常驻所需的 offscreenPageLimit。
+         *
+         * 取 4 = Tab 总数 - 1，任何两个页面之间的跨度都在预加载范围内，
+         * 跨页切换不会销毁 Fragment（书架重建会重走 upGroup，产生分组闪烁）。
+         */
+        private const val FULL_OFFSCREEN_PAGE_LIMIT = 4
+
+        /** 首屏只保留当前页与相邻页，避免 5 个页面挤在首帧里一起创建与首次布局 */
+        private const val INITIAL_OFFSCREEN_PAGE_LIMIT = 1
+
+        /** 首屏分步放开常驻范围的间隔；三步合计约 0.8s，用户开始翻页前已回到满值 */
+        private const val OFFSCREEN_PAGE_STEP_DELAY = 400L
 
         /**
          * 触发本次重启时生效的主题状态，见 [isLateRecreateEcho]。

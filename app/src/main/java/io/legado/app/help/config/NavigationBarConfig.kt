@@ -46,9 +46,6 @@ import splitties.init.appCtx
  * @property opacity 背景透明度（0-100）
  * @property borderColor 边框颜色
  * @property borderAlpha 边框透明度（0-100）
- * @property wallpaperPath 壁纸图片路径（当前未使用）
- * @property sidebarBackgroundPath 侧栏背景路径（侧栏模式专用）
- * @property sidebarGravity 侧栏停靠方向："start" 或 "end"
  * @property icons 自定义图标映射，key 格式为 "{itemKey}_{state}"
  * @property updatedAt 最后更新时间戳
  */
@@ -64,9 +61,6 @@ data class NavigationBarConfig(
     var opacity: Int = 76,
     var borderColor: Int? = null,
     var borderAlpha: Int = 100,
-    var wallpaperPath: String? = null,
-    var sidebarBackgroundPath: String? = null,
-    var sidebarGravity: String = "start",
     var icons: Map<String, String> = emptyMap(),
     var updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -173,12 +167,28 @@ data class NavigationBarConfig(
         }
 
         /**
+         * [loadConfigs] 的解析结果缓存。
+         *
+         * 主界面每次 onResume、底栏配置签名比对（[currentSignature]）、菜单图标应用
+         * （[applyToMenu]）都会走到 [activeConfig] → 这里，而它要 `getPrefString` +
+         * 逐个 `GSON.fromJson` 解析用户的每份自定义底栏——进出主界面/切页时这份解析完全是重复劳动。
+         * 缓存键直接用原始 JSON 字符串（比字符串比解析便宜得多），任何写入
+         * （[saveConfigs]、旧格式迁移、主题导入）都会让键失效。
+         */
+        @Volatile
+        private var cachedConfigs: Pair<String, List<NavigationBarConfig>>? = null
+
+        /**
          * 加载所有底栏配置：内置配置（日间/夜间）+ 用户自定义配置。
          * 支持从旧版 JSON 对象格式自动迁移到数组格式。
          */
         fun loadConfigs(context: Context): MutableList<NavigationBarConfig> {
+            val stored = context.getPrefString(PREF_KEY_CUSTOM_CONFIGS).orEmpty()
+            cachedConfigs?.takeIf { it.first == stored }?.let { cached ->
+                // 返回副本：调用方（配置管理页、主题导入）会直接改这些实例
+                return cached.second.mapTo(mutableListOf()) { it.copySelf() }
+            }
             val configs = mutableListOf(createDefaultDay(), createDefaultNight())
-            val stored = context.getPrefString(PREF_KEY_CUSTOM_CONFIGS)
             var shouldMigrate = false
             when {
                 stored.isNullOrBlank() -> Unit
@@ -197,6 +207,10 @@ data class NavigationBarConfig(
             if (shouldMigrate) {
                 saveConfigs(context, configs)
             }
+            // 只缓存"未被迁移改写"的形态：迁移会重写偏好，下一次调用键不同、自然重新解析
+            if (!shouldMigrate) {
+                cachedConfigs = stored to configs.map { it.copySelf() }
+            }
             return configs
         }
 
@@ -208,6 +222,8 @@ data class NavigationBarConfig(
                     GSON.toJson(configs.filter { !it.isBuiltin })
                 )
             }
+            // 写盘后键本就变了，这里再显式清一次，兜住失败/时序异常
+            cachedConfigs = null
         }
 
         private fun parseConfigArray(stored: String): List<NavigationBarConfig> {
@@ -343,6 +359,14 @@ data class NavigationBarConfig(
         /** 生成图标存储 key："{itemKey}_{state}" */
         fun iconKey(itemKey: String, state: String): String = "${itemKey}_$state"
 
+        /**
+         * 读取自定义图标。
+         *
+         * SVG 用 [SvgUtils] 解析并缓存位图（解析开销大、结果尺寸固定）；
+         * 位图图标保持 [Drawable.createFromPath] 原样解码：改成缓存+降采样会让底栏图标
+         * 边缘像素发生变化（实测可辨），而全尺寸原图入缓存又有被相册大图撑爆的风险，
+         * 且这条路径本就被底栏配置签名缓存挡住（配置没变不会重来）。
+         */
         private fun loadIconDrawable(context: Context, path: String?): Drawable? {
             if (path.isNullOrBlank()) return null
             val file = java.io.File(path)

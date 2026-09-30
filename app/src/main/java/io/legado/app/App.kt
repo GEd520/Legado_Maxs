@@ -90,6 +90,13 @@ class App : Application() {
         AppConfig.migrateClipboardImportMode()
         registerActivityLifecycleCallbacks(LifecycleHelp)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
+        // 冷启动最先被抢的是数据库：欢迎页读上次阅读、书架分组与书籍数据、书源列表都要用它，
+        // 而 Room 首次访问会串行化建库/打开/迁移。单独起一个协程先把它开好，
+        // 不和同一段初始化里的其它慢活（Cronet 预下载、Rhino 预热、通知渠道）排在同一条队列上，
+        // 免得主线程稍后读到 appDb 时还要等初始化锁（冷启动与后台恢复的主要等待来源之一）。
+        Coroutine.async {
+            runCatching { appDb.openHelper.writableDatabase }
+        }
         Coroutine.async {
             LogUtils.init(this@App)
             LogUtils.d("App", "onCreate")
