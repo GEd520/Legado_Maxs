@@ -149,6 +149,9 @@ class App : Application() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        // Application 的 Resources 是 attachBaseContext 时包装出的固定快照，不会随系统配置更新；
+        // 先把它同步到新配置，后续按昼夜解析主题资源（AppCompat 的 FOLLOW_SYSTEM 也读它）才是新值
+        AppContextWrapper.syncConfiguration(this, newConfig)
         val diff = newConfig.diff(oldConfig)
         if ((diff and ActivityInfo.CONFIG_UI_MODE) != 0) {
             val oldNight = oldConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
