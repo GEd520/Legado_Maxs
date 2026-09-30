@@ -17,6 +17,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.DefaultData
+import io.legado.app.lib.theme.ThemeStateStore
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.ThemeTransition
 import io.legado.app.model.BookCover
@@ -694,6 +695,9 @@ object ThemeConfig {
                     .apply()
             }
         }
+        // 色板已更新：让 Compose 侧的读色（LegadoTheme/CommonPageColors）立刻重组，
+        // 不依赖随后的重建窗口（跟随系统翻转、重建被判定为回声而跳过等场景）
+        ThemeStateStore.notifyThemeChanged()
     }
 
     fun clearBg(context: Context) {
