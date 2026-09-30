@@ -16,6 +16,7 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.graphics.drawable.toDrawable
 import com.google.gson.JsonArray
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -142,11 +143,16 @@ data class NavigationBarConfig(
             override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
         }
 
-        /** 已解码位图包成 Drawable 的开销可忽略，这里按位图缓存复用，避免同一张图解两次 */
-        private fun drawableOf(cacheKey: String, bitmap: Bitmap, context: Context): Drawable {
+        /**
+         * 位图包成 Drawable 并缓存。
+         *
+         * 包一层本身很便宜，但启动期底栏图标会被应用两次以上，复用同一实例可以少一次分配；
+         * 统一用 appCtx 的资源构造，避免静态缓存间接持有 Activity。
+         */
+        private fun drawableOf(cacheKey: String, bitmap: Bitmap): Drawable {
             return synchronized(iconDrawableCache) {
                 iconDrawableCache[cacheKey]
-            } ?: BitmapDrawable(context.resources, bitmap).also {
+            } ?: bitmap.toDrawable(appCtx.resources).also {
                 synchronized(iconDrawableCache) { iconDrawableCache.put(cacheKey, it) }
             }
         }
@@ -427,20 +433,18 @@ data class NavigationBarConfig(
                 iconDrawableCache[cacheKey]?.let { return it }
             }
             val file = java.io.File(path)
-            val drawable = if (file.extension.equals("svg", ignoreCase = true)) {
+            if (file.extension.equals("svg", ignoreCase = true)) {
                 val targetSize = (context.resources.displayMetrics.density * 48).toInt()
-                SvgUtils.createBitmapFromFile(path, targetSize, targetSize)
-                    ?.let { BitmapDrawable(appCtx.resources, it)?.also { d -> synchronized(iconDrawableCache) { iconDrawableCache.put(cacheKey, d) } } }
-            } else {
-                val bitmap = synchronized(iconBitmapCache) {
-                    iconBitmapCache[cacheKey]?.takeIf { !it.isRecycled }
-                        ?: decodeIconBitmap(path, iconDecodeTarget(context)).also {
-                            if (it != null) iconBitmapCache.put(cacheKey, it)
-                        }
-                }
-                bitmap?.let { drawableOf(cacheKey, it, context) }
-            } ?: return null
-            return drawable
+                return SvgUtils.createBitmapFromFile(path, targetSize, targetSize)
+                    ?.let { drawableOf(cacheKey, it) }
+            }
+            val bitmap = synchronized(iconBitmapCache) {
+                iconBitmapCache[cacheKey]?.takeIf { !it.isRecycled }
+                    ?: decodeIconBitmap(path, iconDecodeTarget(context)).also {
+                        if (it != null) iconBitmapCache.put(cacheKey, it)
+                    }
+            }
+            return bitmap?.let { drawableOf(cacheKey, it) }
         }
 
         /**
