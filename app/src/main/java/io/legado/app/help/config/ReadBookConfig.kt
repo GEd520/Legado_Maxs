@@ -313,17 +313,22 @@ object ReadBookConfig {
 
     /**
      * 获取标题字重值
-     * 
+     *
      * 精细模式下返回独立的标题字重值；
-     * 粗略模式下标题使用 BOLD (700)。
-     * 
+     * 粗略模式下跟随 [textBold] 映射：正常→500(Medium)，粗体→900，细体→400。
+     * 粗略模式不再一律用 700：标题只需比正文略重，700 会让"正常"档的标题明显过粗。
+     *
      * @return 实际字重值，范围 100~900
      */
     fun getTitleBoldWeight(): Int {
         return if (AppConfig.textBoldMode == 1) {
             titleBold.coerceIn(100, 900)
         } else {
-            700 // 粗略模式下标题固定使用 BOLD
+            when (textBold) {
+                1 -> 900
+                2 -> 400
+                else -> 500
+            }
         }
     }
 

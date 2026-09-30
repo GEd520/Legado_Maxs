@@ -261,7 +261,11 @@ data class TextLine(
             paint.wordSpacing = wordSpacing
         }
         val offsetX = if (atLeastApi35) letterSpacingHalf else extraLetterSpacingOffsetX
-        canvas.drawText(text, indentSize, text.length, startX + offsetX, lineBase - lineTop, paint)
+        val textX = startX + offsetX
+        val baseline = lineBase - lineTop
+        canvas.drawText(text, indentSize, text.length, textX, baseline, paint)
+        // 第三方字体字重<400：用背景色描边擦掉字心边缘，画出比常规字面更细的字
+        ChapterProvider.drawThinStroke(canvas, paint, isTitle, text, indentSize, text.length, textX, baseline)
         PaintPool.recycle(paint)
         for (i in columns.indices) {
             val column = columns[i] as TextColumn
