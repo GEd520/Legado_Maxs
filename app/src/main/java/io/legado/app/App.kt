@@ -42,6 +42,7 @@ import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookshelfMatcher
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.NavigationBarConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.config.ThemeConfig.applyTheme
@@ -62,6 +63,8 @@ import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isDebuggable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.chromium.base.ThreadUtils
 import splitties.init.appCtx
@@ -90,6 +93,12 @@ class App : Application() {
         AppConfig.migrateClipboardImportMode()
         registerActivityLifecycleCallbacks(LifecycleHelp)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
+        // 底栏自定义图标首次应用时要同步解码（实测 10 张合计约 0.6s 主线程阻塞）。
+        // 这里用纯后台调度器直接跑：走 Coroutine.async 会先派发回主线程排队，
+        // 启动期主线程正忙，等排到就已经晚了，主线程该用图标时还是得同步解码。
+        CoroutineScope(Dispatchers.IO).launch {
+            NavigationBarConfig.preloadActiveIcons(appCtx)
+        }
         // 冷启动最先被抢的是数据库：欢迎页读上次阅读、书架分组与书籍数据、书源列表都要用它，
         // 而 Room 首次访问会串行化建库/打开/迁移。单独起一个协程先把它开好，
         // 不和同一段初始化里的其它慢活（Cronet 预下载、Rhino 预热、通知渠道）排在同一条队列上，
