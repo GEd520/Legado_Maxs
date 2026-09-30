@@ -1,7 +1,6 @@
 package io.legado.app.help.config
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -113,12 +112,29 @@ data class NavigationBarConfig(
         private const val PREF_KEY_ACTIVE_NIGHT = "activeNightNavBarId"
         private const val PREF_KEY_CUSTOM_CONFIGS = "customNavBarConfigs"
 
-        /** 图标 Bitmap 缓存，避免每次重新解析 SVG/PNG 文件 */
-        private val iconBitmapCache = LruCache<String, Bitmap>(64)
+        /** 图标缓存容量上限：按解码后的位图字节数计，避免用户直接选相册大图把缓存撑爆 */
+        private const val ICON_CACHE_MAX_BYTES = 12 * 1024 * 1024
+
+        /**
+         * 图标解码结果缓存（SVG 位图与位图图标都进这里）。
+         *
+         * 存的是 [Drawable.createFromPath] **原样返回的 Drawable 实例**，而不是"等价重建"的产物：
+         * 底栏图标在首次进入主界面时会被连续应用两次（`upBottomMenu` 一次、`initView` 再确认一次），
+         * 每次都要重新解码 10 张图（设备实测单次约 0.5s 主线程阻塞）。
+         * 换成 `BitmapFactory` + `BitmapDrawable` 的等价重建会改变渲染（实测底栏区 884 个像素不同），
+         * 原样复用则逐像素一致。按字节数计容量：图标过大（用户直接选相册大图）时不入缓存，
+         * 行为与改动前一致，也不会把缓存撑爆。
+         */
+        private val iconDrawableCache = object : LruCache<String, Drawable>(ICON_CACHE_MAX_BYTES) {
+            override fun sizeOf(key: String, value: Drawable): Int = when (value) {
+                is BitmapDrawable -> value.bitmap?.byteCount ?: 0
+                else -> 1024
+            }
+        }
 
         /** 清空图标缓存（配置变更时调用） */
         fun clearIconCache() {
-            iconBitmapCache.evictAll()
+            iconDrawableCache.evictAll()
         }
 
         /** 生成图标缓存 key：基于文件路径、最后修改时间和大小 */
@@ -360,29 +376,29 @@ data class NavigationBarConfig(
         fun iconKey(itemKey: String, state: String): String = "${itemKey}_$state"
 
         /**
-         * 读取自定义图标。
+         * 读取自定义图标，结果进 [iconDrawableCache]（键含文件修改时间与大小，换图即失效）。
          *
-         * SVG 用 [SvgUtils] 解析并缓存位图（解析开销大、结果尺寸固定）；
-         * 位图图标保持 [Drawable.createFromPath] 原样解码：改成缓存+降采样会让底栏图标
-         * 边缘像素发生变化（实测可辨），而全尺寸原图入缓存又有被相册大图撑爆的风险，
-         * 且这条路径本就被底栏配置签名缓存挡住（配置没变不会重来）。
+         * SVG 用 [SvgUtils] 解析（[Drawable.createFromPath] 不支持 SVG）；
+         * 位图图标用 [Drawable.createFromPath] 原样解码后缓存。
          */
         private fun loadIconDrawable(context: Context, path: String?): Drawable? {
             if (path.isNullOrBlank()) return null
-            val file = java.io.File(path)
-            // SVG 文件需要用 SvgUtils 解析，Drawable.createFromPath 不支持 SVG
-            if (file.extension.equals("svg", ignoreCase = true)) {
-                val targetSize = (context.resources.displayMetrics.density * 48).toInt()
-                val cacheKey = iconCacheKey(path)
-                val bitmap = synchronized(iconBitmapCache) {
-                    iconBitmapCache[cacheKey]?.takeIf { !it.isRecycled }
-                        ?: SvgUtils.createBitmapFromFile(path, targetSize, targetSize)?.also {
-                            iconBitmapCache.put(cacheKey, it)
-                        }
-                }
-                return bitmap?.let { BitmapDrawable(context.resources, it) }
+            val cacheKey = iconCacheKey(path)
+            synchronized(iconDrawableCache) {
+                iconDrawableCache[cacheKey]?.let { return it }
             }
-            return Drawable.createFromPath(path)
+            val file = java.io.File(path)
+            val drawable = if (file.extension.equals("svg", ignoreCase = true)) {
+                val targetSize = (context.resources.displayMetrics.density * 48).toInt()
+                SvgUtils.createBitmapFromFile(path, targetSize, targetSize)
+                    ?.let { BitmapDrawable(appCtx.resources, it) }
+            } else {
+                Drawable.createFromPath(path)
+            } ?: return null
+            synchronized(iconDrawableCache) {
+                iconDrawableCache.put(cacheKey, drawable)
+            }
+            return drawable
         }
 
         private fun defaultDrawable(context: Context, @DrawableRes resId: Int, selected: Boolean, bgColor: Int? = null): Drawable {

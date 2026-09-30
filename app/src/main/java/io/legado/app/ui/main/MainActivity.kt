@@ -4,6 +4,8 @@ package io.legado.app.ui.main
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
+import android.os.SystemClock
 import android.text.format.DateUtils
 import android.graphics.Outline
 import android.view.Gravity
@@ -396,25 +398,34 @@ class MainActivity :
     }
 
     /**
-     * 首屏分步放开常驻范围（见 [initView] 的说明）。
+     * 首屏其余页面在主线程**空闲时段**逐级放开（见 [initView] 的说明）。
      *
-     * 只往上调、不往下调：`setOffscreenPageLimit` 只在值变化时才 `populate()`，
-     * 反向调小会把已经建好的页面销毁，反而比一次性建满更慢（实测会销毁并重建"我的"页）。
+     * 用 [android.os.MessageQueue.IdleHandler] 而不是固定延时：每放开一级都会立刻创建一页
+     * （Compose 首次组合 + 首个数据查询，真机实测单页 0.3-0.5s 主线程阻塞），
+     * 放在"这一帧已经画完、消息队列为空"的间隙里做，才不会正好压在用户的滑动/点击帧上；
+     * 每级之间留 [OFFSCREEN_PAGE_STEP_MIN_GAP] 间隔，避免连续几帧都拿去建页面。
+     * 阶梯只升不降：`setOffscreenPageLimit` 只在值变化时才 `populate()`，反向调小会把已建好的
+     * 页面销毁重建（实测会销毁并重建"我的"页）。用户真的切页时
+     * [ensureFullOffscreenPageLimit] 会立刻拉满，不必等空闲。
      */
-    private fun stepOffscreenPageLimitUp() {
-        if (isFinishing || isDestroyed) return
-        binding.viewPagerMain.let { pager ->
-            if (pager.offscreenPageLimit < 2) pager.offscreenPageLimit = 2
-            pager.postDelayed({
-                if (isFinishing || isDestroyed) return@postDelayed
-                if (pager.offscreenPageLimit < 3) pager.offscreenPageLimit = 3
-                pager.postDelayed({
-                    if (isFinishing || isDestroyed) return@postDelayed
-                    if (pager.offscreenPageLimit < FULL_OFFSCREEN_PAGE_LIMIT) {
-                        pager.offscreenPageLimit = FULL_OFFSCREEN_PAGE_LIMIT
+    private fun scheduleOffscreenPageLimitSteps() {
+        var limit = INITIAL_OFFSCREEN_PAGE_LIMIT
+        var lastStepAt = 0L
+        Looper.myQueue().addIdleHandler {
+            val now = SystemClock.uptimeMillis()
+            when {
+                isFinishing || isDestroyed -> false
+                limit >= FULL_OFFSCREEN_PAGE_LIMIT -> false
+                now - lastStepAt < OFFSCREEN_PAGE_STEP_MIN_GAP -> true
+                else -> {
+                    lastStepAt = now
+                    limit++
+                    if (binding.viewPagerMain.offscreenPageLimit < limit) {
+                        binding.viewPagerMain.offscreenPageLimit = limit
                     }
-                }, OFFSCREEN_PAGE_STEP_DELAY)
-            }, OFFSCREEN_PAGE_STEP_DELAY)
+                    limit < FULL_OFFSCREEN_PAGE_LIMIT
+                }
+            }
         }
     }
 
@@ -456,7 +467,7 @@ class MainActivity :
                     // 阶梯只升不降（setOffscreenPageLimit 只在值变化时才 populate），
                     // 避免把已经建好的页面又销毁掉
                     offscreenLimitStaged = true
-                    viewPagerMain.post { stepOffscreenPageLimitUp() }
+                    scheduleOffscreenPageLimitSteps()
                     return true
                 }
             }
@@ -470,9 +481,15 @@ class MainActivity :
             bottomNavigationView.setBackgroundResource(R.drawable.bg_eink_border_top)
         }
         bottomNavigationGlass.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
-            bottomNavigationInset = windowInsets.navigationBarHeight
+            // 只有导航栏高度真的变了才重新应用底栏：insets 在启动期会派发多次
+            // （状态栏/导航栏/IME 各来一次），每次都 force 重建会让底栏图标与布局整包重做，
+            // 首屏因此多出数秒的主线程阻塞
+            val inset = windowInsets.navigationBarHeight
             view.bottomPadding = 0
-            refreshBottomNavigationConfig(force = true)
+            if (inset != bottomNavigationInset) {
+                bottomNavigationInset = inset
+                refreshBottomNavigationConfig(force = true)
+            }
             windowInsets
         }
     }
@@ -1616,8 +1633,8 @@ class MainActivity :
         /** 首屏只保留当前页与相邻页，避免 5 个页面挤在首帧里一起创建与首次布局 */
         private const val INITIAL_OFFSCREEN_PAGE_LIMIT = 1
 
-        /** 首屏分步放开常驻范围的间隔；三步合计约 0.8s，用户开始翻页前已回到满值 */
-        private const val OFFSCREEN_PAGE_STEP_DELAY = 400L
+        /** 首屏分步放开常驻范围时，相邻两级之间的最小间隔（实际放开时机由主线程空闲驱动） */
+        private const val OFFSCREEN_PAGE_STEP_MIN_GAP = 600L
 
         /**
          * 触发本次重启时生效的主题状态，见 [isLateRecreateEcho]。
