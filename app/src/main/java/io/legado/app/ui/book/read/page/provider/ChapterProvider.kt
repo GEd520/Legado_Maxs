@@ -29,7 +29,7 @@ import io.legado.app.utils.textHeight
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
 import androidx.core.net.toUri
-import kotlin.math.sqrt
+import kotlin.math.abs
 
 /**
  * 解析内容生成章节和页面
@@ -130,8 +130,9 @@ object ChapterProvider {
     var contentPaint: TextPaint = TextPaint()
 
     /**
-     * 标题/正文字重 < 400 时的变细擦除宽度（&gt;0 表示绘制阶段需用背景色描边擦掉字心边缘）。
-     * 由 [getPaints] 按字号算出，供 TextLine/TextColumn 的绘制路径消费。
+     * 标题/正文字重比所用字体实际能渲染的字面更轻时的擦除宽度
+     * （&gt;0 表示绘制阶段需用背景色描边擦掉字心边缘）。由 [getPaints] 按字号算出，
+     * 供 TextLine/TextColumn 的绘制路径消费。
      */
     @JvmStatic
     var titleThinStrokeWidth: Float = 0f
@@ -245,11 +246,11 @@ object ChapterProvider {
     /**
      * 创建标题和正文的画笔
      *
-     * 两种字重模式都归到一个"有效字重"上（[ReadBookConfig.getTitleBoldWeight] / [ReadBookConfig.getTextBoldWeight]），
-     * 再分两条路落到画笔上：
-     * - 系统字体：Android 9+ 由 `Typeface.create(weight)` 选最接近的静态字面；可变字体额外补 `wght` 变体轴
-     * - 第三方字体：多是单字面静态字体，`Typeface.create(weight)` 只剩"是否合成粗体"两挡，
-     *   于是 >400 用 strokeWidth 外扩连续加粗，<400 记录擦除宽度、绘制时用背景色描边减细
+     * 两种字重模式都归到一个"有效字重"上（[ReadBookConfig.getTitleBoldWeight] / [ReadBookConfig.getTextBoldWeight]）：
+     * Android 9+ 先交给 `Typeface.create(weight)` 选静态字面，可变字体再补 `wght` 变体轴；
+     * 字体自身给不出的那部分字重（第三方字体多是单字面、系统字体的中文回退只有常规/粗体两档）
+     * 一律由 [applyStrokeWeight] 补上——比基准重就描边外扩加粗，比基准轻就记录擦除宽度、
+     * 绘制时用背景色再描一遍字擦掉字心边缘
      *
      * @param typeface 基础字体
      * @return Pair<标题画笔, 正文画笔>
@@ -257,11 +258,10 @@ object ChapterProvider {
     private fun getPaints(typeface: Typeface?): Pair<TextPaint, TextPaint> {
         val isCustomFont = ReadBookConfig.textFont.isNotEmpty()
         val isFineMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && AppConfig.textBoldMode == 1
-        // 粗略模式系数更温和：三档间隔本来就大，且合成粗体会与描边叠加。
-        // 加粗系数比参考实现更保守（0.10→0.07）：中文笔画密集，描边均一外扩会把字腔糊死，
-        // 900 档实测糊成实心块，收到 0.07 后极粗档仍可辨认
-        val thinCoefficient = if (isFineMode) 0.03f else 0.025f
-        val boldCoefficient = if (isFineMode) 0.07f else 0.04f
+        // 描边系数＝"500 个字重单位"折算成多少字高。参考实现给的是 0.10，
+        // 但按实测校准（中文常规→粗体的墨迹差 ≈ 3.4% 字高 / 300 单位）0.05 才贴合真实字面，
+        // 0.10 在中文 900 档会把字腔糊成实心块；粗略模式三档间隔更大，再收一档
+        val strokeCoefficient = if (isFineMode) 0.05f else 0.04f
         // 第三方字体的粗略模式统一回落到 NORMAL，三档差异全部交给描边/擦除，
         // 否则 Typeface.create 的合成粗体会和描边叠加，粗体档明显过粗
         val useWeightAxis = !(isCustomFont && !isFineMode)
@@ -271,6 +271,9 @@ object ChapterProvider {
 
         val titleFont = createWeightedTypeface(typeface, titleWeight, useWeightAxis)
         val textFont = createWeightedTypeface(typeface, textWeight, useWeightAxis)
+        // 第三方字体是单一字面，基准恒为 400；系统字体按中文回退阶梯估算实际落到的字面
+        val titleBase = if (isCustomFont) 400 else estimateSystemRenderedWeight(titleWeight)
+        val textBase = if (isCustomFont) 400 else estimateSystemRenderedWeight(textWeight)
 
         //标题
         val tPaint = TextPaint()
@@ -283,7 +286,7 @@ object ChapterProvider {
             tPaint.isLinearText = true
         }
         applyWeightAxis(tPaint, titleWeight, useWeightAxis)
-        titleThinStrokeWidth = applyStrokeWeight(tPaint, titleWeight, isCustomFont, boldCoefficient, thinCoefficient)
+        titleThinStrokeWidth = applyStrokeWeight(tPaint, titleWeight, titleBase, strokeCoefficient)
         //正文
         val cPaint = TextPaint()
         cPaint.color = ReadBookConfig.textColor
@@ -295,7 +298,7 @@ object ChapterProvider {
             cPaint.isLinearText = true
         }
         applyWeightAxis(cPaint, textWeight, useWeightAxis)
-        contentThinStrokeWidth = applyStrokeWeight(cPaint, textWeight, isCustomFont, boldCoefficient, thinCoefficient)
+        contentThinStrokeWidth = applyStrokeWeight(cPaint, textWeight, textBase, strokeCoefficient)
         return Pair(tPaint, cPaint)
     }
 
@@ -323,8 +326,8 @@ object ChapterProvider {
     }
 
     /**
-     * 第三方字体变细：用背景色把刚画过的字再描一遍，擦掉字心边缘（字重 &lt; 400 时生效）。
-     * 描边宽度为 0（未启用/非第三方字体）或取不到背景色（[ReadBookConfig.bgMeanColor] 为 0）时静默跳过。
+     * 变细：用背景色把刚画过的字再描一遍，擦掉字心边缘（目标字重比字体能渲染的字面更轻时生效）。
+     * 描边宽度为 0（不需要变细）、或取不到背景色（[ReadBookConfig.bgMeanColor] 为 0）时静默跳过。
      * 会临时改 paint 的 style/color/strokeWidth，返回前还原，因此可以安全作用于共享画笔。
      */
     @JvmStatic
@@ -340,6 +343,10 @@ object ChapterProvider {
     ) {
         val thinStrokeWidth = if (isTitle) titleThinStrokeWidth else contentThinStrokeWidth
         if (thinStrokeWidth <= 0f || ReadBookConfig.bgMeanColor == 0) return
+        // 系统字体的擦除量是按汉字回退阶梯估算的，而拉丁字形本来就有真实字面（Roboto 有 100~900 六级），
+        // 按汉字基准擦会在极细档把纯拉丁文本擦没，所以系统字体只对含汉字的文本生效；
+        // 第三方字体是单字面，拉丁字形同样只能靠擦除变细，不做这个限制
+        if (ReadBookConfig.textFont.isEmpty() && !hasHan(text, start, end)) return
         val oldStyle = paint.style
         val oldColor = paint.color
         val oldStrokeWidth = paint.strokeWidth
@@ -352,32 +359,66 @@ object ChapterProvider {
         paint.strokeWidth = oldStrokeWidth
     }
 
+    /** [start, end) 区间内是否含汉字（含扩展区与兼容区） */
+    private fun hasHan(text: String, start: Int, end: Int): Boolean {
+        var i = start
+        while (i < end) {
+            val codePoint = text.codePointAt(i)
+            if (isHan(codePoint)) return true
+            i += Character.charCount(codePoint)
+        }
+        return false
+    }
+
+    private fun isHan(codePoint: Int): Boolean =
+        codePoint in 0x3400..0x4DBF ||      // 扩展 A
+            codePoint in 0x4E00..0x9FFF ||  // 基本区
+            codePoint in 0xF900..0xFAFF ||  // 兼容汉字
+            codePoint in 0x20000..0x3FFFF   // 扩展 B 及以后
+
     /**
-     * 给画笔补上"变体轴之外"的字重差：>400 用描边外扩加粗，<400 返回擦除宽度（0f 表示不需擦除）
+     * 估算系统字体把某个字重实际渲染成多少，作为补差额的基准。
+     *
+     * 系统字体的中文来自回退族。本机（Android 12 / AOSP 字体集）探针实测 `sans-serif`：
+     * 中文只有 NotoSansSC-Regular(400) 与 NotoSansSC-Bold(700) 两个字面 —— 请求 ≤550 落 400、
+     * 600~800 落 700、900 落更重的一档；而拉丁字形另有 100/300/400/500/700/900 六级。
+     * 按中文这一级取基准，差额由描边/擦除补上，中文因此也连续；
+     * 混排时拉丁一侧最多被多补/少补 2% 字高（它本来有真实字面，只是补得不够准）。
+     */
+    private fun estimateSystemRenderedWeight(weight: Int): Int = when {
+        weight <= 550 -> 400
+        weight <= 800 -> 700
+        else -> 900
+    }
+
+    /**
+     * 给画笔补上"字体自身给不出"的字重差：比基准重就用描边外扩加粗，比基准轻则返回擦除宽度
+     *
+     * 两个方向用同一条线性响应：中文回退的字面间隔是 300 单位（400→700），
+     * 若变细一侧用更陡的曲线，跨过"常规→粗体"切换点（如 550→600）时会出现
+     * "往右拖反而变细"的反向抖动，所以粗细两端共用 [strokeCoefficient]。
      *
      * @param weight 目标字重（100~900）
-     * @param isCustomFont 是否第三方字体。系统字体有真实字面可用（见 [createWeightedTypeface]），
-     *   再叠加描边会与字面本身重复，所以只有第三方字体走这条路
+     * @param baseWeight 该字体实际能渲染到的字重（第三方字体恒为 400，见 [estimateSystemRenderedWeight]）
+     * @return 擦除宽度，0f 表示不需要擦除
      */
     private fun applyStrokeWeight(
         paint: TextPaint,
         weight: Int,
-        isCustomFont: Boolean,
-        boldCoefficient: Float,
-        thinCoefficient: Float
+        baseWeight: Int,
+        strokeCoefficient: Float
     ): Float {
-        if (!isCustomFont || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return 0f
-        if (weight > 400) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return 0f
+        val delta = weight - baseWeight
+        if (delta == 0) return 0f
+        val strokeWidth = abs(delta) / 500f * paint.textSize * strokeCoefficient
+        if (delta > 0) {
             paint.style = Paint.Style.FILL_AND_STROKE
-            paint.strokeWidth = (weight - 400) / 500f * paint.textSize * boldCoefficient
+            paint.strokeWidth = strokeWidth
             return 0f
         }
-        if (weight == 400) return 0f
-        // 变细靠"用背景色把字心边缘描掉"，平方根曲线让中间段变化更明显，
-        // 上限压到字号的 2%，避免重=100 时擦除过度导致文字几乎消失
-        val normalized = (400 - weight) / 300f
-        return (sqrt(normalized) * paint.textSize * thinCoefficient)
-            .coerceAtMost(paint.textSize * 0.02f)
+        // 变细靠"用背景色把字心边缘描掉"；上限压到字号的 2%，避免重=100 时擦除过度导致文字几乎消失
+        return strokeWidth.coerceAtMost(paint.textSize * 0.02f)
     }
 
     /**
