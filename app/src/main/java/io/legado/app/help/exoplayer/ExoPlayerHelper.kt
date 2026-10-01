@@ -3,6 +3,7 @@ package io.legado.app.help.exoplayer
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -261,7 +262,7 @@ object ExoPlayerHelper {
                 videoMediaDataSourceFactory(request.headers, cacheDir),
                 Executor { it.run() }
             ).createDownloader(
-                DownloadRequest.Builder(MD5Utils.md5Encode(url), Uri.parse(url))
+                DownloadRequest.Builder(MD5Utils.md5Encode(url), url.toUri())
                     .setMimeType(guessMediaMimeType(url))
                     .build()
             )
@@ -383,7 +384,7 @@ object ExoPlayerHelper {
     }
 
     private fun isDownloadableMediaUrl(url: String): Boolean {
-        val scheme = Uri.parse(url).scheme ?: return false
+        val scheme = url.toUri().scheme ?: return false
         return scheme.equals("http", true) ||
             scheme.equals("https", true) ||
             (scheme.equals("file", true) && isAdaptiveMediaUrl(url))

@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -63,7 +64,7 @@ class Exo2MediaPlayer(context: Context) : IjkExo2MediaPlayer(context) {
 
     override fun setDataSource(dataSource: String?) {
         val url = dataSource ?: return
-        setDataSource(mAppContext, Uri.parse(url))
+        setDataSource(mAppContext, url.toUri())
     }
 
     override fun setVolume(left: Float, right: Float) {
