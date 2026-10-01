@@ -33,6 +33,7 @@ import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.constant.EventBus
+import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
@@ -60,6 +61,7 @@ import io.legado.app.help.webView.WebViewPool.scheduleInlineContentFit
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.model.CacheBook
 import io.legado.app.model.VideoPlay
 import io.legado.app.service.VideoPlayService
 import io.legado.app.ui.about.AppLogDialog
@@ -716,6 +718,11 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
         }
         starMenuItem = menu.findItem(R.id.menu_rss_star)
         upStarMenu()
+        //订阅源/直链视频没有章节可缓存，直接隐藏；书籍视频才给缓存入口
+        menu.findItem(R.id.menu_video_cache)?.apply {
+            isVisible = VideoPlay.book != null
+            icon?.setTintMutate(primaryTextColor)
+        }
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -760,6 +767,7 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
                 VideoPlay.rssStar?.let { showDialogFragment(RssFavoritesDialog(it)) }
             }
             R.id.menu_float_window -> startFloatingWindow()
+            R.id.menu_video_cache -> showVideoCacheRangeDialog()
             R.id.menu_config_settings -> showDialogFragment(SettingsDialog(this))
             R.id.menu_login -> VideoPlay.source?.let {s ->
                when (s) {
@@ -822,6 +830,26 @@ class VideoPlayerActivity : VMBaseActivity<ActivityVideoPlayerBinding, VideoPlay
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    /**
+     * 章节缓存弹窗：弹窗只负责选范围，确认后立刻消失，
+     * 所以实际动作放在 Activity 的作用域里做（弹窗自己的协程会被一起取消）。
+     */
+    private fun showVideoCacheRangeDialog() {
+        val book = VideoPlay.book ?: return
+        showDialogFragment(VideoCacheRangeDialog { start, end ->
+            //CacheBook 按 bookUrl 取书，书还没入库（例如没放入书架）时缓存不成立，先查一次目录避免静默失败
+            lifecycleScope.launch(IO) {
+                val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl, start - 1, end - 1)
+                if (chapters.isEmpty()) {
+                    toastOnUi(R.string.chapter_list_empty)
+                } else {
+                    CacheBook.start(this@VideoPlayerActivity, book, start - 1, end - 1)
+                    toastOnUi(R.string.download_start)
+                }
+            }
+        })
     }
 
     private fun startFloatingWindow() {

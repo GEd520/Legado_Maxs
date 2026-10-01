@@ -4,11 +4,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -19,12 +19,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.model.VideoPlay
 import io.legado.app.ui.theme.AppDimens
-import io.legado.app.ui.widget.components.dialog.AppDialogScaffold
+import io.legado.app.ui.widget.components.dialog.AppAdaptiveDialog
 import io.legado.app.ui.widget.components.settings.AppSettingsActionRow
 import io.legado.app.ui.widget.components.settings.AppSettingsPanel
 import io.legado.app.ui.widget.components.settings.AppSettingsSectionTitle
@@ -35,8 +34,8 @@ import kotlin.math.abs
 /**
  * 视频播放器设置弹窗内容。
  *
- * 容器与行都复用项目内的通用组件（[AppDialogScaffold] 顶栏 + [AppSettingsPanel] 分组 +
- * [AppSettingsActionRow] 行，开关放行的尾部插槽），不再手写一套设置行布局。
+ * 弹窗外观走通用组件 [AppAdaptiveDialog]（与书架标签管理的弹窗同一套样式），
+ * 内部设置行复用项目通用设置面板，避免这里手写行布局。
  */
 @Composable
 fun VideoSettingsContent(
@@ -61,24 +60,21 @@ fun VideoSettingsContent(
     var skipIntroSeconds by remember { mutableIntStateOf(VideoPlay.skipIntroSeconds) }
     var skipOutroSeconds by remember { mutableIntStateOf(VideoPlay.skipOutroSeconds) }
 
-    AppDialogScaffold(
+    AppAdaptiveDialog(
         title = stringResource(R.string.config_settings),
         onDismiss = onDismiss,
-        modifier = Modifier
-            .fillMaxWidth()
-            //设置项多，沿用项目里其它长列表弹窗的固定高度上限，内容超出后内部滚动
-            .heightIn(max = 480.dp),
-        navigationContentDescription = stringResource(R.string.close)
+        buttons = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.ok))
+            }
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = AppDimens.panelSpacing)
         ) {
-            AppSettingsPanel(
-                modifier = Modifier.padding(horizontal = AppDimens.panelHorizontalPadding)
-            ) {
+            AppSettingsPanel(modifier = Modifier.fillMaxWidth()) {
                 AppSettingsSectionTitle(title = stringResource(R.string.video_play_settings))
                 val rows = buildList {
                     add(
@@ -341,9 +337,7 @@ fun VideoSettingsContent(
 
             Spacer(modifier = Modifier.height(AppDimens.panelSpacing))
 
-            AppSettingsPanel(
-                modifier = Modifier.padding(horizontal = AppDimens.panelHorizontalPadding)
-            ) {
+            AppSettingsPanel(modifier = Modifier.fillMaxWidth()) {
                 AppSettingsSectionTitle(title = stringResource(R.string.video_cache_settings))
                 VideoSettingRow(
                     item = switchSetting(
