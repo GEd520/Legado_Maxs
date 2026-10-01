@@ -77,10 +77,13 @@ object CacheManifestHelper {
         val cachedByIndex = realChapters.associate { it.index to isChapterCached(it) }
         val cachedCount = cachedByIndex.values.count { it }
         val file = manifestFile(book)
-        //音视频书目即使还没缓到任何一章也保留清单：缓存目录本身是书级隔离的，
-        //清单是"这本书在这里有缓存目录"的唯一凭据
+        //没有已缓存章节时才删清单，且必须确认缓存目录真的空了：
+        //目录里还有内容说明缓存仍在（只是文件名对不上章节，比如书名/章节变动过），
+        //这份清单是"这本书还有缓存"的唯一凭据，删了就再也管不到它
         if (cachedCount <= 0 && !book.isAudio && !book.isVideo) {
-            file.delete()
+            if (!file.parentFile.hasContent()) {
+                file.delete()
+            }
             return null
         }
         val cacheDir = file.parentFile ?: return null
@@ -135,7 +138,11 @@ object CacheManifestHelper {
     ): CacheBookManifest? {
         return runCatching {
             if (chapters.isEmpty()) {
-                delete(book)
+                //章节表里没有记录（多半是书已从书架删除、只剩缓存）：
+                //缓存目录还在就保留清单，否则缓存管理页再也列不出这本书
+                if (!BookHelp.getCacheDir(book).hasContent()) {
+                    delete(book)
+                }
                 return@runCatching null
             }
             val cacheNames = if (book.isAudio || book.isVideo) {
@@ -257,6 +264,11 @@ object CacheManifestHelper {
         }
         return changed
     }
+}
+
+/** 目录是否存在且非空 */
+private fun File?.hasContent(): Boolean {
+    return this != null && isDirectory && !listFiles().isNullOrEmpty()
 }
 
 data class CacheBookManifest(

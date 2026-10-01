@@ -67,6 +67,10 @@ class CacheManageViewModel(
     private var chapterJob: Job? = null
     private var sizeJob: Job? = null
 
+    init {
+        load()
+    }
+
     /**
      * 切换分类并重新加载
      */
@@ -241,17 +245,41 @@ class CacheManageViewModel(
                     loadChapterItems(dialog.book, dialog.key, dialog.filter)
                 }
                 _uiState.update { state ->
-                    state.copy(chapterDialog = state.chapterDialog?.copy(chapters = items, loading = false))
+                    state.copy(
+                        chapterDialog = state.chapterDialog?.copy(
+                            chapters = items,
+                            loading = false,
+                            error = null
+                        )
+                    )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 AppLog.put("读取缓存章节失败 ${dialog.book.name}\n${e.localizedMessage}", e)
+                //错误显示在弹窗里而不是只在 Toast：弹窗还开着时用户能看到原因与重试入口
                 _uiState.update { state ->
-                    state.copy(chapterDialog = state.chapterDialog?.copy(loading = false))
+                    state.copy(
+                        chapterDialog = state.chapterDialog?.copy(
+                            loading = false,
+                            error = e.localizedMessage ?: appCtx.getString(R.string.error)
+                        )
+                    )
                 }
-                toast(R.string.cache_manage_chapter_load_failed, e.localizedMessage ?: "")
             }
+        }
+    }
+
+    /**
+     * 读取缓存清单
+     *
+     * 先按书籍缓存目录找；书改名/换源导致目录名与当前书名不一致时，再按 bookUrl 扫一遍——
+     * 清单里的 folderName 才是缓存目录的权威来源，重算目录名未必对得上
+     */
+    private suspend fun readManifest(book: Book): CacheBookManifest? {
+        CacheManifestHelper.read(book)?.let { return it }
+        return withContext(Dispatchers.IO) {
+            CacheManifestHelper.listManifests().firstOrNull { it.bookUrl == book.bookUrl }
         }
     }
 
@@ -260,7 +288,7 @@ class CacheManageViewModel(
         key: String,
         filter: CacheChapterFilter
     ): List<CacheChapterItem> {
-        val manifest = CacheManifestHelper.read(book)
+        val manifest = readManifest(book)
         val dbChapters = if (key.isBlank()) {
             appDb.bookChapterDao.getChapterList(book.bookUrl)
         } else {
@@ -279,6 +307,7 @@ class CacheManageViewModel(
         } else {
             BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
         }
+
         return chapters.asSequence()
             .filterNot { it.isVolume }
             .map { chapter ->
@@ -417,7 +446,10 @@ class CacheManageViewModel(
      */
     fun restoreToBookshelf(book: Book): Boolean {
         return runCatching {
-            val manifest = CacheManifestHelper.read(book) ?: return false
+            //目录名可能与当前书名不一致（书改过名），按 bookUrl 兜底找一遍
+            val manifest = CacheManifestHelper.read(book)
+                ?: CacheManifestHelper.listManifests().firstOrNull { it.bookUrl == book.bookUrl }
+                ?: return false
             val sameUrlBook = appDb.bookDao.getBook(manifest.bookUrl)
             val sameNameBook = appDb.bookDao.getBook(manifest.name, manifest.author)
             val cacheBook = CacheManifestHelper.toBook(manifest).apply {

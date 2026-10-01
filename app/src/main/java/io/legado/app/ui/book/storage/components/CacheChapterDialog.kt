@@ -144,6 +144,13 @@ fun CacheChapterDialog(
                     }
                     if (state.loading) {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    } else if (state.error != null) {
+                        Text(
+                            text = state.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
                     } else if (state.chapters.isEmpty()) {
                         Text(
                             text = stringResource(R.string.chapter_list_empty),

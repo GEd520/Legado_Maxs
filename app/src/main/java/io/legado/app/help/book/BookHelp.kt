@@ -135,7 +135,11 @@ object BookHelp {
             }
             downloadDir.getFile(cacheFolderName)
                 .listFiles()?.forEach { bookFile ->
-                    if (!bookFolderNames.contains(bookFile.name)) {
+                    //有缓存清单说明是"书已从书架删除、只剩缓存"的目录：
+                    //缓存管理页还要靠它列出这书并支持"加入书架/使用缓存"，不能当无效缓存清掉
+                    if (!bookFolderNames.contains(bookFile.name) &&
+                        !CacheManifestHelper.hasManifest(bookFile)
+                    ) {
                         //删目录前先放掉 media3 缓存实例，否则实例会一直指向已删除的目录
                         ExoPlayerHelper.releaseBookMediaCacheOf(bookFile)
                         FileUtils.delete(bookFile.absolutePath)

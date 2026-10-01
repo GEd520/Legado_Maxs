@@ -58,6 +58,7 @@ data class CacheChapterDialogState(
     val filter: CacheChapterFilter = CacheChapterFilter.ALL,
     val chapters: List<CacheChapterItem> = emptyList(),
     val loading: Boolean = false,
+    val error: String? = null,
     val selectedIndexes: Set<Int> = emptySet(),
     val selectionMode: Boolean = false
 ) {
