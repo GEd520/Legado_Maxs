@@ -6,7 +6,11 @@ import android.view.MenuItem
 import android.view.SubMenu
 import android.view.View
 import androidx.appcompat.widget.SearchView
-import androidx.core.view.updatePadding
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -18,11 +22,16 @@ import io.legado.app.data.AppDatabase
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssSource
 import io.legado.app.databinding.FragmentRssBinding
-import io.legado.app.databinding.ItemRssBinding
 import io.legado.app.lib.dialogs.alert
-import io.legado.app.lib.theme.primaryColor
 import io.legado.app.lib.theme.primaryTextColor
+import io.legado.app.ui.login.SourceLoginActivity
+import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
+import io.legado.app.ui.main.rss.compose.RssSourceActions
+import io.legado.app.ui.main.rss.compose.RssSourceGrid
+import io.legado.app.ui.main.rss.compose.RssSourceItem
+import io.legado.app.ui.main.rss.compose.RssSourceMenuAction
+import io.legado.app.ui.main.rss.compose.toRssSourceItems
 import io.legado.app.ui.rss.article.ReadRecordDialog
 import io.legado.app.ui.rss.article.RssSortActivity
 import io.legado.app.ui.rss.favorites.RssFavoritesActivity
@@ -31,13 +40,13 @@ import io.legado.app.ui.rss.source.edit.RssSourceEditActivity
 import io.legado.app.ui.rss.source.manage.RssSourceActivity
 import io.legado.app.ui.rss.source.manage.RssSourceSort
 import io.legado.app.ui.rss.subscription.RuleSubActivity
+import io.legado.app.ui.theme.LegadoTheme
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.openUrl
-import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.transaction
@@ -50,14 +59,18 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import io.legado.app.ui.login.SourceLoginActivity
-import io.legado.app.ui.main.MainActivity
 
 /**
- * 订阅界面
+ * 订阅界面。
+ *
+ * 结构分工与书架 / 发现 / 我的页一致：顶栏（搜索框、分组菜单）仍是 View 体系——
+ * 主界面是 ViewPager + TitleBar 的 View 宿主，顶栏颜色必须继续走 TopBarConfig 统一体系；
+ * 顶栏以下的订阅源网格整体 Compose 化（内容见 [RssSourceGrid]）。
+ *
+ * 本类是宿主：持有搜索词、排序与底栏内边距，执行平台操作（开 Activity、弹对话框），
+ * 把搜索 / 分组过滤并排序后的订阅源列表交给 Compose 渲染。
  */
-class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainFragmentInterface,
-    RssAdapter.CallBack {
+class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainFragmentInterface {
 
     constructor(position: Int) : this() {
         val bundle = Bundle()
@@ -69,16 +82,29 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
 
     private val binding by viewBinding(FragmentRssBinding::bind)
     override val viewModel by viewModels<RssViewModel>()
-    private val adapter by lazy {
-        RssAdapter(requireContext(), this, this, viewLifecycleOwner.lifecycle)
-    }
     private val searchView: SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
+
+    /** Compose 侧直接读这些快照状态，写入即触发重组 */
+    private var sourceItems by mutableStateOf<List<RssSource>>(emptyList())
+
+    /** 条目 UI 模型：过滤排序后的结果转一次，网格重组时不再逐项加工 */
+    private var displayItems by mutableStateOf<List<RssSourceItem>>(emptyList())
+    private var bottomPaddingPx by mutableIntStateOf(0)
+
     private var groupsFlowJob: Job? = null
     private var rssFlowJob: Job? = null
     private val groups = linkedSetOf<String>()
     private var groupsMenu: SubMenu? = null
+
+    private val actions by lazy {
+        RssSourceActions(
+            onOpen = ::openRss,
+            onMenuAction = ::onSourceMenuAction,
+            onOpenRuleSub = { startActivity<RuleSubActivity>() },
+        )
+    }
 
     /**
      * 订阅源排序方式，从 SharedPreferences 读取，与订阅源管理页面同步
@@ -94,10 +120,27 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
         setSupportToolbar(binding.titleBar.toolbar)
+        // 首次进入时主动取一次底栏高度，之后由 MainActivity 通过接口推送变化
+        bottomPaddingPx = (activity as? MainActivity)?.mainContentBottomPadding() ?: 0
         initSearchView()
-        initRecyclerView()
+        initComposeContent()
         initGroupData()
         upRssFlowJob()
+    }
+
+    private fun initComposeContent() {
+        binding.composeSourceGrid.setViewCompositionStrategy(
+            ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed
+        )
+        binding.composeSourceGrid.setContent {
+            LegadoTheme {
+                RssSourceGrid(
+                    sourceItems = displayItems,
+                    bottomPaddingPx = bottomPaddingPx,
+                    actions = actions,
+                )
+            }
+        }
     }
 
     override fun onCompatCreateOptionsMenu(menu: Menu) {
@@ -146,26 +189,8 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         })
     }
 
-    private fun initRecyclerView() {
-        updateMainBottomPadding((activity as? MainActivity)?.mainContentBottomPadding() ?: 0)
-        binding.recyclerView.setEdgeEffectColor(primaryColor)
-        binding.recyclerView.adapter = adapter
-        adapter.addHeaderView {
-            ItemRssBinding.inflate(layoutInflater, it, false).apply {
-                tvName.setText(R.string.rule_subscription)
-                ivIcon.setImageResource(R.drawable.image_legado)
-                root.setOnClickListener {
-                    startActivity<RuleSubActivity>()
-                }
-            }
-        }
-    }
-
     override fun updateMainBottomPadding(bottomPadding: Int) {
-        if (view == null) return
-        binding.recyclerView.clipToPadding = false
-        binding.recyclerView.scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
-        binding.recyclerView.updatePadding(bottom = bottomPadding)
+        bottomPaddingPx = bottomPadding
     }
 
     private fun initGroupData() {
@@ -233,16 +258,29 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
                 AppDatabase.RSS_SOURCE_TABLE_NAME
             ).catch {
                 AppLog.put("订阅界面更新数据出错", it)
-            }.flowOn(IO).collect {
-                adapter.setItems(it)
-                binding.recyclerView.post {
-                    binding.recyclerView.refreshSystemScrollBar()
-                }
+            }.conflate().flowOn(IO).collect {
+                sourceItems = it
+                displayItems = it.toRssSourceItems()
             }
         }
     }
 
-    override fun openRss(rssSource: RssSource) {
+    // ── 订阅源条目动作（由 Compose 侧回调） ──
+
+    private fun onSourceMenuAction(item: RssSourceItem, action: RssSourceMenuAction) {
+        // 条目模型只带 url，置顶 / 删除 / 禁用要拿完整的 RssSource，从当前列表里反查
+        val source = sourceItems.firstOrNull { it.sourceUrl == item.sourceUrl } ?: return
+        when (action) {
+            RssSourceMenuAction.Edit -> edit(source)
+            RssSourceMenuAction.ToTop -> viewModel.topSource(source)
+            RssSourceMenuAction.Login -> login(source)
+            RssSourceMenuAction.Disable -> viewModel.disable(source)
+            RssSourceMenuAction.Delete -> del(source)
+        }
+    }
+
+    private fun openRss(item: RssSourceItem) {
+        val rssSource = sourceItems.firstOrNull { it.sourceUrl == item.sourceUrl } ?: return
         if (rssSource.singleUrl) {
             viewModel.getSingleUrl(rssSource) { url ->
                 if (url.startsWith("http", true)) {
@@ -274,24 +312,20 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
         }
     }
 
-    override fun toTop(rssSource: RssSource) {
-        viewModel.topSource(rssSource)
-    }
-
-    override fun login(rssSource: RssSource) {
+    private fun login(rssSource: RssSource) {
         startActivity<SourceLoginActivity> {
             putExtra("type", "rssSource")
             putExtra("key", rssSource.sourceUrl)
         }
     }
 
-    override fun edit(rssSource: RssSource) {
+    private fun edit(rssSource: RssSource) {
         startActivity<RssSourceEditActivity> {
             putExtra("sourceUrl", rssSource.sourceUrl)
         }
     }
 
-    override fun del(rssSource: RssSource) {
+    private fun del(rssSource: RssSource) {
         alert(R.string.draw) {
             setMessage(getString(R.string.sure_del) + "\n" + rssSource.sourceName)
             noButton()
@@ -299,9 +333,5 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss), MainF
                 viewModel.del(rssSource)
             }
         }
-    }
-
-    override fun disable(rssSource: RssSource) {
-        viewModel.disable(rssSource)
     }
 }

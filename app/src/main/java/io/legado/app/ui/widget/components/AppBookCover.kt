@@ -3,7 +3,6 @@ package io.legado.app.ui.widget.components
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
-import android.graphics.drawable.Animatable
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.text.TextPaint
@@ -18,18 +17,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -309,59 +303,6 @@ private suspend fun htmlCoverDrawable(context: Context, name: String, author: St
     runCatching { HtmlCoverRenderer.load(name, author) }
         .getOrNull()
         ?.let { BitmapDrawable(context.resources, it) }
-
-/**
- * 把 [Drawable] 画进 Compose 的最小 Painter 实现。
- *
- * Glide 的 Compose 集成（1.0.0-beta08）只暴露 `GlideImage`，没有可直接复用的
- * Drawable→Painter；而封面还要承载 HTML 模板封面、加载失败叠加书名等自有状态，
- * 无法整体交给 `GlideImage`。这里注册 [Drawable.Callback] 接收动图每帧的
- * `invalidateDrawable` 回调驱动重绘，静态图则只在换图时重绘。
- */
-private class AppDrawablePainter(private val drawable: Drawable) : Painter() {
-
-    /** 动画帧计数：动图每帧回调递增，读取它即可建立绘制依赖 */
-    private var frameTick by mutableIntStateOf(0)
-
-    private val callback = object : Drawable.Callback {
-        override fun invalidateDrawable(who: Drawable) {
-            frameTick++
-        }
-
-        override fun scheduleDrawable(who: Drawable, what: Runnable, when_: Long) = Unit
-
-        override fun unscheduleDrawable(who: Drawable, what: Runnable) = Unit
-    }
-
-    init {
-        drawable.callback = callback
-    }
-
-    override val intrinsicSize: Size
-        @Suppress("UNUSED_EXPRESSION")
-        get() {
-            frameTick
-            return Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
-        }
-
-    override fun DrawScope.onDraw() {
-        @Suppress("UNUSED_EXPRESSION")
-        frameTick
-        if (size.width <= 0f || size.height <= 0f) return
-        drawable.setBounds(0, 0, size.width.toInt(), size.height.toInt())
-        drawIntoCanvas { canvas -> drawable.draw(canvas.nativeCanvas) }
-    }
-}
-
-/**
- * 动图（GIF / Animated WebP / AnimatedImageDrawable）载入后要显式开始播放：
- * View 版由 ImageView 调 `setVisible(true, true)` 触发，Compose 侧没有这一层，得自己来。
- */
-private fun startIfAnimatable(drawable: Drawable?) {
-    val animatable = drawable as? Animatable ?: return
-    drawable.setVisible(true, true)
-    runCatching { animatable.start() }
-}
 
 // ── 预览（navigation-preview.md §10.1 强制）────────────────────────────────
 

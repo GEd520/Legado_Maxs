@@ -275,6 +275,20 @@ object AppDimens {
     /** 标题行背景填充透明度（对齐 bg_find_book_group 的 transparent10 = 6%） */
     const val EXPLORE_TITLE_BG_ALPHA = 0.063f
 
+    // ── 订阅页（RSS 源网格）──
+
+    /** 网格单元的内边距（对齐原 item_rss 根布局的 16dp） */
+    val rssGridItemPadding: Dp = 16.dp
+
+    /** 订阅源图标尺寸（对齐原 iv_icon 的 50dp） */
+    val rssGridIconSize: Dp = 50.dp
+
+    /** 订阅源图标圆角（对齐原 FilletImageView 的 radius 12dp） */
+    val rssGridIconCornerRadius: Dp = 12.dp
+
+    /** 图标与名称之间的间距（对齐原 tv_name 的 marginTop 16dp） */
+    val rssGridNameSpacing: Dp = 16.dp
+
     // ── 弹窗 ──
 
     /** 单选列表弹窗的选项区最大高度，超出后滚动，避免弹窗顶穿屏幕 */
