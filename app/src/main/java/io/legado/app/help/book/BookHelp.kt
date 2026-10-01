@@ -419,11 +419,8 @@ object BookHelp {
         ) {
             true
         } else {
-            downloadDir.exists(
-                cacheFolderName,
-                book.getFolderName(),
-                bookChapter.getFileName()
-            )
+            //标题/序号被目录刷新改过时，缓存文件名对不上当前章节，交给清单按缓存当时的名字找回
+            CacheManifestHelper.cachedTextFileName(book, bookChapter) != null
         }
     }
 
@@ -473,7 +470,8 @@ object BookHelp {
      * 读取章节内容
      */
     fun getContent(book: Book, bookChapter: BookChapter): String? {
-        val file = downloadDir.getFile(
+        //标题/序号变过时按当前名字找不到文件，清单里记着缓存当时的名字
+        val file = CacheManifestHelper.cachedTextFile(book, bookChapter) ?: downloadDir.getFile(
             cacheFolderName,
             book.getFolderName(),
             bookChapter.getFileName()

@@ -2661,6 +2661,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="cache_manage_chapter_load_failed">Failed to load chapters: %1$s</string>
     <string name="cache_manage_no_cache">No cache to upload</string>
     <string name="cache_manage_use_cache_failed">No cache manifest for this book, so it cannot be added back to the bookshelf</string>
+    <string name="cache_manage_search_empty">No matching book</string>
     <string name="cache_manage_pack_failed">Failed to pack cache</string>
     <string name="cache_manage_batch_empty">No cache to operate</string>
     <string name="cache_manage_batch_upload_done">Batch upload finished: %1$d succeeded, %2$d failed</string>

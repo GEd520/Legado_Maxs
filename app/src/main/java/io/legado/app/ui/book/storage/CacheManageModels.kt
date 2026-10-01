@@ -77,7 +77,11 @@ sealed interface CacheManageConfirm {
 data class CacheManageUiState(
     val mode: CacheManageMode = CacheManageMode.BOOK,
     val loading: Boolean = false,
+    /** 当前分类下**过滤后**的列表（过滤在内存里做，输入时不重新查库/扫盘） */
     val items: List<CacheBookItem> = emptyList(),
+    /** 当前分类的搜索关键字 */
+    val searchKey: String = "",
+    val searching: Boolean = false,
     val chapterDialog: CacheChapterDialogState? = null,
     val confirm: CacheManageConfirm? = null,
     val working: Boolean = false,

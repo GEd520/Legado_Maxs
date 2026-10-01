@@ -226,6 +226,57 @@ object CacheManifestHelper {
         }
     }
 
+    /** 清单里记录的该章（缓存当时的序号与标题） */
+    fun manifestChapter(manifest: CacheBookManifest?, chapter: BookChapter): CacheChapterManifest? {
+        if (manifest == null) return null
+        return manifest.chapters.firstOrNull { it.index == chapter.index }
+            ?: manifest.chapters.firstOrNull { it.url == chapter.url }
+    }
+
+    /** 用清单记录的信息拼一个最小章节对象（只用于按清单取文件名 / 判定缓存） */
+    fun toChapter(recorded: CacheChapterManifest, bookUrl: String): BookChapter {
+        return BookChapter(
+            url = recorded.url,
+            title = recorded.title,
+            bookUrl = bookUrl,
+            index = recorded.index
+        )
+    }
+
+    /**
+     * 文本/漫画章节已缓存时对应的文件名
+     *
+     * 文本缓存的文件名 = 章节序号 + 标题 md5，所以"目录刷新改了标题""源在中间插了章节让序号整体偏移"
+     * 之后，按当前章节算出的名字就对不上磁盘上的文件了——缓存明明还在，却判定成没缓存、还会重下。
+     * 清单里记着缓存当时的序号与标题，用它再算一遍就能找回来。
+     *
+     * @param cacheNames 该书的缓存文件集合，批量判定时传入可避免逐章列目录
+     */
+    fun cachedTextFileName(
+        book: Book,
+        chapter: BookChapter,
+        manifest: CacheBookManifest? = read(book),
+        cacheNames: Set<String>? = null
+    ): String? {
+        val names = cacheNames ?: BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
+        chapter.getFileName().takeIf { names.contains(it) }?.let { return it }
+        val recorded = manifestChapter(manifest, chapter)
+            ?.takeIf { it.cached }
+            ?: return null
+        return toChapter(recorded, chapter.bookUrl).getFileName().takeIf { names.contains(it) }
+    }
+
+    /** 文本/漫画章节已缓存的正文文件 */
+    fun cachedTextFile(
+        book: Book,
+        chapter: BookChapter,
+        manifest: CacheBookManifest? = read(book)
+    ): File? {
+        val dir = BookHelp.getCacheDir(book)
+        val name = cachedTextFileName(book, chapter, manifest) ?: return null
+        return File(dir, name)
+    }
+
     fun delete(manifest: CacheBookManifest) {
         val folderName = manifest.folderName.takeIf { it.isNotBlank() }
             ?: toBook(manifest).getFolderName()
@@ -338,6 +389,10 @@ data class CacheBookManifest(
 ) {
     val cachedChapterCount: Int
         get() = chapters.count { it.cached }
+
+    /** 已缓存章节的序号集合：列表计数只核对这几章，不必逐章查缓存 */
+    val cachedIndexes: Set<Int>
+        get() = chapters.asSequence().filter { it.cached }.mapTo(hashSetOf()) { it.index }
 }
 
 data class CacheChapterManifest(

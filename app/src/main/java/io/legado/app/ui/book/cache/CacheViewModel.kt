@@ -9,6 +9,7 @@ import io.legado.app.data.repository.BookRepository
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isMedia
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
@@ -102,7 +103,7 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
             ?: hashSetOf()
         // 匹配已缓存章节
         val chapterCaches = hashSetOf<String>()
-        if (book.isVideo) {
+        if (book.isMedia) {
             // 音视频章节的离线内容是媒体文件，按媒体缓存判定（地址可能变过，走可用缓存地址）
             book.totalChapterNum = chapters.size
             val manifest = CacheManifestHelper.read(book)
@@ -115,8 +116,12 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
             }
         } else if (cacheNames.isNotEmpty()) {
             book.totalChapterNum = chapters.size
+            // 标题/序号被目录刷新改过时按当前名字找不到缓存文件，清单里记着缓存当时的名字
+            val manifest = CacheManifestHelper.read(book)
             chapters.forEach { chapter ->
-                if (cacheNames.contains(chapter.getFileName()) || chapter.isVolume) {
+                val cached = chapter.isVolume ||
+                    CacheManifestHelper.cachedTextFileName(book, chapter, manifest, cacheNames) != null
+                if (cached) {
                     chapterCaches.add(chapter.url)
                 }
             }

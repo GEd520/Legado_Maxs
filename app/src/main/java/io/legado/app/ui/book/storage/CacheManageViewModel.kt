@@ -84,6 +84,44 @@ class CacheManageViewModel(
         load(mode)
     }
 
+    /** 当前分类未过滤的全量列表，搜索只在内存里筛它 */
+    private var allItems: List<CacheBookItem> = emptyList()
+
+    /** 搜索当前分类的书（书名/作者/书源） */
+    fun setSearchKey(key: String) {
+        if (_uiState.value.searchKey == key) return
+        _uiState.update { it.copy(searchKey = key) }
+        applyFilter()
+    }
+
+    fun switchSearching(searching: Boolean) {
+        _uiState.update { it.copy(searching = searching) }
+        if (!searching && _uiState.value.searchKey.isNotEmpty()) {
+            setSearchKey("")
+        }
+    }
+
+    /**
+     * 按关键字过滤当前分类的列表
+     *
+     * 只筛内存里的 allItems：每次输入都重新查库、扫缓存目录会把搜索框拖卡
+     */
+    private fun applyFilter() {
+        val key = _uiState.value.searchKey.trim()
+        val items = if (key.isEmpty()) {
+            allItems
+        } else {
+            allItems.filter { it.matches(key) }
+        }
+        _uiState.update { it.copy(items = items) }
+    }
+
+    private fun CacheBookItem.matches(key: String): Boolean {
+        return book.name.contains(key, true) ||
+            book.author.contains(key, true) ||
+            book.originName.contains(key, true)
+    }
+
     fun load(mode: CacheManageMode = _uiState.value.mode) {
         loadJob?.cancel()
         sizeJob?.cancel()
@@ -91,7 +129,9 @@ class CacheManageViewModel(
         loadJob = viewModelScope.launch {
             try {
                 val items = withContext(Dispatchers.IO) { loadItems(mode) }
-                _uiState.update { it.copy(items = items, loading = false) }
+                allItems = items
+                applyFilter()
+                _uiState.update { it.copy(loading = false) }
                 calculateItemSizes()
             } catch (e: CancellationException) {
                 throw e
@@ -110,21 +150,24 @@ class CacheManageViewModel(
         val mode = _uiState.value.mode
         sizeJob = viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                _uiState.value.items.forEach { item ->
-                    if (_uiState.value.mode != mode) return@withContext
-                    val size = cacheDirOf(item.book).directorySize()
-                    _uiState.update { state ->
-                        state.copy(
-                            items = state.items.map {
-                                if (it.book.bookUrl == item.book.bookUrl) {
-                                    it.copy(storageSizeBytes = size, storageCalculated = true)
-                                } else {
-                                    it
-                                }
+                //按批补体积：逐本写回会让列表每本书都重组一次，书多时明显卡
+                allItems.filterNot { it.storageCalculated }
+                    .chunked(SIZE_BATCH_SIZE)
+                    .forEach { batch ->
+                        if (_uiState.value.mode != mode) return@withContext
+                        val sizes = batch.associate {
+                            it.book.bookUrl to cacheDirOf(it.book, it.manifest).directorySize()
+                        }
+                        allItems = allItems.map { item ->
+                            val size = sizes[item.book.bookUrl]
+                            if (size == null) {
+                                item
+                            } else {
+                                item.copy(storageSizeBytes = size, storageCalculated = true)
                             }
-                        )
+                        }
+                        applyFilter()
                     }
-                }
             }
         }
     }
@@ -146,27 +189,61 @@ class CacheManageViewModel(
         return items.sortedByDescending { it.book.durChapterTime }
     }
 
+    /**
+     * 列表项只算"总章节数 + 已缓存章节数"，不把整张章节表读出来
+     *
+     * 大书动辄上千章，逐本读章节表再逐章对缓存，会让加载时间随书量线性变慢；
+     * 章节明细留给章节弹窗按需加载
+     */
     private fun buildItem(
         book: Book,
         mode: CacheManageMode,
         manifest: CacheBookManifest?
     ): CacheBookItem {
-        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-        val realChapters = chapters.filterNot { it.isVolume }
+        val totalChapterCount = appDb.bookChapterDao.getChapterCount(book.bookUrl)
+            .takeIf { it > 0 }
+            ?: book.totalChapterNum
         val cachedCount = if (mode.isMedia) {
-            realChapters.count { isMediaChapterCached(book, it, manifest) }
+            countCachedMediaChapters(book, manifest)
         } else {
-            val cacheNames = cacheDirOf(book).list()?.toSet().orEmpty()
-            realChapters.count { cacheNames.contains(it.getFileName()) }
+            countCachedTextChapters(cacheDirOf(book, manifest))
         }
         return CacheBookItem(
             book = book,
             mode = mode,
-            cachedCount = cachedCount,
-            totalChapterCount = realChapters.size.takeIf { it > 0 } ?: book.totalChapterNum,
+            cachedCount = cachedCount.coerceAtMost(totalChapterCount),
+            totalChapterCount = totalChapterCount,
             manifest = manifest,
             inBookshelf = !book.isNotShelf
         )
+    }
+
+    /** 文本/漫画：缓存目录里的章节文件数（与判定口径一致） */
+    private fun countCachedTextChapters(cacheDir: File): Int {
+        return cacheDir.listFiles()?.count { it.isFile && it.name.endsWith(".nb") } ?: 0
+    }
+
+    /**
+     * 媒体：只核对清单里记过"已缓存"的那几章
+     *
+     * 清单里的缓存标记是上次刷新按同一口径写的，逐章查媒体缓存对大书同样很慢；
+     * 没有清单的老缓存才退化成逐章核对
+     */
+    private fun countCachedMediaChapters(book: Book, manifest: CacheBookManifest?): Int {
+        if (manifest == null) {
+            return appDb.bookChapterDao.getChapterList(book.bookUrl)
+                .filterNot { it.isVolume }
+                .count { isMediaChapterCached(book, it) }
+        }
+        val candidate = manifest.cachedIndexes
+        if (candidate.isEmpty()) return 0
+        return manifest.chapters.count { recorded ->
+            recorded.index in candidate && isMediaChapterCached(
+                book,
+                CacheManifestHelper.toChapter(recorded, book.bookUrl),
+                manifest
+            )
+        }
     }
 
     private fun buildItemFromManifest(
@@ -315,7 +392,8 @@ class CacheManageViewModel(
                 val cached = if (book.isMedia) {
                     isMediaChapterCached(book, chapter, manifest)
                 } else {
-                    cacheNames.contains(chapter.getFileName())
+                    //标题/序号被目录刷新改过时，按清单里缓存当时的名字找回
+                    CacheManifestHelper.cachedTextFileName(book, chapter, manifest, cacheNames) != null
                 }
                 CacheChapterItem(chapter = chapter, cached = cached)
             }
@@ -457,8 +535,8 @@ class CacheManageViewModel(
      * 优先按清单里的 folderName 取：书改过名时按当前书名算出的目录名与磁盘上的目录对不上，
      * 会算成 0 占用、打不出缓存包，也删不掉缓存
      */
-    private fun cacheDirOf(book: Book): File {
-        val folderName = findManifest(book)?.folderName
+    private fun cacheDirOf(book: Book, manifest: CacheBookManifest? = null): File {
+        val folderName = (manifest ?: findManifest(book))?.folderName
         if (!folderName.isNullOrBlank()) {
             val dir = File(BookHelp.cachePath, folderName)
             if (dir.exists()) return dir
@@ -731,7 +809,7 @@ class CacheManageViewModel(
      */
     fun refreshItem(bookUrl: String) {
         if (bookUrl.isBlank()) return
-        if (_uiState.value.items.none { it.book.bookUrl == bookUrl }) return
+        if (allItems.none { it.book.bookUrl == bookUrl }) return
         val now = System.currentTimeMillis()
         if (now - (itemRefreshAt[bookUrl] ?: 0L) < ITEM_REFRESH_INTERVAL_MS) return
         itemRefreshAt[bookUrl] = now
@@ -751,7 +829,7 @@ class CacheManageViewModel(
         viewModelScope.launch {
             repeat(ITEM_POLL_ATTEMPTS) {
                 delay(ITEM_POLL_INTERVAL_MS)
-                val item = _uiState.value.items.firstOrNull { it.book.bookUrl == bookUrl }
+                val item = allItems.firstOrNull { it.book.bookUrl == bookUrl }
                     ?: return@launch
                 if (item.cachedCount >= item.totalChapterCount) return@launch
                 val book = withContext(Dispatchers.IO) { appDb.bookDao.getBook(bookUrl) }
@@ -765,20 +843,18 @@ class CacheManageViewModel(
         val mode = _uiState.value.mode
         viewModelScope.launch {
             val item = withContext(Dispatchers.IO) { buildItem(book, mode, CacheManifestHelper.read(book)) }
-            _uiState.update { state ->
-                state.copy(
-                    items = state.items.map {
-                        if (it.book.bookUrl == book.bookUrl) {
-                            item.copy(
-                                storageSizeBytes = cacheDirOf(book).directorySize(),
-                                storageCalculated = true
-                            )
-                        } else {
-                            it
-                        }
-                    }
-                )
+            //全量列表换掉这一行，再按当前搜索关键字重新过滤
+            allItems = allItems.map {
+                if (it.book.bookUrl == book.bookUrl) {
+                    item.copy(
+                        storageSizeBytes = cacheDirOf(book).directorySize(),
+                        storageCalculated = true
+                    )
+                } else {
+                    it
+                }
             }
+            applyFilter()
         }
     }
 
@@ -796,6 +872,9 @@ class CacheManageViewModel(
 
         /** 缓存任务进度事件的单行重算间隔 */
         private const val ITEM_REFRESH_INTERVAL_MS = 500L
+
+        /** 列表体积计算的批量大小 */
+        private const val SIZE_BATCH_SIZE = 4
 
         /** 入队缓存后的兜底轮询间隔与次数（3s × 20 = 1 分钟内落定） */
         private const val ITEM_POLL_INTERVAL_MS = 3_000L

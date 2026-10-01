@@ -18,9 +18,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -53,6 +55,7 @@ import io.legado.app.ui.config.widget.SegmentedTabRow
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.theme.composeActionShape
 import io.legado.app.ui.widget.components.AppPageTopBar
+import io.legado.app.ui.widget.components.AppSearchBar
 import io.legado.app.ui.widget.components.AppScaffold
 import io.legado.app.ui.widget.components.VerticalScrollbar
 import io.legado.app.ui.widget.components.dialog.AppConfirmDialog
@@ -210,6 +213,21 @@ fun CacheManageScreen(
                         strokeWidth = AppDimens.dividerThickness
                     )
                 }
+                if (!showStats) {
+                    //搜索当前分类的书籍：命中条件是书名/作者/书源
+                    IconButton(
+                        onClick = { cacheViewModel.switchSearching(!state.searching) }
+                    ) {
+                        Icon(
+                            imageVector = if (state.searching) {
+                                Icons.Default.Close
+                            } else {
+                                Icons.Default.Search
+                            },
+                            contentDescription = stringResource(R.string.action_search)
+                        )
+                    }
+                }
                 IconButton(
                     onClick = {
                         if (showStats) {
@@ -279,6 +297,13 @@ fun CacheManageScreen(
                     }
                 }
             )
+            if (state.searching && !showStats) {
+                AppSearchBar(
+                    query = state.searchKey,
+                    onQueryChange = cacheViewModel::setSearchKey,
+                    hint = stringResource(R.string.action_search)
+                )
+            }
             if (showStats) {
                 StorageStatsTab(
                     items = storageItems,
@@ -356,10 +381,14 @@ private fun CacheBookList(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = stringResource(
-                    R.string.cache_manage_empty,
-                    stringResource(state.mode.titleRes)
-                ),
+                text = if (state.searchKey.isNotBlank()) {
+                    stringResource(R.string.cache_manage_search_empty)
+                } else {
+                    stringResource(
+                        R.string.cache_manage_empty,
+                        stringResource(state.mode.titleRes)
+                    )
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
