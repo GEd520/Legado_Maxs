@@ -651,8 +651,15 @@ class CacheManageViewModel(
         private const val CHAPTER_SEARCH_DEBOUNCE_MS = 180L
         private const val CACHE_PACKAGE_DIR = "cache_package"
 
-        val Factory = viewModelFactory {
-            initializer { CacheManageViewModel() }
+        /**
+         * 默认工厂用于预览/测试：不启动真实缓存任务
+         */
+        val Factory = Factory()
+
+        fun Factory(
+            cacheTaskStarter: CacheTaskStarter = CacheTaskStarter { _, _ -> 0 }
+        ) = viewModelFactory {
+            initializer { CacheManageViewModel(cacheTaskStarter) }
         }
     }
 }

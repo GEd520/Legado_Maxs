@@ -63,6 +63,34 @@ object AppDimens {
     /** 面板描边与行分隔线的粗细 */
     val dividerThickness: Dp = 1.dp
 
+    // ── 缓存管理页 ──
+
+    /** 缓存卡片的内边距 */
+    val manageCardPadding: Dp = 12.dp
+
+    /** 缓存卡片内各行的纵向间距 */
+    val manageRowSpacing: Dp = 6.dp
+
+    /** 卡片操作按钮的高度与最小宽度 */
+    val manageActionHeight: Dp = 34.dp
+    val manageActionMinWidth: Dp = 56.dp
+
+    /** 卡片操作按钮之间的间距 */
+    val manageActionSpacing: Dp = 8.dp
+
+    /** 操作按钮的左右内边距 */
+    val manageActionPaddingHorizontal: Dp = 12.dp
+
+    /** 缓存列表卡片封面的宽高（3:4） */
+    val manageCoverWidth: Dp = 60.dp
+    val manageCoverHeight: Dp = 80.dp
+
+    /** 章节弹窗的章节行最小高度 */
+    val manageChapterRowHeight: Dp = 52.dp
+
+    /** 顶部 Tab 栏距列表的间距 */
+    val manageTabTopPadding: Dp = 10.dp
+
     // ── 书籍封面（AppBookCover）──
 
     /** 封面圆角，对齐 View 版 CoverImageView 的 12px 描边圆角 */
