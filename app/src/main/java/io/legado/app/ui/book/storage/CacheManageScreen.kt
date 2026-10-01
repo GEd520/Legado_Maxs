@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -28,7 +27,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -45,6 +43,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import io.legado.app.R
+import io.legado.app.ui.book.storage.components.BatchActionButton
+import io.legado.app.ui.book.storage.components.CacheBatchBar
 import io.legado.app.ui.book.storage.components.CacheChapterDialog
 import io.legado.app.ui.book.storage.components.CacheItemCard
 import io.legado.app.ui.book.storage.components.CacheManageBookCard
@@ -53,13 +53,11 @@ import io.legado.app.ui.book.storage.components.ClearAllConfirmDialog
 import io.legado.app.ui.book.storage.components.ClearConfirmDialog
 import io.legado.app.ui.config.widget.SegmentedTabRow
 import io.legado.app.ui.theme.AppDimens
-import io.legado.app.ui.theme.composeActionShape
 import io.legado.app.ui.widget.components.AppPageTopBar
 import io.legado.app.ui.widget.components.AppSearchBar
 import io.legado.app.ui.widget.components.AppScaffold
 import io.legado.app.ui.widget.components.VerticalScrollbar
 import io.legado.app.ui.widget.components.dialog.AppConfirmDialog
-import io.legado.app.ui.widget.components.navigationBarBottomInset
 
 /**
  * 缓存管理页
@@ -120,6 +118,12 @@ fun CacheManageScreen(
 
     LaunchedEffect(showStats) {
         if (showStats) storageViewModel.loadCacheInfo()
+    }
+
+    //统计页清了缓存就作废按书列表里算好的概况（否则切回分类还是删除前的数字）。
+    //等清理状态落地再作废：清理是异步的，抢在删除完成前作废会立刻又算到删除前的值
+    LaunchedEffect(storageState) {
+        if (storageState !is StorageUiState.Clearing) cacheViewModel.invalidateCacheInfo()
     }
 
     state.chapterDialog?.let { dialog ->
@@ -187,8 +191,6 @@ fun CacheManageScreen(
             targetName = dialog.detailId ?: storageViewModel.getCacheName(dialog.cacheType),
             onConfirm = {
                 storageViewModel.clearCache(dialog.cacheType, dialog.detailId)
-                //按书列表里算好的概况跟着作废，否则切回分类还是删除前的数字
-                cacheViewModel.invalidateCacheInfo()
                 storageViewModel.dismissDialog()
             },
             onDismiss = { storageViewModel.dismissDialog() }
@@ -196,7 +198,6 @@ fun CacheManageScreen(
         is StorageDialogState.ClearAll -> ClearAllConfirmDialog(
             onConfirm = {
                 storageViewModel.clearAllCache()
-                cacheViewModel.invalidateCacheInfo()
                 storageViewModel.dismissDialog()
             },
             onDismiss = { storageViewModel.dismissDialog() }
@@ -246,7 +247,11 @@ fun CacheManageScreen(
                     )
                 }
                 if (!showStats) {
-                    IconButton(onClick = cacheViewModel::requestDeleteAll) {
+                    //与底部批量栏同门槛：明细还没算完时 cachedCount 还是 0，点了只会提示"没有可删的"
+                    IconButton(
+                        onClick = cacheViewModel::requestDeleteAll,
+                        enabled = state.items.any { it.cachedCount > 0 } && !state.working
+                    ) {
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,
                             contentDescription = stringResource(R.string.cache_manage_delete_all)
@@ -504,7 +509,7 @@ private fun StorageStatsTab(
                     )
                 }
                 item {
-                    BatchTextButton(
+                    BatchActionButton(
                         text = stringResource(R.string.storage_clear_all),
                         onClick = onClearAll
                     )
@@ -518,69 +523,3 @@ private fun StorageStatsTab(
     }
 }
 
-@Composable
-private fun CacheBatchBar(
-    enabled: Boolean,
-    onUploadAll: () -> Unit,
-    onDeleteAll: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                start = AppDimens.screenPadding,
-                end = AppDimens.screenPadding,
-                bottom = AppDimens.screenPadding + navigationBarBottomInset
-            )
-    ) {
-        BatchTextButton(
-            text = stringResource(R.string.cache_manage_upload_all),
-            onClick = onUploadAll,
-            enabled = enabled,
-            modifier = Modifier.weight(1f)
-        )
-        Spacer(Modifier.width(AppDimens.manageActionSpacing))
-        BatchTextButton(
-            text = stringResource(R.string.cache_manage_delete_all),
-            onClick = onDeleteAll,
-            enabled = enabled,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
-
-@Composable
-private fun BatchTextButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        shape = composeActionShape(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(AppDimens.manageActionHeight),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (enabled) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = DISABLED_ALPHA)
-                },
-                maxLines = 1
-            )
-        }
-    }
-}
-
-private const val DISABLED_ALPHA = 0.45f

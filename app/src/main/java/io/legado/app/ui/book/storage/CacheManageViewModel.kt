@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 缓存管理页 ViewModel：按书目分类列出"有缓存的书"，并对缓存做增删/上传/使用
@@ -53,6 +54,9 @@ import java.io.File
  *
  * 缓存任务复用现有 [io.legado.app.model.CacheBook]（并发、重试、前台通知都已具备），
  * 不另起一套任务管理器；启动任务需要 Context，通过 [CacheTaskStarter] 由 Activity 注入。
+ *
+ * 另有两处只读地用到 `appCtx`（打包用的缓存目录、失败提示文案）：都是应用级单例、
+ * 不持有界面引用，暂不为此再引一层 DI。
  */
 class CacheManageViewModel(
     private val cacheTaskStarter: CacheTaskStarter = CacheTaskStarter { _, _ -> 0 }
@@ -75,11 +79,20 @@ class CacheManageViewModel(
     /** 每本书最近一次单行重算的时刻，用于节流缓存任务进度事件 */
     private val itemRefreshAt = hashMapOf<String, Long>()
 
-    /** 本次加载读到的清单（bookUrl -> 清单）：逐本读文件或反复扫目录会把列表拖慢 */
-    private var manifestCache: Map<String, CacheBookManifest> = emptyMap()
+    /**
+     * 本次加载读到的清单（bookUrl -> 清单）
+     *
+     * 逐本读文件或反复扫目录会把列表拖慢；清单本身按缓存进度会被重写，
+     * 重算某一行时顺手更新它对应的那条，避免拿着旧清单去对齐地址
+     */
+    private val manifestCache = ConcurrentHashMap<String, CacheBookManifest>()
 
-    /** 已算好的每本缓存概况（bookUrl -> 已缓存章节数 to 占用），切分类/重进页面不重复扫盘 */
-    private val computedByBookUrl = hashMapOf<String, Pair<Int, Long>>()
+    /**
+     * 已算好的每本缓存概况（bookUrl -> 已缓存章节数 to 占用），切分类/重进页面不重复扫盘
+     *
+     * 两阶段加载的批次在 IO 线程写、缓存任务进度事件在主线程写，必须是并发安全的容器
+     */
+    private val computedByBookUrl = ConcurrentHashMap<String, Pair<Int, Long>>()
 
     init {
         load()
@@ -226,7 +239,8 @@ class CacheManageViewModel(
             .filter { !it.isLocal && it.isType(mode.bookType) }
         val manifests = CacheManifestHelper.listManifests()
         //清单只读一遍，之后的逐本查询都走内存，避免每本书都去扫一遍缓存目录
-        manifestCache = manifests.associateBy { it.bookUrl }
+        manifestCache.clear()
+        manifestCache.putAll(manifests.associateBy { it.bookUrl })
         //章节总数一次查全，不要逐本读章节表
         val chapterCounts = appDb.bookChapterDao.getChapterCounts()
             .associate { it.bookUrl to it.count }
@@ -255,7 +269,9 @@ class CacheManageViewModel(
         chapterCount: Int? = null
     ): CacheBookItem {
         val totalChapterCount = chapterCount?.takeIf { it > 0 }
-            ?: appDb.bookChapterDao.getChapterCount(book.bookUrl).takeIf { it > 0 }
+            //批量查询没覆盖到这本书（全是卷标题之类）时按同口径再查一次：
+            //已缓存数不含卷标题，分母也不能含，否则这个分数没有意义
+            ?: appDb.bookChapterDao.getChapterCountWithoutVolume(book.bookUrl).takeIf { it > 0 }
             ?: book.totalChapterNum
         //已经算过这本书就直接带上：切分类、重进页面不重复扫盘
         val known = computedByBookUrl[book.bookUrl]
@@ -680,6 +696,12 @@ class CacheManageViewModel(
         _uiState.update { it.copy(confirm = CacheManageConfirm.DeleteBook(item.book)) }
     }
 
+    /**
+     * 批量删除当前列表里有缓存的书
+     *
+     * 用的是**过滤后**的列表（items 而不是 allItems）：搜索时"删除全部"只删看得见的那些，
+     * 确认弹窗里也会给出具体的本数，不会删掉用户当前没看到的书
+     */
     fun requestDeleteAll() {
         val books = _uiState.value.items.filter { it.cachedCount > 0 }.map { it.book }
         if (books.isEmpty()) {
@@ -792,6 +814,7 @@ class CacheManageViewModel(
         }
     }
 
+    /** 批量上传当前列表里有缓存的书（同样只处理过滤后可见的那些，见 [requestDeleteAll]） */
     fun uploadAllCaches() {
         val items = _uiState.value.items.filter { it.cachedCount > 0 }
         if (items.isEmpty()) {
@@ -908,7 +931,9 @@ class CacheManageViewModel(
         val mode = _uiState.value.mode
         viewModelScope.launch {
             val fresh = withContext(Dispatchers.IO) {
-                val item = buildItem(book, mode, CacheManifestHelper.read(book))
+                val manifest = CacheManifestHelper.read(book)
+                manifest?.let { manifestCache[book.bookUrl] = it }
+                val item = buildItem(book, mode, manifest)
                 val info = calcCacheInfo(item)
                 computedByBookUrl[book.bookUrl] = info
                 item.copy(

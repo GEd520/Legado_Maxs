@@ -37,6 +37,14 @@ interface BookChapterDao {
     @Query("select bookUrl, count(url) as count from chapters where isVolume = 0 group by bookUrl")
     suspend fun getChapterCounts(): List<BookChapterCount>
 
+    /**
+     * 单本的真实章节数（不含卷标题）
+     *
+     * 与 [getChapterCounts] 同口径：列表里的"已缓存 x/y"两侧都不该把卷标题算进去
+     */
+    @Query("select count(url) from chapters where bookUrl = :bookUrl and isVolume = 0")
+    fun getChapterCountWithoutVolume(bookUrl: String): Int
+
     /** 每本书的章节数（一次查全，避免逐本读章节表） */
     data class BookChapterCount(val bookUrl: String, val count: Int)
 

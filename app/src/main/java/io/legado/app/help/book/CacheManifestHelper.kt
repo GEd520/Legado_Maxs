@@ -9,6 +9,7 @@ import io.legado.app.help.globalExecutor
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 书籍缓存清单（book_cache/<书>/cache_manifest.json）
@@ -40,9 +41,29 @@ object CacheManifestHelper {
 
     fun read(file: File): CacheBookManifest? {
         if (!file.isFile) return null
-        return runCatching {
+        val path = file.absolutePath
+        val modified = file.lastModified()
+        manifestMemo[path]?.let { (memoModified, manifest) ->
+            if (memoModified == modified) return manifest
+        }
+        val manifest = runCatching {
             GSON.fromJsonObject<CacheBookManifest>(file.readText()).getOrNull()
         }.getOrNull()
+        manifestMemo[path] = modified to manifest
+        return manifest
+    }
+
+    /**
+     * 清单解析结果的内存记忆（文件路径 -> 最后修改时间 to 清单）
+     *
+     * 逐章判定（缓存整本、导出、缓存管理页）会反复读同一份清单，每次都做一遍整份 JSON 解析、
+     * 上千章的书就是上千次解析；清单只在缓存变动时重写，用最后修改时间判断能否复用即可。
+     * 写入与删除处会主动失效，避免同一秒内重写时时间戳不变而取到旧清单。
+     */
+    private val manifestMemo = ConcurrentHashMap<String, Pair<Long, CacheBookManifest?>>()
+
+    private fun invalidateMemo(file: File) {
+        manifestMemo.remove(file.absolutePath)
     }
 
     fun listManifests(): List<CacheBookManifest> {
@@ -73,6 +94,7 @@ object CacheManifestHelper {
         chapters: List<BookChapter>,
         isChapterCached: (BookChapter) -> Boolean
     ): CacheBookManifest? {
+        invalidateMemo(manifestFile(book))
         val realChapters = chapters.filterNot { it.isVolume }
         val cachedByIndex = realChapters.associate { it.index to isChapterCached(it) }
         val cachedCount = cachedByIndex.values.count { it }
@@ -182,7 +204,9 @@ object CacheManifestHelper {
     }
 
     fun delete(book: Book) {
-        manifestFile(book).delete()
+        val file = manifestFile(book)
+        file.delete()
+        invalidateMemo(file)
     }
 
     /**
@@ -255,12 +279,17 @@ object CacheManifestHelper {
     fun cachedTextFileName(
         book: Book,
         chapter: BookChapter,
-        manifest: CacheBookManifest? = read(book),
+        manifest: CacheBookManifest? = null,
         cacheNames: Set<String>? = null
     ): String? {
+        val fileName = chapter.getFileName()
+        //绝大多数书的标题没被目录刷新改过：按当前章节算出的文件名直接命中，
+        //不必解析清单、也不必列目录——逐章判定的热路径上，这两步会让大书退化成上千次 IO
+        if (File(BookHelp.getCacheDir(book), fileName).isFile) return fileName
         val names = cacheNames ?: BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
-        chapter.getFileName().takeIf { names.contains(it) }?.let { return it }
-        val recorded = manifestChapter(manifest, chapter)
+        if (names.contains(fileName)) return fileName
+        //命中不了才动用清单：标题/序号被目录刷新改过时，按缓存当时的名字再算一遍
+        val recorded = manifestChapter(manifest ?: read(book), chapter)
             ?.takeIf { it.cached }
             ?: return null
         return toChapter(recorded, chapter.bookUrl).getFileName().takeIf { names.contains(it) }
@@ -274,6 +303,11 @@ object CacheManifestHelper {
      * 该书只有一章、缓存里也只有一个内容时，这个内容就是这一章。
      *
      * 推断出来后把地址写回章节表，播放、判定、章节弹窗就都能正常用上这份缓存。
+     *
+     * 注意这里有副作用：会写章节表（调用方在并行批次里也会调到，写库本身线程安全，
+     * 但同一章节可能被并发写同一个值）。若该章地址已被目录刷新换掉，更新可能命中 0 行，
+     * 此时仍返回地址——调用方直接用它读缓存，显示不会错，只是章节表要等下次播放或
+     * 打开章节弹窗时再对齐。
      *
      * @return 找回来的媒体地址；没能确定时返回 null
      */
@@ -300,7 +334,7 @@ object CacheManifestHelper {
     fun cachedTextFile(
         book: Book,
         chapter: BookChapter,
-        manifest: CacheBookManifest? = read(book)
+        manifest: CacheBookManifest? = null
     ): File? {
         val dir = BookHelp.getCacheDir(book)
         val name = cachedTextFileName(book, chapter, manifest) ?: return null

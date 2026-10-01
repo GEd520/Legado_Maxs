@@ -81,6 +81,9 @@ object AppDimens {
     /** 操作按钮的左右内边距 */
     val manageActionPaddingHorizontal: Dp = 10.dp
 
+    /** 禁用状态文字的不透明度（卡片操作按钮与批量按钮共用） */
+    const val DISABLED_CONTENT_ALPHA = 0.45f
+
     /** 缓存列表卡片封面的宽高（3:4） */
     val manageCoverWidth: Dp = 60.dp
     val manageCoverHeight: Dp = 80.dp

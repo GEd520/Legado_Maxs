@@ -167,12 +167,12 @@ fun ManageActionButton(
                 color = if (enabled) {
                     MaterialTheme.colorScheme.onSurface
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = DISABLED_ALPHA)
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = AppDimens.DISABLED_CONTENT_ALPHA
+                    )
                 },
                 maxLines = 1
             )
         }
     }
 }
-
-private const val DISABLED_ALPHA = 0.45f
