@@ -19,6 +19,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.offline.DefaultDownloadIndex
 import androidx.media3.exoplayer.offline.DefaultDownloaderFactory
 import androidx.media3.exoplayer.offline.DownloadRequest
 import androidx.media3.exoplayer.source.ConcatenatingMediaSource2
@@ -32,6 +33,7 @@ import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.http.okHttpClient
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.webBook.WebBook
@@ -349,6 +351,62 @@ object ExoPlayerHelper {
      */
     fun isVideoCached(url: String?, book: Book): Boolean {
         return isMediaCached(url, book, useVideoCache = true)
+    }
+
+    /**
+     * 该书是否有下载器写入的媒体缓存（完成标记目录非空）
+     *
+     * 只是目录检查，给"找回老缓存"做前置判断：整个书架里绝大多数书都没有媒体缓存，
+     * 不该为了它们去查下载索引
+     */
+    fun hasDownloadedMedia(book: Book): Boolean {
+        val cacheDir = mediaBookCacheDir(book, book.isVideo)
+        val markerDir = File(cacheDir.parentFile, cacheDir.name + VIDEO_COMPLETE_SUFFIX)
+        return markerDir.isDirectory && !markerDir.listFiles().isNullOrEmpty()
+    }
+
+    /**
+     * 该书媒体缓存里已经存在的内容：(缓存 key -> 媒体地址)
+     *
+     * 播放时写进缓存的以媒体地址本身为 key；离线缓存任务走下载器，key 是 url 的 md5，
+     * 真实地址存在下载索引里。两种都还原成地址，供"章节表里的地址变了"时回查缓存。
+     */
+    fun cachedMediaEntries(book: Book): List<Pair<String, String>> {
+        val useVideoCache = book.isVideo
+        val cacheDir = mediaBookCacheDir(book, useVideoCache)
+        if (!cacheDir.exists()) return emptyList()
+        val maxBytes = if (useVideoCache) VIDEO_CACHE_MAX_BYTES else AUDIO_CACHE_MAX_BYTES
+        val keys = runCatching { simpleCache(cacheDir, maxBytes).keys }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return emptyList()
+        val downloadUris = downloadUriById()
+        return keys.mapNotNull { key ->
+            val url = downloadUris[key] ?: key.takeIf { it.startsWith("http") }
+            url?.let { key to it }
+        }
+    }
+
+    /**
+     * 下载索引里的缓存 key -> 媒体地址
+     *
+     * 下载器的 key 是 url 的 md5，地址只存在索引里，不查索引就还原不出可播的地址
+     */
+    private fun downloadUriById(): Map<String, String> {
+        return runCatching {
+            val index = DefaultDownloadIndex(databaseProvider)
+            val result = hashMapOf<String, String>()
+            val cursor = index.getDownloads()
+            try {
+                while (cursor.moveToNext()) {
+                    val request = cursor.download.request
+                    result[request.id] = request.uri.toString()
+                }
+            } finally {
+                cursor.close()
+            }
+            result
+        }.getOrDefault(emptyMap())
     }
 
     /**

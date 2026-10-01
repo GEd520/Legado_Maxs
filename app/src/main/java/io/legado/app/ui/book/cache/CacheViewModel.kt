@@ -114,6 +114,12 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
                     chapterCaches.add(chapter.url)
                 }
             }
+            //清单功能之前缓存的老书：地址已被新解析结果覆盖，只有一章时按缓存内容反推
+            if (chapterCaches.isEmpty() && chapters.size == 1) {
+                CacheManifestHelper.recoverLegacyMediaUrl(book)?.let {
+                    chapterCaches.add(chapters.first().url)
+                }
+            }
         } else if (cacheNames.isNotEmpty()) {
             book.totalChapterNum = chapters.size
             // 标题/序号被目录刷新改过时按当前名字找不到缓存文件，清单里记着缓存当时的名字

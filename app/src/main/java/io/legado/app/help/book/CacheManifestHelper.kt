@@ -266,6 +266,36 @@ object CacheManifestHelper {
         return toChapter(recorded, chapter.bookUrl).getFileName().takeIf { names.contains(it) }
     }
 
+    /**
+     * 找回"清单功能之前"缓存的媒体地址
+     *
+     * 那时缓存是按当时的地址存的，而章节表里的地址之后被新解析结果覆盖了，
+     * 缓存里存的是哪个地址已无从反查（完成标记只存 md5）。唯一可靠的推断是：
+     * 该书只有一章、缓存里也只有一个内容时，这个内容就是这一章。
+     *
+     * 推断出来后把地址写回章节表，播放、判定、章节弹窗就都能正常用上这份缓存。
+     *
+     * @return 找回来的媒体地址；没能确定时返回 null
+     */
+    fun recoverLegacyMediaUrl(book: Book): String? {
+        if (!book.isVideo && !book.isAudio) return null
+        //先做最便宜的判断：整库绝大多数书没有媒体缓存，不必为它们查章节表与下载索引
+        if (!ExoPlayerHelper.hasDownloadedMedia(book)) return null
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl).filterNot { it.isVolume }
+        if (chapters.size != 1) return null
+        val chapter = chapters.first()
+        val entries = ExoPlayerHelper.cachedMediaEntries(book)
+        if (entries.size != 1) return null
+        val (key, url) = entries.first()
+        if (url.isBlank()) return null
+        if (!isMediaCached(key, book) && !isMediaCached(url, book)) return null
+        if (chapter.resourceUrl != url) {
+            appDb.bookChapterDao.upResourceUrl(book.bookUrl, chapter.url, url)
+            AppLog.put("按缓存找回媒体地址 ${book.name}\n$url")
+        }
+        return url
+    }
+
     /** 文本/漫画章节已缓存的正文文件 */
     fun cachedTextFile(
         book: Book,

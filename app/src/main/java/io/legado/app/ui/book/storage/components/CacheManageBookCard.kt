@@ -92,16 +92,17 @@ fun CacheManageBookCard(
                 }
                 Spacer(Modifier.height(AppDimens.manageRowSpacing))
                 Text(
-                    text = stringResource(
-                        R.string.cache_manage_cached_count_with_size,
-                        item.cachedCount,
-                        item.totalChapterCount,
-                        if (item.storageCalculated) {
+                    text = if (item.storageCalculated) {
+                        stringResource(
+                            R.string.cache_manage_cached_count_with_size,
+                            item.cachedCount,
+                            item.totalChapterCount,
                             item.storageSizeBytes.toCacheSizeText()
-                        } else {
-                            stringResource(R.string.cache_manage_size_calculating)
-                        }
-                    ),
+                        )
+                    } else {
+                        //缓存明细还在后台逐本算：先只显示书名与"计算中"，不显示会被误读的 0
+                        stringResource(R.string.cache_manage_size_calculating)
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

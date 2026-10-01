@@ -392,8 +392,10 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
         val bookSource = source as BookSource
         //已经离线缓存的章节直接播本地缓存，不再解析链接（链接可能已过期）；
-        //缓存按缓存当时的地址做 key，所以这里取"确实有缓存的地址"，章节表里的地址变了也能读到缓存
+        //缓存按缓存当时的地址做 key，所以这里取"确实有缓存的地址"，章节表里的地址变了也能读到缓存；
+        //清单功能之前缓存的老书连地址都没留下，只有一章时按缓存内容反推一次
         val cachedUrl = CacheManifestHelper.cachedMediaUrl(book, chapter)
+            ?: CacheManifestHelper.recoverLegacyMediaUrl(book)
         if (cachedUrl != null) {
             videoUrl = cachedUrl
             when (val danmaku = chapter.getDanmaku()) {
