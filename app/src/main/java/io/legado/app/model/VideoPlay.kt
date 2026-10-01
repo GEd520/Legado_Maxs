@@ -35,7 +35,7 @@ import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
-import io.legado.app.help.globalExecutor
+import io.legado.app.help.exoplayer.mediaExtensionOfUrl
 import io.legado.app.ui.video.player.ExoVideoManager
 import io.legado.app.ui.video.player.ExoVideoManager.Companion.FULLSCREEN_ID
 import io.legado.app.ui.video.player.FloatingPlayer
@@ -59,173 +59,185 @@ import kotlinx.coroutines.withContext
 import splitties.init.appCtx
 import java.io.File
 
-object VideoPlay : CoroutineScope by MainScope(){
-    private const val VIDEO_POS_NAME = "video_pos_" //单链接播放进度
-    private const val VIDEO_POS_SAVE_TIME = 60 * 60 * 24 * 20 //20天
-    private var needClearTemp = true //需要清理缓存
+object VideoPlay : CoroutineScope by MainScope() {
+    private const val VIDEO_POS_NAME = "video_pos_" // 单链接播放进度
+    private const val VIDEO_POS_SAVE_TIME = 60 * 60 * 24 * 20 // 20天
+    private var needClearTemp = true // 需要清理缓存
     private const val VIDEO_TEMP_PATH = "video_temp"
     private val videoTempFile by lazy { File(FileUtils.getCachePath(), VIDEO_TEMP_PATH) }
 
     const val VIDEO_PREF_NAME = "video_config"
 
     private val videoPrefs: SharedPreferences by lazy { appCtx.getSharedPreferences(VIDEO_PREF_NAME, MODE_PRIVATE) }
+
     /**  是否自动播放  **/
     var autoPlay
         get() = videoPrefs.getBoolean("autoPlay", true)
         set(value) {
             videoPrefs.edit { putBoolean("autoPlay", value) }
         }
+
     /**  直接全屏，需先启用自动播放 **/
     var startFull
         get() = videoPrefs.getBoolean("startFull", false)
         set(value) {
             videoPrefs.edit { putBoolean("startFull", value) }
         }
+
     /**  长按倍速  **/
     var longPressSpeed
         get() = videoPrefs.getInt("longPressSpeed", 30)
         set(value) {
             videoPrefs.edit { putInt("longPressSpeed", value) }
         }
+
     /**  全屏底部进度条  **/
     var fullBottomProgressBar
         get() = videoPrefs.getBoolean("fullBottomProgressBar", true)
         set(value) {
             videoPrefs.edit { putBoolean("fullBottomProgressBar", value) }
         }
+
     /**  静音播放，默认不静音  **/
     var mutePlay
         get() = videoPrefs.getBoolean("mutePlay", false)
         set(value) {
             videoPrefs.edit { putBoolean("mutePlay", value) }
         }
+
     /**  边播放边缓存：开启后播放的数据会写进书籍视频缓存目录（看完即可离线），默认关闭  **/
     var playCacheEnabled
         get() = videoPrefs.getBoolean("playCacheEnabled", false)
         set(value) {
             videoPrefs.edit { putBoolean("playCacheEnabled", value) }
         }
+
     /**  双击快退/快进功能开关  **/
     var doubleTapSeekEnabled
         get() = videoPrefs.getBoolean("doubleTapSeekEnabled", true)
         set(value) {
             videoPrefs.edit { putBoolean("doubleTapSeekEnabled", value) }
         }
+
     /**  双击跳转秒数  **/
     var doubleTapSeekSeconds
         get() = videoPrefs.getInt("doubleTapSeekSeconds", 10)
         set(value) {
             videoPrefs.edit { putInt("doubleTapSeekSeconds", value) }
         }
+
     /**  快捷跳转按钮开关  **/
     var quickJumpButtonsEnabled
         get() = videoPrefs.getBoolean("quickJumpButtonsEnabled", false)
         set(value) {
             videoPrefs.edit { putBoolean("quickJumpButtonsEnabled", value) }
         }
+
     /**  快捷跳转a分钟数  **/
     var quickJumpMinutesA
         get() = videoPrefs.getInt("quickJumpMinutesA", 5)
         set(value) {
             videoPrefs.edit { putInt("quickJumpMinutesA", value) }
         }
+
     /**  快捷跳转b分钟数  **/
     var quickJumpMinutesB
         get() = videoPrefs.getInt("quickJumpMinutesB", 1)
         set(value) {
             videoPrefs.edit { putInt("quickJumpMinutesB", value) }
         }
+
     /**  左侧滑动调节亮度开关  **/
     var leftSlideBrightnessEnabled
         get() = videoPrefs.getBoolean("leftSlideBrightnessEnabled", true)
         set(value) {
             videoPrefs.edit { putBoolean("leftSlideBrightnessEnabled", value) }
         }
+
     /**  右侧滑动调节音量开关  **/
     var rightSlideVolumeEnabled
         get() = videoPrefs.getBoolean("rightSlideVolumeEnabled", true)
         set(value) {
             videoPrefs.edit { putBoolean("rightSlideVolumeEnabled", value) }
         }
+
     /**  跳过片头片尾开关  **/
     var skipIntroOutroEnabled
         get() = videoPrefs.getBoolean("skipIntroOutroEnabled", false)
         set(value) {
             videoPrefs.edit { putBoolean("skipIntroOutroEnabled", value) }
         }
+
     /**  跳过片头秒数  **/
     var skipIntroSeconds
         get() = videoPrefs.getInt("skipIntroSeconds", 30)
         set(value) {
             videoPrefs.edit { putInt("skipIntroSeconds", value) }
         }
+
     /**  跳过片尾秒数  **/
     var skipOutroSeconds
         get() = videoPrefs.getInt("skipOutroSeconds", 30)
         set(value) {
             videoPrefs.edit { putInt("skipOutroSeconds", value) }
         }
+
     /**  弹幕滚动速度  **/
     var danmakuSpeed = 1.2f
+
     /**  锁屏  **/
     var lockCurScreen = false
+
     /**  竖屏视频  **/
     var isPortraitVideo = false
 
     val videoManager by lazy { ExoVideoManager() }
 
     /**
-     * 根据 URL 设置播放器的 overrideExtension，确保 ExoPlayer 能正确识别流媒体类型。
+     * 根据 URL 设置播放器的 overrideExtension，确保 ExoPlayer 能正确识别流媒体类型
      *
-     * 当 URL 的 path 部分没有明确的文件扩展名（如 API 接口 URL），
-     * 但实际返回的是 HLS(m3u8)/DASH(mpd) 流时，ExoSourceManager 会通过
-     * Util.inferContentType(Uri) 从 path 扩展名推断类型，导致识别失败。
+     * 当 URL 的 path 部分没有明确的文件扩展名（如 API 接口 URL），但实际返回的是 HLS(m3u8)/DASH(mpd) 流时，
+     * ExoSourceManager 会通过 Util.inferContentType(Uri) 从 path 扩展名推断类型，导致识别失败，
+     * 这里用 [ExoPlayerHelper.mediaExtensionOfUrl] 显式指定。
      *
-     * 此方法检查 URL 中是否包含 m3u8/mpd 关键字（包括 query 参数值中），
-     * 若检测到则设置对应的 overrideExtension，使 ExoSourceManager 能创建
-     * 正确的 MediaSource（HlsMediaSource / DashMediaSource）。
+     * 判定与缓存侧共用同一个口径：两侧对"这条地址是什么流"必须一致，否则会出现
+     * "按普通文件缓存、按 HLS 播放"（缓存里只有播放列表、切片没下过）这种看不了的情况。
      */
     private fun applyOverrideExtension(player: GSYBaseVideoPlayer, url: String?) {
         if (url.isNullOrBlank()) return
-        val lowerUrl = url.lowercase()
-        when {
-            // HLS: 检测 URL 中是否包含 .m3u8（可能在 path 或 query 参数值中）
-            lowerUrl.contains(".m3u8") -> {
-                player.setOverrideExtension("m3u8")
-            }
-            // DASH: 检测 URL 中是否包含 .mpd（可能在 path 或 query 参数值中）
-            lowerUrl.contains(".mpd") -> {
-                player.setOverrideExtension("mpd")
-            }
-            else -> {
-                player.setOverrideExtension(null)
-            }
-        }
+        player.setOverrideExtension(mediaExtensionOfUrl(url))
     }
     private var isLoading = false
     private val loadScope = CoroutineScope(SupervisorJob() + IO)
-    var videoUrl: String? = null //播放链接
+    var videoUrl: String? = null // 播放链接
     var singleUrl = false
     var videoTitle: String? = null
     var source: BaseSource? = null
     var book: Book? = null
-    var toc: List<BookChapter>? =  null
+    var toc: List<BookChapter>? = null
     var chapter: BookChapter? = null
     var volumes = arrayListOf<BookChapter>()
-    var episodes: List<BookChapter>? =  null
+    var episodes: List<BookChapter>? = null
+
     /**  在当前episodes中的位置  **/
     var chapterInVolumeIndex = 0
+
     /**  卷章节-> 线路或者季  **/
     var durVolumeIndex = 0
+
     /**  当前卷  **/
     var durVolume: BookChapter? = null
+
     /**  本集的进度  **/
     var durChapterPos = 0
     var inBookshelf = true
+
     /**  订阅收藏  **/
     var rssStar: RssStar? = null
+
     /**  订阅历史记录,收藏优先  **/
     var rssRecord: RssReadRecord? = null
+
     /**  弹幕相关  **/
     var danmakuFile: File? = null
     var danmakuStr: String? = null
@@ -241,7 +253,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             deviceId = AppConst.androidId,
             bookName = book.name,
             bookAuthor = book.author,
-            chapterTitle = book.durChapterTitle.orEmpty()
+            chapterTitle = book.durChapterTitle.orEmpty(),
         )
     }
 
@@ -255,7 +267,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             deviceId = AppConst.androidId,
             bookName = book.name,
             bookAuthor = book.author,
-            chapterTitle = book.durChapterTitle.orEmpty()
+            chapterTitle = book.durChapterTitle.orEmpty(),
         )
         ReadSessionRecorder.flush()
     }
@@ -279,7 +291,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                     mUrl,
                     source = source,
                     ruleData = book,
-                    chapter = null
+                    chapter = null,
                 )
                 withContext(Main) {
                     player.mapHeadData = analyzeUrl.headerMap
@@ -311,7 +323,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                     val analyzeUrl = AnalyzeUrl(
                         mUrl,
                         source = source,
-                        ruleData = rssArticle
+                        ruleData = rssArticle,
                     )
                     withContext(Main) {
                         player.mapHeadData = analyzeUrl.headerMap
@@ -320,7 +332,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                             analyzeUrl.url,
                             false,
                             File(appCtx.externalCache, "exoplayer"),
-                            rssArticle.title
+                            rssArticle.title,
                         )
                         if (autoPlay) {
                             player.startPlayLogic()
@@ -335,9 +347,9 @@ object VideoPlay : CoroutineScope by MainScope(){
                         val content = content.trim()
                         val mUrl = if (content.isEmpty()) {
                             throw ContentEmptyException("正文为空")
-                        } else if (content.startsWith("<")) { //当作mpd文本
+                        } else if (content.startsWith("<")) { // 当作mpd文本
                             val name = MD5Utils.md5Encode(content) + ".mpd"
-                            val file = FileUtils.createFileIfNotExist(videoTempFile,name)
+                            val file = FileUtils.createFileIfNotExist(videoTempFile, name)
                             file.writeText(content)
                             Uri.fromFile(file).toString()
                         } else {
@@ -347,7 +359,7 @@ object VideoPlay : CoroutineScope by MainScope(){
                         val analyzeUrl = AnalyzeUrl(
                             mUrl,
                             source = source,
-                            ruleData = rssArticle
+                            ruleData = rssArticle,
                         )
                         val playUrl = analyzeUrl.url
                         withContext(Main) {
@@ -371,11 +383,11 @@ object VideoPlay : CoroutineScope by MainScope(){
             return
         }
         chapter = if (episodes.isNullOrEmpty()) {
-            //没有卷目录，那么卷就是播放的章节（适合电影类，没有剧集，全是线路卷章节，如果全是章节没有卷的写法，播放完后会继续下一个线路重复播放）
+            // 没有卷目录，那么卷就是播放的章节（适合电影类，没有剧集，全是线路卷章节，如果全是章节没有卷的写法，播放完后会继续下一个线路重复播放）
             val durVolume = durVolume
             when {
                 durVolume == null -> null
-                durVolume.url.startsWith(durVolume.title) -> null //卷章节没获取到链接（链接以标题开头）则返回null
+                durVolume.url.startsWith(durVolume.title) -> null // 卷章节没获取到链接（链接以标题开头）则返回null
                 else -> durVolume
             }
         } else {
@@ -391,9 +403,9 @@ object VideoPlay : CoroutineScope by MainScope(){
             return
         }
         val bookSource = source as BookSource
-        //已经离线缓存的章节直接播本地缓存，不再解析链接（链接可能已过期）；
-        //缓存按缓存当时的地址做 key，所以这里取"确实有缓存的地址"，章节表里的地址变了也能读到缓存；
-        //清单功能之前缓存的老书连地址都没留下，只有一章时按缓存内容反推一次
+        // 已经离线缓存的章节直接播本地缓存，不再解析链接（链接可能已过期）；
+        // 缓存按缓存当时的地址做 key，所以这里取"确实有缓存的地址"，章节表里的地址变了也能读到缓存；
+        // 清单功能之前缓存的老书连地址都没留下，只有一章时按缓存内容反推一次
         val cachedUrl = CacheManifestHelper.cachedMediaUrl(book, chapter)
             ?: CacheManifestHelper.recoverLegacyMediaUrl(book)
         if (cachedUrl != null) {
@@ -403,14 +415,14 @@ object VideoPlay : CoroutineScope by MainScope(){
                 is File -> danmakuFile = danmaku
             }
             Coroutine.async(loadScope, IO) {
-                //请求头仍按书源规则生成：缓存不完整需要回源时，缺 Referer/Cookie 会被拒。
-                //取不到请求头不影响本地播放，失败就用空请求头
+                // 请求头仍按书源规则生成：缓存不完整需要回源时，缺 Referer/Cookie 会被拒。
+                // 取不到请求头不影响本地播放，失败就用空请求头
                 val headers = runCatching {
                     AnalyzeUrl(
                         cachedUrl,
                         source = bookSource,
                         ruleData = book,
-                        chapter = chapter
+                        chapter = chapter,
                     ).headerMap
                 }.getOrDefault(emptyMap())
                 playVideo(player, book, cachedUrl, chapter, headers)
@@ -423,9 +435,9 @@ object VideoPlay : CoroutineScope by MainScope(){
                 val content = content.trim()
                 val mUrl = if (content.isEmpty()) {
                     throw ContentEmptyException("正文为空")
-                } else if (content.startsWith("<")) { //当作mpd文本
+                } else if (content.startsWith("<")) { // 当作mpd文本
                     val name = MD5Utils.md5Encode(content) + ".mpd"
-                    val file = FileUtils.createFileIfNotExist(videoTempFile,name)
+                    val file = FileUtils.createFileIfNotExist(videoTempFile, name)
                     file.writeText(content)
                     Uri.fromFile(file).toString()
                 } else {
@@ -436,14 +448,14 @@ object VideoPlay : CoroutineScope by MainScope(){
                     mUrl,
                     source = source,
                     ruleData = book,
-                    chapter = chapter
+                    chapter = chapter,
                 )
                 when (val danmaku = chapter.getDanmaku()) {
                     is String -> danmakuStr = danmaku
                     is File -> danmakuFile = danmaku
                 }
                 val playUrl = analyzeUrl.url
-                //解析出的真实地址写回章节，离线缓存与缓存判定都依赖它
+                // 解析出的真实地址写回章节，离线缓存与缓存判定都依赖它
                 if (chapter.resourceUrl != playUrl) {
                     chapter.resourceUrl = playUrl
                     appDb.bookChapterDao.upResourceUrl(chapter.bookUrl, chapter.url, playUrl)
@@ -466,7 +478,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         book: Book,
         playUrl: String,
         chapter: BookChapter,
-        headers: Map<String, String>
+        headers: Map<String, String>,
     ) = withContext(Main) {
         val cacheDir = ExoPlayerHelper.videoBookCacheDir(book)
         player.mapHeadData = headers.toMutableMap()
@@ -496,6 +508,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
         return backFrom
     }
+
     /**
      * 停止当前播放（释放媒体播放器），但不重置状态
      * 用于新会话启动时清理旧媒体，防止 onResume 恢复旧视频
@@ -517,7 +530,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
         videoManager.releaseMediaPlayer()
         if (!isLoading) {
-            //还原所有状态
+            // 还原所有状态
             videoUrl = null
             singleUrl = false
             videoTitle = null
@@ -545,6 +558,7 @@ object VideoPlay : CoroutineScope by MainScope(){
             }
         }
     }
+
     /**
      * 暂停播放
      */
@@ -565,7 +579,6 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
     }
 
-
     /**
      * 恢复暂停状态
      * @param seek 是否产生seek动作,直播设置为false
@@ -576,7 +589,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
     }
 
-    //播放器移除 - 辅助函数
+    // 播放器移除 - 辅助函数
     @SuppressLint("StaticFieldLeak")
     private var sSwitchVideo: StandardGSYVideoPlayer? = null
     private var sMediaPlayerListener: GSYMediaPlayerListener? = null
@@ -604,7 +617,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         loadScope.coroutineContext.cancelChildren()
     }
 
-    fun initSource(sourceKey: String?, sourceType: Int?, bookUrl: String?, record:String?): Boolean {
+    fun initSource(sourceKey: String?, sourceType: Int?, bookUrl: String?, record: String?): Boolean {
         isLoading = true
         // 重置可能残留的上一次会话状态，防止旧数据泄漏（当旧 Activity 未被销毁时尤为重要）
         rssStar = null
@@ -649,13 +662,14 @@ object VideoPlay : CoroutineScope by MainScope(){
             appCtx.toastOnUi("未找到源")
             return false
         }
-        record?.let{ //订阅记录
+        record?.let {
+            // 订阅记录
             val sourceKey = sourceKey ?: return@let
-            rssStar =appDb.rssStarDao.get(sourceKey, it)?.also{ r ->
+            rssStar = appDb.rssStarDao.get(sourceKey, it)?.also { r ->
                 durChapterPos = r.durPos
             }
             if (rssStar == null) {
-                rssRecord = appDb.rssReadRecordDao.getRecord(it,sourceKey)?.also{ r ->
+                rssRecord = appDb.rssReadRecordDao.getRecord(it, sourceKey)?.also { r ->
                     durChapterPos = r.durPos
                 }
             }
@@ -695,7 +709,7 @@ object VideoPlay : CoroutineScope by MainScope(){
         chapterInVolumeIndex = index
         saveRead(0)
         startPlay(player)
-        postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1)) //更新选集视图
+        postEvent(EventBus.UP_VIDEO_INFO, arrayListOf(1)) // 更新选集视图
         return true
     }
 
@@ -724,8 +738,11 @@ object VideoPlay : CoroutineScope by MainScope(){
                 book.durChapterTime = durTime
                 book.durVolumeIndex = durVolumeIndex
                 book.chapterInVolumeIndex = chapterInVolumeIndex
-                val durChapterIndex = if (volumes.isEmpty()) chapterInVolumeIndex else
+                val durChapterIndex = if (volumes.isEmpty()) {
+                    chapterInVolumeIndex
+                } else {
                     (durVolume?.index ?: 0) + chapterInVolumeIndex + 1
+                }
                 book.durChapterIndex = durChapterIndex
                 book.durChapterPos = durPos
                 val chapter = toc?.getOrNull(durChapterIndex)
@@ -748,7 +765,5 @@ object VideoPlay : CoroutineScope by MainScope(){
         }
     }
 
-    fun getDisplayCover(): String? {
-        return book?.let { BookCover.getDisplayCover(it) } ?: rssStar?.image ?: rssRecord?.image
-    }
+    fun getDisplayCover(): String? = book?.let { BookCover.getDisplayCover(it) } ?: rssStar?.image ?: rssRecord?.image
 }
