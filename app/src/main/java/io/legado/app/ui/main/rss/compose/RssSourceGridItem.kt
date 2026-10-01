@@ -30,7 +30,6 @@ internal fun RssSourceGridItem(
     Box(modifier = modifier) {
         RssGridCell(
             name = sourceItem.sourceName,
-            contentDescription = sourceItem.sourceName,
             onClick = { actions.onOpen(sourceItem) },
             onLongClick = { menuExpanded = true },
             icon = {

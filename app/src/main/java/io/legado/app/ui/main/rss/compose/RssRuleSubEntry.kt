@@ -22,11 +22,9 @@ internal fun RssRuleSubEntry(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    val name = stringResource(R.string.rule_subscription)
     RssGridCell(
         modifier = modifier,
-        name = name,
-        contentDescription = name,
+        name = stringResource(R.string.rule_subscription),
         onClick = onClick,
         icon = {
             Image(
