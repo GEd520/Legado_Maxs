@@ -259,7 +259,7 @@ object ExoPlayerHelper {
             }
             var cached = 0L
             val downloader = DefaultDownloaderFactory(
-                videoMediaDataSourceFactory(request.headers, cacheDir),
+                videoCacheDataSourceFactory(request.headers, cacheDir, writable = true),
                 Executor { it.run() }
             ).createDownloader(
                 DownloadRequest.Builder(MD5Utils.md5Encode(url), url.toUri())
@@ -293,9 +293,10 @@ object ExoPlayerHelper {
         url: String,
         headers: Map<String, String>,
         cacheDir: File? = null,
-        mimeType: String? = null
+        mimeType: String? = null,
+        writable: Boolean = true
     ): MediaSource {
-        return DefaultMediaSourceFactory(videoMediaDataSourceFactory(headers, cacheDir))
+        return DefaultMediaSourceFactory(videoPlaybackDataSourceFactory(headers, cacheDir, writable))
             .setLiveTargetOffsetMs(5000)
             .createMediaSource(
                 MediaItem.Builder()
@@ -349,20 +350,51 @@ object ExoPlayerHelper {
         }
     }
 
-    private fun videoMediaDataSourceFactory(
+    /**
+     * 播放数据源：始终优先读缓存目录（离线缓存的章节才能离线播放），
+     * [writable] 为 false 时不写缓存，此时若缓存目录都还不存在就直接走网络，
+     * 避免"只是看视频"也在书籍缓存目录里凭空建出空目录
+     */
+    private fun videoPlaybackDataSourceFactory(
         headers: Map<String, String>,
-        cacheDir: File? = null
+        cacheDir: File? = null,
+        writable: Boolean = true
+    ): DataSource.Factory {
+        val targetCacheDir = cacheDir ?: legacyCacheDir
+        if (!writable && !targetCacheDir.exists()) {
+            return okhttpDataFactory(headers)
+        }
+        return videoCacheDataSourceFactory(headers, targetCacheDir, writable)
+    }
+
+    /**
+     * 走缓存目录的数据源，[writable] 为 false 时是只读缓存
+     */
+    private fun videoCacheDataSourceFactory(
+        headers: Map<String, String>,
+        cacheDir: File,
+        writable: Boolean
     ): CacheDataSource.Factory {
-        val videoCache = simpleCache(cacheDir ?: legacyCacheDir, VIDEO_CACHE_MAX_BYTES)
+        //非书级的旧播放缓存沿用原来的 100MB 上限
+        val maxBytes = if (cacheDir == legacyCacheDir) {
+            PLAYBACK_CACHE_MAX_BYTES
+        } else {
+            VIDEO_CACHE_MAX_BYTES
+        }
+        val videoCache = simpleCache(cacheDir, maxBytes)
         return CacheDataSource.Factory()
             .setCache(videoCache)
             .setUpstreamDataSourceFactory(okhttpDataFactory(headers))
             .setCacheReadDataSourceFactory(FileDataSource.Factory())
-            .setCacheWriteDataSinkFactory(
-                CacheDataSink.Factory()
-                    .setCache(videoCache)
-                    .setFragmentSize(CacheDataSink.DEFAULT_FRAGMENT_SIZE)
-            )
+            .apply {
+                if (writable) {
+                    setCacheWriteDataSinkFactory(
+                        CacheDataSink.Factory()
+                            .setCache(videoCache)
+                            .setFragmentSize(CacheDataSink.DEFAULT_FRAGMENT_SIZE)
+                    )
+                }
+            }
     }
 
     private fun markMediaComplete(url: String, cacheDir: File) {

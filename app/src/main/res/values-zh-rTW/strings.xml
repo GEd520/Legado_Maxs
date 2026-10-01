@@ -1530,6 +1530,10 @@
     <string name="verbose_update_log_summary">記錄更詳細的更新過程日誌</string>
     <string name="video_setting">影片設定</string>
     <string name="video_setting_summary">自動播放、全螢幕播放等配置</string>
+    <string name="video_play_settings">播放</string>
+    <string name="video_cache_settings">快取</string>
+    <string name="video_play_cache">邊播放邊快取</string>
+    <string name="video_play_cache_summary">播放影片時把資料寫入書籍快取目錄，看完即可離線播放；關閉後只播放，不寫入快取</string>
     <string name="view_backup_info_s">查看備份檔案資訊</string>
     <string name="view_backup_info_t">查看備份資訊</string>
     <string name="view_cookie">查看 Cookie</string>

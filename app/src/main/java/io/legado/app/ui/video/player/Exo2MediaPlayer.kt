@@ -50,7 +50,9 @@ class Exo2MediaPlayer(context: Context) : IjkExo2MediaPlayer(context) {
             dataSource,
             mHeaders ?: emptyMap(),
             mCacheDir,
-            ExoPlayerHelper.mimeTypeOfExtension(overrideExtension)
+            ExoPlayerHelper.mimeTypeOfExtension(overrideExtension),
+            //关闭边播放边缓存时只读缓存：已离线缓存的章节照常本地播，播放过程不再写新数据
+            writable = VideoPlay.playCacheEnabled
         )
     }
 

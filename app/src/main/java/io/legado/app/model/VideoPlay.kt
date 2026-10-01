@@ -98,6 +98,12 @@ object VideoPlay : CoroutineScope by MainScope(){
         set(value) {
             videoPrefs.edit { putBoolean("mutePlay", value) }
         }
+    /**  边播放边缓存：开启后播放的数据会写进书籍视频缓存目录（看完即可离线），默认关闭  **/
+    var playCacheEnabled
+        get() = videoPrefs.getBoolean("playCacheEnabled", false)
+        set(value) {
+            videoPrefs.edit { putBoolean("playCacheEnabled", value) }
+        }
     /**  双击快退/快进功能开关  **/
     var doubleTapSeekEnabled
         get() = videoPrefs.getBoolean("doubleTapSeekEnabled", true)
