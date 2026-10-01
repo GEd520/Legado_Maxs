@@ -46,4 +46,8 @@ interface BookChapterDao {
     @Query("update chapters set wordCount = :wordCount where bookUrl = :bookUrl and url = :url")
     fun upWordCount(bookUrl: String, url: String, wordCount: String)
 
+    /** 视频书源解析出的真实媒体地址，离线缓存的判定与播放都依赖它 */
+    @Query("update chapters set resourceUrl = :resourceUrl where bookUrl = :bookUrl and url = :url")
+    fun upResourceUrl(bookUrl: String, url: String, resourceUrl: String)
+
 }

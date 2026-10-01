@@ -33,6 +33,7 @@ import io.legado.app.help.book.getDanmaku
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.globalExecutor
 import io.legado.app.ui.video.player.ExoVideoManager
 import io.legado.app.ui.video.player.ExoVideoManager.Companion.FULLSCREEN_ID
@@ -382,7 +383,32 @@ object VideoPlay : CoroutineScope by MainScope(){
             appCtx.toastOnUi("未找到章节")
             return
         }
-        WebBook.getContent(loadScope, source as BookSource, book, chapter)
+        val bookSource = source as BookSource
+        //已经离线缓存的章节直接播本地缓存，不再解析链接（链接可能已过期）
+        val cachedUrl = chapter.resourceUrl?.takeIf { ExoPlayerHelper.isVideoCached(it, book) }
+        if (cachedUrl != null) {
+            videoUrl = cachedUrl
+            when (val danmaku = chapter.getDanmaku()) {
+                is String -> danmakuStr = danmaku
+                is File -> danmakuFile = danmaku
+            }
+            Coroutine.async(loadScope, IO) {
+                //请求头仍按书源规则生成：缓存不完整需要回源时，缺 Referer/Cookie 会被拒。
+                //取不到请求头不影响本地播放，失败就用空请求头
+                val headers = runCatching {
+                    AnalyzeUrl(
+                        cachedUrl,
+                        source = bookSource,
+                        ruleData = book,
+                        chapter = chapter
+                    ).headerMap
+                }.getOrDefault(emptyMap())
+                playVideo(player, book, cachedUrl, chapter, headers)
+            }
+            isLoading = false
+            return
+        }
+        WebBook.getContent(loadScope, bookSource, book, chapter)
             .onSuccess(IO) { content ->
                 val content = content.trim()
                 val mUrl = if (content.isEmpty()) {
@@ -407,18 +433,38 @@ object VideoPlay : CoroutineScope by MainScope(){
                     is File -> danmakuFile = danmaku
                 }
                 val playUrl = analyzeUrl.url
-                withContext(Main) {
-                    player.mapHeadData = analyzeUrl.headerMap
-                    applyOverrideExtension(player, playUrl)
-                    player.setUp(playUrl, false, File(appCtx.externalCache, "exoplayer"), chapter.title)
-                    if (autoPlay) {
-                        player.startPlayLogic()
-                    }
+                //解析出的真实地址写回章节，离线缓存与缓存判定都依赖它
+                if (chapter.resourceUrl != playUrl) {
+                    chapter.resourceUrl = playUrl
+                    appDb.bookChapterDao.upResourceUrl(chapter.bookUrl, chapter.url, playUrl)
                 }
+                playVideo(player, book, playUrl, chapter, analyzeUrl.headerMap)
             }.onError {
                 AppLog.put("获取资源链接出错\n$it", it, true)
             }
         isLoading = false
+    }
+
+    /**
+     * 播放已解析出的媒体地址
+     *
+     * 缓存目录指向书级视频缓存目录：已离线缓存的章节直接读本地，
+     * 播放过程中加载的数据也会写进同一个目录，与离线缓存共用一份缓存
+     */
+    private suspend fun playVideo(
+        player: GSYBaseVideoPlayer,
+        book: Book,
+        playUrl: String,
+        chapter: BookChapter,
+        headers: Map<String, String>
+    ) = withContext(Main) {
+        val cacheDir = ExoPlayerHelper.videoBookCacheDir(book)
+        player.mapHeadData = headers.toMutableMap()
+        applyOverrideExtension(player, playUrl)
+        player.setUp(playUrl, false, cacheDir, chapter.title)
+        if (autoPlay) {
+            player.startPlayLogic()
+        }
     }
 
     /**

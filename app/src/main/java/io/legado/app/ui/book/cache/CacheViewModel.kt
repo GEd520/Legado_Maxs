@@ -8,7 +8,9 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.repository.BookRepository
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.sendValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -23,7 +25,7 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
     val upAdapterLiveData = MutableLiveData<String>()
 
     private var loadChapterCoroutine: Coroutine<Unit>? = null
-    // 缓存每本书已缓存的章节URL集合
+    // 缓存每本书已缓存的章节URL集合（只在 Main 线程写入，界面在 Main 线程读）
     val cacheChapters = hashMapOf<String, HashSet<String>>()
     // 缓存每本书的缓存文件大小
     val cacheSizes = hashMapOf<String, Long>()
@@ -31,6 +33,10 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
     
     // 用于检测是否是相同的书籍列表，避免重复加载
     private var lastLoadedBooksKey: String? = null
+    // 正在重新计算的书籍，避免下载进度事件频繁触发重复计算
+    private val refreshingBooks = hashSetOf<String>()
+    // 刷新期间又收到刷新请求的书籍，结束后补刷一次
+    private val pendingRefreshBooks = hashSetOf<String>()
     // 防止并发加载的标志
     private var isLoading = false
 
@@ -62,39 +68,94 @@ class CacheViewModel(application: Application) : BaseViewModel(application) {
                 newBooks.map { book ->
                     async(Dispatchers.IO) {
                         try {
-                            // 查询该书章节
-                            val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
-                            // 扫描该书缓存文件
-                            val cacheNames = BookHelp.getCacheFiles(setOf(book.getFolderName()))[book.getFolderName()]
-                                ?: hashSetOf()
-                            // 匹配已缓存章节
-                            val chapterCaches = hashSetOf<String>()
-                            if (cacheNames.isNotEmpty()) {
-                                book.totalChapterNum = chapters.size
-                                chapters.forEach { chapter ->
-                                    if (cacheNames.contains(chapter.getFileName()) || chapter.isVolume) {
-                                        chapterCaches.add(chapter.url)
-                                    }
-                                }
-                            }
-                            // 计算该书缓存文件夹大小
-                            val cacheSize = File(BookHelp.cachePath, book.getFolderName())
-                                .takeIf { it.exists() }
-                                ?.walkTopDown()?.filter { it.isFile }?.sumOf { it.length() } ?: 0L
+                            val (chapterCaches, cacheSize) = calcBookCache(book)
                             Triple(book.bookUrl, chapterCaches, cacheSize)
                         } catch (e: Exception) {
                             Triple(book.bookUrl, hashSetOf<String>(), 0L)
                         }
                     }
                 }.awaitAll().forEach { (bookUrl, chapterCaches, cacheSize) ->
-                    cacheChapters[bookUrl] = chapterCaches
-                    cacheSizes[bookUrl] = cacheSize
+                    //结果统一回到 Main 线程写入，界面同时在读这两个 Map
+                    withContext(Dispatchers.Main) {
+                        cacheChapters[bookUrl] = chapterCaches
+                        cacheSizes[bookUrl] = cacheSize
+                    }
                     upAdapterLiveData.sendValue(bookUrl)
                 }
 
                 lastLoadedBooksKey = booksKey
             } finally {
                 isLoading = false
+            }
+        }
+    }
+
+    /**
+     * 计算单本书的已缓存章节与缓存目录占用
+     */
+    private suspend fun calcBookCache(book: Book): Pair<HashSet<String>, Long> {
+        // 查询该书章节
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
+        // 扫描该书缓存文件
+        val cacheNames = BookHelp.getCacheFiles(setOf(book.getFolderName()))[book.getFolderName()]
+            ?: hashSetOf()
+        // 匹配已缓存章节
+        val chapterCaches = hashSetOf<String>()
+        if (book.isVideo) {
+            // 视频章节的离线内容是媒体文件，按视频缓存判定
+            book.totalChapterNum = chapters.size
+            chapters.forEach { chapter ->
+                val cached = chapter.isVolume ||
+                    ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
+                if (cached) {
+                    chapterCaches.add(chapter.url)
+                }
+            }
+        } else if (cacheNames.isNotEmpty()) {
+            book.totalChapterNum = chapters.size
+            chapters.forEach { chapter ->
+                if (cacheNames.contains(chapter.getFileName()) || chapter.isVolume) {
+                    chapterCaches.add(chapter.url)
+                }
+            }
+        }
+        // 计算该书缓存文件夹大小
+        val cacheSize = File(BookHelp.cachePath, book.getFolderName())
+            .takeIf { it.exists() }
+            ?.walkTopDown()?.filter { it.isFile }?.sumOf { it.length() } ?: 0L
+        return chapterCaches to cacheSize
+    }
+
+    /**
+     * 重新计算单本书的已缓存章节与占用大小
+     * 视频书缓存的是一章一个媒体文件，下载进度中需要按媒体缓存状态刷新
+     */
+    suspend fun refreshCache(book: Book) {
+        synchronized(refreshingBooks) {
+            if (!refreshingBooks.add(book.bookUrl)) {
+                //刷新期间又来了事件，记下来补一次，避免界面停在中间值
+                pendingRefreshBooks.add(book.bookUrl)
+                return
+            }
+        }
+        try {
+            do {
+                synchronized(pendingRefreshBooks) {
+                    pendingRefreshBooks.remove(book.bookUrl)
+                }
+                val (chapterCaches, cacheSize) =
+                    withContext(Dispatchers.IO) { calcBookCache(book) }
+                //计算结果统一回到 Main 线程写入，界面同时在读这两个 Map
+                withContext(Dispatchers.Main) {
+                    cacheChapters[book.bookUrl] = chapterCaches
+                    cacheSizes[book.bookUrl] = cacheSize
+                }
+            } while (synchronized(pendingRefreshBooks) {
+                    pendingRefreshBooks.contains(book.bookUrl)
+                })
+        } finally {
+            synchronized(refreshingBooks) {
+                refreshingBooks.remove(book.bookUrl)
             }
         }
     }

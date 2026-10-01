@@ -4,6 +4,8 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.isVideo
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileUtils
@@ -142,7 +144,7 @@ object StorageCalculator {
                 val book = folderMap[bookDir.name]
                 val size = calculateDirSizeFast(bookDir)
                 if (size > 0) {
-                    val chapterCount = countCachedChapters(bookDir)
+                    val chapterCount = countCachedChapters(bookDir, book)
                     val name = book?.name ?: bookDir.name
                     val meta = if (book != null) {
                         "${chapterCount}章 · 最后阅读: ${formatLastRead(book)}"
@@ -185,7 +187,14 @@ object StorageCalculator {
         return map
     }
 
-    private fun countCachedChapters(bookDir: File): Int {
+    private fun countCachedChapters(bookDir: File, book: Book? = null): Int {
+        if (book?.isVideo == true) {
+            // 视频书缓存的是一章一个媒体文件，按视频缓存判定
+            return runCatching {
+                appDb.bookChapterDao.getChapterList(book.bookUrl)
+                    .count { ExoPlayerHelper.isVideoCached(it.resourceUrl, book) }
+            }.getOrDefault(0)
+        }
         return bookDir.listFiles()?.count { it.isFile && it.extension == "nb" } ?: 0
     }
 

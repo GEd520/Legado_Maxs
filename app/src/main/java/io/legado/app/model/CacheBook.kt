@@ -12,7 +12,9 @@ import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook
@@ -264,8 +266,12 @@ object CacheBook {
         private val waitDownloadSet = linkedSetOf<Int>()
         private val onDownloadSet = linkedSetOf<Int>()
         private val tasks = CompositeCoroutine()
+        @Volatile
         private var isStopped = false
         private var waitingRetry = false
+
+        /** 下载进度回调线程会读，用 @Volatile 保证可见性 */
+        @Volatile
         private var isLoading = false
 
         val waitCount get() = waitDownloadSet.size
@@ -448,6 +454,19 @@ object CacheBook {
                 waitDownloadSet.remove(chapterIndex)
                 return
             }
+            if (book.isVideo) {
+                // 视频章节的离线内容是媒体文件，不落正文文本。
+                // 注意：这里同样要完成待下载/下载中的记账，否则并发下载会重复进入
+                waitDownloadSet.remove(chapterIndex)
+                onDownloadSet.add(chapterIndex)
+                if (ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)) {
+                    onSuccess(chapter)
+                    onFinally()
+                } else {
+                    downloadVideo(chapter, scope, context)
+                }
+                return
+            }
             if (bookSource.nextPageLazyLoad) {
                 AppLog.putReaderDebug("书源「${bookSource.bookSourceName}」已开启下一页懒加载，仅支持通过阅读动作下载\n源URL: ${bookSource.bookSourceUrl}\n书名: ${book.name}")
                 appCtx.toastOnUi(
@@ -518,6 +537,61 @@ object CacheBook {
             }
             tasks.add(task)
             task.start()
+        }
+
+        /**
+         * 下载视频章节的媒体文件
+         *
+         * 视频书源的正文规则返回媒体地址（可能是地址数组），这里解析出地址与请求头后
+         * 整章下载进书级视频缓存目录，并把解析到的地址写回章节，供离线播放与缓存判定复用
+         * @param chapter 书籍章节
+         * @param scope 协程作用域
+         * @param context 协程上下文
+         */
+        @Synchronized
+        private fun downloadVideo(
+            chapter: BookChapter,
+            scope: CoroutineScope,
+            context: CoroutineContext
+        ) {
+            val task = Coroutine.async(scope, context, executeContext = context) {
+                val request = ExoPlayerHelper.resolveMediaRequest(bookSource, book, chapter)
+                if (chapter.resourceUrl != request.url) {
+                    chapter.resourceUrl = request.url
+                    appDb.bookChapterDao.upResourceUrl(chapter.bookUrl, chapter.url, request.url)
+                }
+                //进度回调很密集，节流后再刷新界面
+                var lastPostTime = 0L
+                ExoPlayerHelper.cacheMedia(
+                    request = request,
+                    book = book,
+                    progress = { _, _ ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastPostTime > 500) {
+                            lastPostTime = now
+                            postEvent(EventBus.UP_DOWNLOAD_STATE, book.bookUrl)
+                            //视频缓存进度靠事件刷新（界面要重新扫缓存文件算占用）
+                            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
+                        }
+                    },
+                    shouldCancel = { isStopped }
+                )
+            }.onSuccess {
+                onSuccess(chapter)
+            }.onError {
+                onPreError(chapter, it)
+                //出现错误等待一秒后重新加入待下载列表
+                delay(1000)
+                onPostError(chapter, it)
+            }.onCancel {
+                onCancel(chapter.index)
+            }.onFinally {
+                onFinally()
+            }
+            task.invokeOnCompletion {
+                tasks.delete(task)
+            }
+            tasks.add(task)
         }
 
         /**

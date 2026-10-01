@@ -33,6 +33,39 @@ class Exo2MediaPlayer(context: Context) : IjkExo2MediaPlayer(context) {
     private var storedLeftVolume = 1f
     private var storedRightVolume = 1f
 
+    /**
+     * 自己构建 MediaSource：库默认用 DefaultDataSource，不会读 ExoPlayer 缓存，
+     * 这里改为读 setUp 传入的缓存目录（视频书是书级缓存目录），
+     * 已离线缓存的章节即可直接本地播放，未缓存的章节边播边缓存
+     *
+     * 目前播放都走 cacheWithPlay=false + 本重写，GCacheManager 分支不会被触发；
+     * 本地文件（FileDescriptor）用库默认数据源即可，无需缓存
+     */
+    override fun setDataSource(context: Context?, uri: Uri?) {
+        val dataSource = uri?.toString() ?: return
+        mDataSource = dataSource
+        mMediaSource = ExoPlayerHelper.createVideoMediaSource(
+            context ?: mAppContext,
+            dataSource,
+            mHeaders ?: emptyMap(),
+            mCacheDir,
+            ExoPlayerHelper.mimeTypeOfExtension(overrideExtension)
+        )
+    }
+
+    override fun setDataSource(context: Context?, uri: Uri?, headers: MutableMap<String, String>?) {
+        if (headers != null) {
+            mHeaders.clear()
+            mHeaders.putAll(headers)
+        }
+        setDataSource(context, uri)
+    }
+
+    override fun setDataSource(dataSource: String?) {
+        val url = dataSource ?: return
+        setDataSource(mAppContext, Uri.parse(url))
+    }
+
     override fun setVolume(left: Float, right: Float) {
         storedLeftVolume = left
         storedRightVolume = right

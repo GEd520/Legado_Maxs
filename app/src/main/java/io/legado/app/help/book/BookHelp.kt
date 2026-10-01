@@ -13,6 +13,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.model.CacheBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.ArchiveUtils
@@ -64,13 +66,25 @@ object BookHelp {
 
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
 
+    /**
+     * 单本书的缓存目录
+     */
+    fun getCacheDir(book: Book): File {
+        return downloadDir.getFile(cacheFolderName, book.getFolderName())
+    }
+
     fun clearCache() {
+        //先停缓存任务，再释放 media3 缓存实例（实例持有目录锁），最后删目录
+        CacheBook.close()
+        ExoPlayerHelper.releaseAllBookCaches()
         FileUtils.delete(
             FileUtils.getPath(downloadDir, cacheFolderName)
         )
     }
 
     fun clearCache(book: Book) {
+        CacheBook.cacheBookMap[book.bookUrl]?.stop()
+        ExoPlayerHelper.releaseBookCaches(book)
         val filePath = FileUtils.getPath(downloadDir, cacheFolderName, book.getFolderName())
         FileUtils.delete(filePath)
     }
@@ -89,6 +103,8 @@ object BookHelp {
             cacheFolderName,
             newFolderName
         )
+        //整个目录要挪走：先释放旧路径的缓存实例，否则新路径会再建一个实例指向同一物理目录
+        ExoPlayerHelper.releaseVideoCacheOf(File(oldFolderPath))
         FileUtils.move(oldFolderPath, newFolderPath)
     }
 
@@ -120,6 +136,8 @@ object BookHelp {
             downloadDir.getFile(cacheFolderName)
                 .listFiles()?.forEach { bookFile ->
                     if (!bookFolderNames.contains(bookFile.name)) {
+                        //删目录前先放掉 media3 缓存实例，否则实例会一直指向已删除的目录
+                        ExoPlayerHelper.releaseVideoCacheOf(bookFile)
                         FileUtils.delete(bookFile.absolutePath)
                     }
                 }
@@ -387,6 +405,10 @@ object BookHelp {
      * 检测该章节是否下载
      */
     fun hasContent(book: Book, bookChapter: BookChapter): Boolean {
+        if (book.isVideo) {
+            // 视频章节的离线内容是媒体文件，判定走 ExoPlayer 缓存
+            return ExoPlayerHelper.isVideoCached(bookChapter.resourceUrl, book)
+        }
         return if (book.isLocalTxt ||
             (bookChapter.isVolume && bookChapter.url.startsWith(bookChapter.title))
         ) {
