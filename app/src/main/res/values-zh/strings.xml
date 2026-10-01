@@ -2606,4 +2606,46 @@
     <string name="storage_cache_item_count">%1$d 项缓存</string>
     <!-- 精准管理：文件管理 -->
     <string name="file_delete_confirm">确定要删除 \"%1$s\" 吗？</string>
+
+    <!-- 缓存管理：书籍/音频/视频/漫画缓存 -->
+    <string name="cache_manage_title">缓存管理</string>
+    <string name="cache_manage_summary">统一管理书籍、音频、视频、漫画的离线缓存</string>
+    <string name="cache_manage_books">书籍</string>
+    <string name="cache_manage_audio">音频</string>
+    <string name="cache_manage_video">视频</string>
+    <string name="cache_manage_manga">漫画</string>
+    <string name="cache_manage_stats">统计</string>
+    <string name="cache_manage_empty">暂无%1$s缓存</string>
+    <string name="cache_manage_cached_count_with_size">已缓存 %1$d/%2$d · %3$s</string>
+    <string name="cache_manage_size_calculating">计算中…</string>
+    <string name="cache_manage_chapters">已缓存章节</string>
+    <string name="cache_manage_search_chapter">搜索章节</string>
+    <string name="cache_manage_all_chapters">全部</string>
+    <string name="cache_manage_cached">已缓存</string>
+    <string name="cache_manage_not_cached">未缓存</string>
+    <string name="cache_manage_long_press_hint">长按章节可多选，之后可批量缓存或删除</string>
+    <string name="cache_manage_selected_count">已选 %1$d 章</string>
+    <string name="cache_manage_cache_selected">缓存</string>
+    <string name="cache_manage_cache_selected_done">已加入缓存队列 %1$d 章</string>
+    <string name="cache_manage_add_bookshelf">加入书架</string>
+    <string name="cache_manage_use_cache">使用缓存</string>
+    <string name="cache_manage_add_bookshelf_success">已按缓存加入书架</string>
+    <string name="cache_manage_use_cache_success">已按缓存同步章节</string>
+    <string name="cache_manage_upload">上传</string>
+    <string name="cache_manage_upload_all">上传全部</string>
+    <string name="cache_manage_uploading">正在上传…</string>
+    <string name="cache_manage_upload_success">上传成功</string>
+    <string name="cache_manage_upload_failed">上传失败：%1$s</string>
+    <string name="cache_manage_delete_all">删除全部</string>
+    <string name="cache_manage_delete_all_confirm">删除当前列表 %1$d 本书的全部缓存？</string>
+    <string name="cache_manage_delete_book_confirm">删除《%1$s》的全部缓存？</string>
+    <string name="cache_manage_delete_selected_confirm">删除所选 %1$d 章的缓存？</string>
+    <string name="cache_manage_delete_chapter_failed">删除章节缓存失败：%1$s</string>
+    <string name="cache_manage_delete_failed">删除缓存失败：%1$s</string>
+    <string name="cache_manage_chapter_load_failed">读取章节失败：%1$s</string>
+    <string name="cache_manage_no_cache">没有可上传的缓存</string>
+    <string name="cache_manage_pack_failed">打包缓存失败</string>
+    <string name="cache_manage_batch_empty">没有可操作的缓存</string>
+    <string name="cache_manage_batch_upload_done">批量上传完成：成功 %1$d 个，失败 %2$d 个</string>
+    <string name="delete_success">已删除</string>
 </resources>

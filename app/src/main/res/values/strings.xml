@@ -2622,4 +2622,46 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="storage_cache_item_count">%1$d cache items</string>
     <!-- Precise manage: file management -->
     <string name="file_delete_confirm">Delete \"%1$s\"?</string>
+
+    <!-- Cache manage: book/audio/video/manga caches -->
+    <string name="cache_manage_title">Cache manager</string>
+    <string name="cache_manage_summary">Manage book, audio, video and manga caches in one place</string>
+    <string name="cache_manage_books">Books</string>
+    <string name="cache_manage_audio">Audio</string>
+    <string name="cache_manage_video">Video</string>
+    <string name="cache_manage_manga">Manga</string>
+    <string name="cache_manage_stats">Stats</string>
+    <string name="cache_manage_empty">No %1$s cache</string>
+    <string name="cache_manage_cached_count_with_size">Cached %1$d/%2$d · %3$s</string>
+    <string name="cache_manage_size_calculating">Calculating…</string>
+    <string name="cache_manage_chapters">Cached chapters</string>
+    <string name="cache_manage_search_chapter">Search chapter</string>
+    <string name="cache_manage_all_chapters">All</string>
+    <string name="cache_manage_cached">Cached</string>
+    <string name="cache_manage_not_cached">Not cached</string>
+    <string name="cache_manage_long_press_hint">Long press a chapter to select, then cache or delete in batches</string>
+    <string name="cache_manage_selected_count">%1$d selected</string>
+    <string name="cache_manage_cache_selected">Cache</string>
+    <string name="cache_manage_cache_selected_done">Queued %1$d chapter(s)</string>
+    <string name="cache_manage_add_bookshelf">Add to shelf</string>
+    <string name="cache_manage_use_cache">Use cache</string>
+    <string name="cache_manage_add_bookshelf_success">Added to bookshelf from cache</string>
+    <string name="cache_manage_use_cache_success">Chapters synced from cache</string>
+    <string name="cache_manage_upload">Upload</string>
+    <string name="cache_manage_upload_all">Upload all</string>
+    <string name="cache_manage_uploading">Uploading…</string>
+    <string name="cache_manage_upload_success">Upload successful</string>
+    <string name="cache_manage_upload_failed">Upload failed: %1$s</string>
+    <string name="cache_manage_delete_all">Delete all</string>
+    <string name="cache_manage_delete_all_confirm">Delete all cache of %1$d book(s) in the current list?</string>
+    <string name="cache_manage_delete_book_confirm">Delete all cache of "%1$s"?</string>
+    <string name="cache_manage_delete_selected_confirm">Delete cache of %1$d selected chapter(s)?</string>
+    <string name="cache_manage_delete_chapter_failed">Failed to delete chapter cache: %1$s</string>
+    <string name="cache_manage_delete_failed">Failed to delete cache: %1$s</string>
+    <string name="cache_manage_chapter_load_failed">Failed to load chapters: %1$s</string>
+    <string name="cache_manage_no_cache">No cache to upload</string>
+    <string name="cache_manage_pack_failed">Failed to pack cache</string>
+    <string name="cache_manage_batch_empty">No cache to operate</string>
+    <string name="cache_manage_batch_upload_done">Batch upload finished: %1$d succeeded, %2$d failed</string>
+    <string name="delete_success">Deleted</string>
 </resources>
