@@ -187,6 +187,8 @@ fun CacheManageScreen(
             targetName = dialog.detailId ?: storageViewModel.getCacheName(dialog.cacheType),
             onConfirm = {
                 storageViewModel.clearCache(dialog.cacheType, dialog.detailId)
+                //按书列表里算好的概况跟着作废，否则切回分类还是删除前的数字
+                cacheViewModel.invalidateCacheInfo()
                 storageViewModel.dismissDialog()
             },
             onDismiss = { storageViewModel.dismissDialog() }
@@ -194,6 +196,7 @@ fun CacheManageScreen(
         is StorageDialogState.ClearAll -> ClearAllConfirmDialog(
             onConfirm = {
                 storageViewModel.clearAllCache()
+                cacheViewModel.invalidateCacheInfo()
                 storageViewModel.dismissDialog()
             },
             onDismiss = { storageViewModel.dismissDialog() }

@@ -120,15 +120,9 @@ class CacheManageViewModel(
         val items = if (key.isEmpty()) {
             allItems
         } else {
-            allItems.filter { it.matches(key) }
+            allItems.filter { it.matchesKey(key) }
         }
         _uiState.update { it.copy(items = items) }
-    }
-
-    private fun CacheBookItem.matches(key: String): Boolean {
-        return book.name.contains(key, true) ||
-            book.author.contains(key, true) ||
-            book.originName.contains(key, true)
     }
 
     fun load(mode: CacheManageMode = _uiState.value.mode) {
@@ -451,19 +445,8 @@ class CacheManageViewModel(
                 }
                 CacheChapterItem(chapter = chapter, cached = cached)
             }
-            .filter {
-                when (filter) {
-                    CacheChapterFilter.ALL -> true
-                    CacheChapterFilter.CACHED -> it.cached
-                    CacheChapterFilter.UNCACHED -> !it.cached
-                }
-            }
             .toList()
-    }
-
-    private fun List<BookChapter>.filterByKey(key: String): List<BookChapter> {
-        if (key.isBlank()) return this
-        return filter { it.title.contains(key, true) }
+            .applyChapterFilter(filter)
     }
 
     fun toggleChapterSelection(chapter: BookChapter) {
@@ -777,6 +760,8 @@ class CacheManageViewModel(
                 withContext(Dispatchers.IO) {
                     books.forEach { book -> clearBookCache(book) }
                 }
+                //概况会喂给重建后的列表当"已算过"的初值，不丢掉的话删完还显示删除前的数字
+                books.forEach { computedByBookUrl.remove(it.bookUrl) }
                 toast(R.string.delete_success)
                 load()
             } catch (e: Exception) {
@@ -860,6 +845,16 @@ class CacheManageViewModel(
     }
 
     // endregion
+
+    /**
+     * 别处把缓存删了（统计页清理、系统清理）后作废内存里算好的概况
+     *
+     * 概况是列表重建时的初值，不清掉的话下次进分类会拿删除前的数字当"已算过"直接显示；
+     * 这里只清内存不重扫，回到按书分类时自然重算
+     */
+    fun invalidateCacheInfo() {
+        computedByBookUrl.clear()
+    }
 
     /**
      * 缓存任务有进度或结束时重算那一行

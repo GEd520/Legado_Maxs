@@ -91,24 +91,3 @@ class StorageManageActivity : BaseComposeActivity() {
         }
     }
 }
-
-/**
- * 把有序的章节索引合并为连续区间 [start, end]
- */
-private fun List<Int>.toRanges(): List<Pair<Int, Int>> {
-    if (isEmpty()) return emptyList()
-    val ranges = mutableListOf<Pair<Int, Int>>()
-    var start = this[0]
-    var previous = this[0]
-    for (index in drop(1)) {
-        if (index == previous + 1) {
-            previous = index
-        } else {
-            ranges.add(start to previous)
-            start = index
-            previous = index
-        }
-    }
-    ranges.add(start to previous)
-    return ranges
-}

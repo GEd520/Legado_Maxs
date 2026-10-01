@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.storage
 
 import androidx.annotation.StringRes
+import androidx.compose.runtime.Immutable
 import io.legado.app.R
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
@@ -32,6 +33,7 @@ enum class CacheChapterFilter { ALL, CACHED, UNCACHED }
  * @param totalChapterCount 0 表示章节列表未知（目录尚未加载过）
  * @param inBookshelf 书是否还在书架；不在书架但缓存还在时，卡片提供"加入书架"
  */
+@Immutable
 data class CacheBookItem(
     val book: Book,
     val mode: CacheManageMode,
@@ -44,6 +46,7 @@ data class CacheBookItem(
 )
 
 /** 章节弹窗里的一项 */
+@Immutable
 data class CacheChapterItem(
     val chapter: BookChapter,
     val cached: Boolean
@@ -103,4 +106,53 @@ sealed interface CacheManageEvent {
 fun interface CacheTaskStarter {
     /** @return 实际加入缓存队列的章节数 */
     fun start(book: Book, chapters: List<BookChapter>): Int
+}
+
+/**
+ * 书是否命中列表的搜索关键字（书名 / 作者 / 书源，忽略大小写）
+ */
+internal fun CacheBookItem.matchesKey(key: String): Boolean {
+    return book.name.contains(key, true) ||
+        book.author.contains(key, true) ||
+        book.originName.contains(key, true)
+}
+
+/** 章节按标题命中搜索关键字；空关键字视为全部命中 */
+internal fun List<BookChapter>.filterByKey(key: String): List<BookChapter> {
+    if (key.isBlank()) return this
+    return filter { it.title.contains(key, true) }
+}
+
+/** 章节弹窗的三态筛选 */
+internal fun List<CacheChapterItem>.applyChapterFilter(
+    filter: CacheChapterFilter
+): List<CacheChapterItem> {
+    return when (filter) {
+        CacheChapterFilter.ALL -> this
+        CacheChapterFilter.CACHED -> filter { it.cached }
+        CacheChapterFilter.UNCACHED -> filterNot { it.cached }
+    }
+}
+
+/**
+ * 把有序的章节索引合并成连续区间
+ *
+ * 缓存服务按区间启动，逐章启动会为每章起一次服务
+ */
+internal fun List<Int>.toRanges(): List<Pair<Int, Int>> {
+    if (isEmpty()) return emptyList()
+    val ranges = mutableListOf<Pair<Int, Int>>()
+    var start = this[0]
+    var previous = this[0]
+    for (index in drop(1)) {
+        if (index == previous + 1) {
+            previous = index
+        } else {
+            ranges.add(start to previous)
+            start = index
+            previous = index
+        }
+    }
+    ranges.add(start to previous)
+    return ranges
 }
