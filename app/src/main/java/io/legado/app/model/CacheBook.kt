@@ -12,6 +12,7 @@ import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.CacheManifestHelper
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
@@ -457,16 +458,22 @@ object CacheBook {
                 waitDownloadSet.remove(chapterIndex)
                 return
             }
-            if (book.isVideo) {
-                // 视频章节的离线内容是媒体文件，不落正文文本。
+            if (book.isVideo || book.isAudio) {
+                // 音视频章节的离线内容是媒体文件，不落正文文本。
                 // 注意：这里同样要完成待下载/下载中的记账，否则并发下载会重复进入
+                val useVideoCache = book.isVideo
                 waitDownloadSet.remove(chapterIndex)
                 onDownloadSet.add(chapterIndex)
-                if (ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)) {
+                val cached = if (useVideoCache) {
+                    ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
+                } else {
+                    ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
+                }
+                if (cached) {
                     onSuccess(chapter)
                     onFinally()
                 } else {
-                    downloadVideo(chapter, scope, context)
+                    downloadMedia(chapter, useVideoCache, scope, context)
                 }
                 return
             }
@@ -543,17 +550,20 @@ object CacheBook {
         }
 
         /**
-         * 下载视频章节的媒体文件
+         * 下载音视频章节的媒体文件
          *
-         * 视频书源的正文规则返回媒体地址（可能是地址数组），这里解析出地址与请求头后
-         * 整章下载进书级视频缓存目录，并把解析到的地址写回章节，供离线播放与缓存判定复用
+         * 音视频书源的正文规则返回媒体地址（可能是地址数组），这里解析出地址与请求头后
+         * 整章下载进书级媒体缓存目录（视频 video_media / 音频 audio_media），
+         * 并把解析到的地址写回章节，供离线播放与缓存判定复用
          * @param chapter 书籍章节
+         * @param useVideoCache true 缓存进视频目录，false 缓存进音频目录
          * @param scope 协程作用域
          * @param context 协程上下文
          */
         @Synchronized
-        private fun downloadVideo(
+        private fun downloadMedia(
             chapter: BookChapter,
+            useVideoCache: Boolean,
             scope: CoroutineScope,
             context: CoroutineContext
         ) {
@@ -567,13 +577,14 @@ object CacheBook {
                 var lastPostTime = 0L
                 ExoPlayerHelper.cacheMedia(
                     request = request,
+                    useVideoCache = useVideoCache,
                     book = book,
                     progress = { _, _ ->
                         val now = System.currentTimeMillis()
                         if (now - lastPostTime > 500) {
                             lastPostTime = now
                             postEvent(EventBus.UP_DOWNLOAD_STATE, book.bookUrl)
-                            //视频缓存进度靠事件刷新（界面要重新扫缓存文件算占用）
+                            //媒体缓存进度靠事件刷新（界面要重新扫缓存文件算占用）
                             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
                         }
                     },

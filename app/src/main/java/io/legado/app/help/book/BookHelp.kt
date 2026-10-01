@@ -409,6 +409,10 @@ object BookHelp {
             // 视频章节的离线内容是媒体文件，判定走 ExoPlayer 缓存
             return ExoPlayerHelper.isVideoCached(bookChapter.resourceUrl, book)
         }
+        if (book.isAudio) {
+            // 音频章节同理，缓存目录是 book_cache/<书>/audio_media
+            return ExoPlayerHelper.isMediaCached(bookChapter.resourceUrl, book)
+        }
         return if (book.isLocalTxt ||
             (bookChapter.isVolume && bookChapter.url.startsWith(bookChapter.title))
         ) {

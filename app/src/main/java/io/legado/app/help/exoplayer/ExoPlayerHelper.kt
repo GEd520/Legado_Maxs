@@ -388,6 +388,21 @@ object ExoPlayerHelper {
     }
 
     /**
+     * 删除该章节已缓存的媒体文件（删单章缓存时用）
+     * @param useVideoCache true 操作视频缓存目录，false 操作音频缓存目录
+     */
+    fun removeMediaCache(url: String?, book: Book, useVideoCache: Boolean = true) {
+        if (url.isNullOrBlank()) return
+        val cacheDir = mediaBookCacheDir(book, useVideoCache)
+        if (!cacheDir.exists()) return
+        val cache = simpleCache(cacheDir, cacheMaxBytes(cacheDir))
+        getMediaUrls(url).forEach { mediaUrl ->
+            cache.removeResource(mediaUrl)
+            completeMarker(mediaUrl, cacheDir).delete()
+        }
+    }
+
+    /**
      * 媒体播放数据源：始终优先读缓存目录（离线缓存的章节才能离线播放），
      * [writable] 为 false 时不写缓存，此时若缓存目录都还不存在就直接走网络，
      * 避免"只是播放"也在书籍缓存目录里凭空建出空目录
