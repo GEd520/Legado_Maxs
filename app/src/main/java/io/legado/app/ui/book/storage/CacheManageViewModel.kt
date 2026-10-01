@@ -154,7 +154,7 @@ class CacheManageViewModel(
         val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl)
         val realChapters = chapters.filterNot { it.isVolume }
         val cachedCount = if (mode.isMedia) {
-            realChapters.count { isMediaChapterCached(book, it) }
+            realChapters.count { isMediaChapterCached(book, it, manifest) }
         } else {
             val cacheNames = cacheDirOf(book).list()?.toSet().orEmpty()
             realChapters.count { cacheNames.contains(it.getFileName()) }
@@ -176,7 +176,7 @@ class CacheManageViewModel(
         val book = CacheManifestHelper.toBook(manifest)
         val chapters = CacheManifestHelper.toChapters(manifest)
         val cachedCount = if (mode.isMedia) {
-            chapters.count { isMediaChapterCached(book, it) }
+            chapters.count { isMediaChapterCached(book, it, manifest) }
         } else {
             manifest.cachedChapterCount
         }
@@ -190,12 +190,21 @@ class CacheManageViewModel(
         )
     }
 
-    private fun isMediaChapterCached(book: Book, chapter: BookChapter): Boolean {
-        return if (book.isVideo) {
-            ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
-        } else {
-            ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
-        }
+    /**
+     * 媒体章节是否已缓存
+     *
+     * 地址可能变过（章节表里存的是最近一次解析结果），所以判定交给"章节表地址 + 清单里的缓存时地址"
+     */
+    private fun isMediaChapterCached(
+        book: Book,
+        chapter: BookChapter,
+        manifest: CacheBookManifest? = null
+    ): Boolean {
+        return CacheManifestHelper.cachedMediaUrl(
+            book,
+            chapter,
+            manifest ?: findManifest(book)
+        ) != null
     }
 
     // region 章节弹窗
@@ -288,7 +297,7 @@ class CacheManageViewModel(
         }
         //音视频章节的播放地址会被目录刷新清空，用清单里记的历史地址补回来，
         //否则已缓存的媒体会变成"判定不到缓存"的孤儿
-        if (book.isMedia && CacheManifestHelper.mergeResourceUrls(dbChapters, manifest)) {
+        if (book.isMedia && CacheManifestHelper.mergeResourceUrls(book, dbChapters, manifest)) {
             appDb.bookChapterDao.update(*dbChapters.toTypedArray())
         }
         val chapters = dbChapters.takeIf { it.isNotEmpty() }
@@ -304,7 +313,7 @@ class CacheManageViewModel(
             .filterNot { it.isVolume }
             .map { chapter ->
                 val cached = if (book.isMedia) {
-                    isMediaChapterCached(book, chapter)
+                    isMediaChapterCached(book, chapter, manifest)
                 } else {
                     cacheNames.contains(chapter.getFileName())
                 }
@@ -505,10 +514,11 @@ class CacheManageViewModel(
         val dbBook = appDb.bookDao.getBook(item.book.bookUrl)
         val manifest = findManifest(item.book)
         if (dbBook != null) {
-            //章节表保持不动，只把清单里记得的历史媒体地址并回去
+            //章节表结构保持不动，只把媒体地址对齐成"确实有缓存的那个"：
+            //只补空值救不回"地址被新解析结果覆盖"的情况，那正是缓存读不到的原因
             if (manifest != null) {
                 val chapters = appDb.bookChapterDao.getChapterList(dbBook.bookUrl)
-                if (CacheManifestHelper.mergeResourceUrls(chapters, manifest)) {
+                if (CacheManifestHelper.mergeResourceUrls(dbBook, chapters, manifest)) {
                     appDb.bookChapterDao.update(*chapters.toTypedArray())
                 }
             }

@@ -33,6 +33,7 @@ import io.legado.app.constant.NotificationId
 import io.legado.app.constant.Status
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.MediaHelp
+import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.exoplayer.ExoPlayerHelper
@@ -247,15 +248,20 @@ class AudioPlayService : BaseService(),
         val book = AudioPlay.book
         //音频离线缓存按书隔离：优先读该书已缓存的音频；是否顺带边播边缓存跟随"边播放边缓存"设置
         val playCacheEnabled = VideoPlay.playCacheEnabled
+        //缓存按缓存当时的地址做 key：章节表里的地址过期/被覆盖后，用清单里那个仍能读到缓存的地址播
+        val cachedUrl = book?.let { b ->
+            AudioPlay.durChapter?.let { chapter -> CacheManifestHelper.cachedMediaUrl(b, chapter) }
+        }
+        val playUrl = cachedUrl ?: url
         execute(context = Main) {
             AudioPlay.status = Status.STOP
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
             upPlayProgressJob?.cancel()
-            if (url.isJsonArray()) {
+            if (playUrl.isJsonArray()) {
                 exoPlayer.setMediaSource(
                     ExoPlayerHelper.getMediaSource(
                         this@AudioPlayService,
-                        url,
+                        playUrl,
                         book,
                         writable = playCacheEnabled
                     )
@@ -263,7 +269,7 @@ class AudioPlayService : BaseService(),
                 position = 0
             } else {
                 val analyzeUrl = AnalyzeUrl(
-                    url,
+                    playUrl,
                     source = AudioPlay.bookSource,
                     ruleData = book,
                     chapter = AudioPlay.durChapter,

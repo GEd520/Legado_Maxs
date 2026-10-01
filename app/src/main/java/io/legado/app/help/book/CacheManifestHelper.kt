@@ -150,11 +150,12 @@ object CacheManifestHelper {
             } else {
                 BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
             }
+            //本轮要覆盖的那份清单就是旧清单，用它补回"缓存时用的那个地址"
+            val oldManifest = read(book)
             write(book, chapters) { chapter ->
                 when {
                     book.isLocal -> false
-                    book.isVideo -> ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
-                    book.isAudio -> ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
+                    book.isAudio || book.isVideo -> cachedMediaUrl(book, chapter, oldManifest) != null
                     //文本/漫画的缓存文件名 = 章节序号 + 标题 md5，只与章节自身有关
                     else -> cacheNames.contains(chapter.getFileName())
                 }
@@ -182,6 +183,47 @@ object CacheManifestHelper {
 
     fun delete(book: Book) {
         manifestFile(book).delete()
+    }
+
+    /**
+     * 该章节"确实还有缓存"的媒体地址
+     *
+     * 缓存是按**缓存当时的地址**做 key 的，而章节表里的 `resourceUrl` 之后可能被新解析结果覆盖、
+     * 或者地址本身带了会过期的时间签名；清单里留着缓存时用的那个地址。
+     * 两个都试一遍，只要有一个在缓存里，这章就还能离线播——否则会出现
+     * "缓存明明在磁盘上，却因为地址变了读不到、点使用缓存也救不回来"。
+     *
+     * @param manifest 已知清单时传入，避免逐章重复读文件
+     */
+    fun cachedMediaUrl(
+        book: Book,
+        chapter: BookChapter,
+        manifest: CacheBookManifest? = read(book)
+    ): String? {
+        if (!book.isAudio && !book.isVideo) return null
+        val recorded = manifest?.let { manifestMediaUrl(it, chapter) }
+        return sequenceOf(chapter.resourceUrl, recorded)
+            .filterNotNull()
+            .filter { it.isNotBlank() }
+            .distinct()
+            .firstOrNull { isMediaCached(it, book) }
+    }
+
+    /** 清单里记录的该章媒体地址（缓存时缓存用的那个） */
+    fun manifestMediaUrl(manifest: CacheBookManifest, chapter: BookChapter): String? {
+        val recorded = manifest.chapters.firstOrNull { it.index == chapter.index }
+            ?: manifest.chapters.firstOrNull { it.url == chapter.url }
+            ?: return null
+        return (recorded.resourceUrl ?: recorded.url).takeIf { it.isNotBlank() }
+    }
+
+    /** 地址在该书的媒体缓存里是否完整可用 */
+    fun isMediaCached(url: String, book: Book): Boolean {
+        return when {
+            book.isVideo -> ExoPlayerHelper.isVideoCached(url, book)
+            book.isAudio -> ExoPlayerHelper.isMediaCached(url, book)
+            else -> false
+        }
     }
 
     fun delete(manifest: CacheBookManifest) {
@@ -247,20 +289,20 @@ object CacheManifestHelper {
      * @return 是否有章节被补上地址
      */
     fun mergeResourceUrls(
+        book: Book,
         chapters: List<BookChapter>,
         manifest: CacheBookManifest?
     ): Boolean {
         if (manifest == null) return false
-        val byIndex = manifest.chapters.associateBy { it.index }
         var changed = false
         chapters.forEach { chapter ->
-            val resourceUrl = byIndex[chapter.index]?.resourceUrl
-                ?.takeIf { it.isNotBlank() }
-                ?: return@forEach
-            if (chapter.resourceUrl.isNullOrBlank()) {
-                chapter.resourceUrl = resourceUrl
-                changed = true
-            }
+            val recorded = manifestMediaUrl(manifest, chapter) ?: return@forEach
+            if (chapter.resourceUrl == recorded) return@forEach
+            val currentCached = chapter.resourceUrl?.let { isMediaCached(it, book) } == true
+            //当前地址还能读到缓存就别动；读不到而清单里的地址有缓存，就换回缓存时那个地址
+            if (currentCached) return@forEach
+            chapter.resourceUrl = recorded
+            changed = true
         }
         return changed
     }

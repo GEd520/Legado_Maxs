@@ -4,6 +4,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.exoplayer.ExoPlayerHelper
@@ -193,14 +194,10 @@ object StorageCalculator {
             // 音视频书缓存的是一章一个媒体文件，按各自的媒体缓存判定
             val useVideoCache = book.isVideo
             return runCatching {
+                //按"确实有缓存的地址"统计：章节表里的地址过期后不该被算成没缓存
+                val manifest = CacheManifestHelper.read(book)
                 appDb.bookChapterDao.getChapterList(book.bookUrl)
-                    .count {
-                        if (useVideoCache) {
-                            ExoPlayerHelper.isVideoCached(it.resourceUrl, book)
-                        } else {
-                            ExoPlayerHelper.isMediaCached(it.resourceUrl, book)
-                        }
-                    }
+                    .count { CacheManifestHelper.cachedMediaUrl(book, it, manifest) != null }
             }.getOrDefault(0)
         }
         return bookDir.listFiles()?.count { it.isFile && it.extension == "nb" } ?: 0

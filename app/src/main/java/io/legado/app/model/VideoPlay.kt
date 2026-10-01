@@ -29,6 +29,7 @@ import io.legado.app.data.entities.RssStar
 import io.legado.app.model.BookCover
 import io.legado.app.exception.ContentEmptyException
 import io.legado.app.help.CacheManager
+import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.getDanmaku
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
@@ -390,8 +391,9 @@ object VideoPlay : CoroutineScope by MainScope(){
             return
         }
         val bookSource = source as BookSource
-        //已经离线缓存的章节直接播本地缓存，不再解析链接（链接可能已过期）
-        val cachedUrl = chapter.resourceUrl?.takeIf { ExoPlayerHelper.isVideoCached(it, book) }
+        //已经离线缓存的章节直接播本地缓存，不再解析链接（链接可能已过期）；
+        //缓存按缓存当时的地址做 key，所以这里取"确实有缓存的地址"，章节表里的地址变了也能读到缓存
+        val cachedUrl = CacheManifestHelper.cachedMediaUrl(book, chapter)
         if (cachedUrl != null) {
             videoUrl = cachedUrl
             when (val danmaku = chapter.getDanmaku()) {

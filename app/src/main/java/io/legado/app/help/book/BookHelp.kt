@@ -409,13 +409,10 @@ object BookHelp {
      * 检测该章节是否下载
      */
     fun hasContent(book: Book, bookChapter: BookChapter): Boolean {
-        if (book.isVideo) {
-            // 视频章节的离线内容是媒体文件，判定走 ExoPlayer 缓存
-            return ExoPlayerHelper.isVideoCached(bookChapter.resourceUrl, book)
-        }
-        if (book.isAudio) {
-            // 音频章节同理，缓存目录是 book_cache/<书>/audio_media
-            return ExoPlayerHelper.isMediaCached(bookChapter.resourceUrl, book)
+        if (book.isVideo || book.isAudio) {
+            // 音视频章节的离线内容是媒体文件：判定要走"缓存时用的那个地址"，
+            // 章节表里的地址可能已过期或被新解析结果覆盖，只看它会误判成没缓存
+            return CacheManifestHelper.cachedMediaUrl(book, bookChapter) != null
         }
         return if (book.isLocalTxt ||
             (bookChapter.isVolume && bookChapter.url.startsWith(bookChapter.title))

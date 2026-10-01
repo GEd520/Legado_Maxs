@@ -464,11 +464,7 @@ object CacheBook {
                 val useVideoCache = book.isVideo
                 waitDownloadSet.remove(chapterIndex)
                 onDownloadSet.add(chapterIndex)
-                val cached = if (useVideoCache) {
-                    ExoPlayerHelper.isVideoCached(chapter.resourceUrl, book)
-                } else {
-                    ExoPlayerHelper.isMediaCached(chapter.resourceUrl, book)
-                }
+                val cached = CacheManifestHelper.cachedMediaUrl(book, chapter) != null
                 if (cached) {
                     onSuccess(chapter)
                     onFinally()
