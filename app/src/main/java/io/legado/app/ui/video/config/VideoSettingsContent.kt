@@ -17,7 +17,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -44,8 +43,6 @@ fun VideoSettingsContent(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    //设置项多，用屏幕高度的比例限制弹窗高度，内部滚动
-    val maxContentHeight = LocalConfiguration.current.screenHeightDp.dp * 0.8f
 
     var autoPlay by remember { mutableStateOf(VideoPlay.autoPlay) }
     var startFull by remember { mutableStateOf(VideoPlay.startFull) }
@@ -69,7 +66,8 @@ fun VideoSettingsContent(
         onDismiss = onDismiss,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(max = maxContentHeight),
+            //设置项多，沿用项目里其它长列表弹窗的固定高度上限，内容超出后内部滚动
+            .heightIn(max = 480.dp),
         navigationContentDescription = stringResource(R.string.close)
     ) {
         Column(

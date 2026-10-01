@@ -1684,7 +1684,7 @@
     <string name="video_play_settings">Playback</string>
     <string name="video_cache_settings">Cache</string>
     <string name="video_play_cache">Cache while playing</string>
-    <string name="video_play_cache_summary">Writes video data to the cache while playing, so a watched video can be played offline. When off, videos are played without writing to the cache</string>
+    <string name="video_play_cache_summary">Cache while playing for offline playback; off = no caching</string>
 
     <!-- Reading & Source Settings -->
     <string name="no_more_chapter">No More Chapters</string>
