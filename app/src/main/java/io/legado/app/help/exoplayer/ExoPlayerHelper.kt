@@ -296,7 +296,9 @@ object ExoPlayerHelper {
         mimeType: String? = null,
         writable: Boolean = true
     ): MediaSource {
-        return DefaultMediaSourceFactory(videoPlaybackDataSourceFactory(headers, cacheDir, writable))
+        return DefaultMediaSourceFactory(
+            videoPlaybackDataSourceFactory(url, headers, cacheDir, writable)
+        )
             .setLiveTargetOffsetMs(5000)
             .createMediaSource(
                 MediaItem.Builder()
@@ -356,24 +358,32 @@ object ExoPlayerHelper {
      * 避免"只是看视频"也在书籍缓存目录里凭空建出空目录
      */
     private fun videoPlaybackDataSourceFactory(
+        url: String,
         headers: Map<String, String>,
         cacheDir: File? = null,
         writable: Boolean = true
     ): DataSource.Factory {
         val targetCacheDir = cacheDir ?: legacyCacheDir
-        if (!writable && !targetCacheDir.exists()) {
+        //不写缓存、缓存目录还不存在（也没缓存可读）且是网络地址时直接走网络，
+        //避免"只是看视频"在书籍缓存目录里凭空建出空目录；
+        //本地文件/内容 URI 不短路，仍走下面的缓存数据源（读侧是 FileDataSource）
+        if (!writable && !targetCacheDir.exists() && isHttpUrl(url)) {
             return okhttpDataFactory(headers)
         }
-        return videoCacheDataSourceFactory(headers, targetCacheDir, writable)
+        return videoCacheDataSourceFactory(headers, targetCacheDir, writable, ignoreCacheError = true)
     }
 
     /**
      * 走缓存目录的数据源，[writable] 为 false 时是只读缓存
+     *
+     * @param ignoreCacheError 播放可以容忍缓存读写出错（缓存只是加速器，出错后退回网络）；
+     * 下载不允许，出错要暴露出来以便重试
      */
     private fun videoCacheDataSourceFactory(
         headers: Map<String, String>,
         cacheDir: File,
-        writable: Boolean
+        writable: Boolean,
+        ignoreCacheError: Boolean = false
     ): CacheDataSource.Factory {
         //非书级的旧播放缓存沿用原来的 100MB 上限
         val maxBytes = if (cacheDir == legacyCacheDir) {
@@ -387,6 +397,9 @@ object ExoPlayerHelper {
             .setUpstreamDataSourceFactory(okhttpDataFactory(headers))
             .setCacheReadDataSourceFactory(FileDataSource.Factory())
             .apply {
+                if (ignoreCacheError) {
+                    setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+                }
                 if (writable) {
                     setCacheWriteDataSinkFactory(
                         CacheDataSink.Factory()
@@ -417,9 +430,13 @@ object ExoPlayerHelper {
 
     private fun isDownloadableMediaUrl(url: String): Boolean {
         val scheme = url.toUri().scheme ?: return false
-        return scheme.equals("http", true) ||
-            scheme.equals("https", true) ||
+        return isHttpUrl(url) ||
             (scheme.equals("file", true) && isAdaptiveMediaUrl(url))
+    }
+
+    private fun isHttpUrl(url: String): Boolean {
+        val scheme = url.toUri().scheme ?: return false
+        return scheme.equals("http", true) || scheme.equals("https", true)
     }
 
     private fun isAdaptiveMediaUrl(url: String): Boolean {

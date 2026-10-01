@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -333,7 +334,10 @@ fun VideoSettingsContent(
                     )
                 }
                 rows.forEachIndexed { index, item ->
-                    VideoSettingRow(item = item, showDivider = index != rows.lastIndex)
+                    //行数会随开关增减，用 key 固定身份，避免按压态/涟漪留在错位的行上
+                    key(item.title) {
+                        VideoSettingRow(item = item, showDivider = index != rows.lastIndex)
+                    }
                 }
             }
 
