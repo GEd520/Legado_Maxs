@@ -11,6 +11,7 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
@@ -423,6 +424,8 @@ object CacheBook {
             if (waitDownloadSet.isEmpty() && onDownloadSet.isEmpty()) {
                 cacheBookMap.remove(book.bookUrl)
                 downloadingBySource.remove(bookSource.bookSourceUrl)
+                //缓存任务收尾时统一刷新清单：中途可能成功/失败了很多章
+                CacheManifestHelper.refreshAsync(book)
             }
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }

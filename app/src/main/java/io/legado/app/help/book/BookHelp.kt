@@ -104,7 +104,7 @@ object BookHelp {
             newFolderName
         )
         //整个目录要挪走：先释放旧路径的缓存实例，否则新路径会再建一个实例指向同一物理目录
-        ExoPlayerHelper.releaseVideoCacheOf(File(oldFolderPath))
+        ExoPlayerHelper.releaseBookMediaCacheOf(File(oldFolderPath))
         FileUtils.move(oldFolderPath, newFolderPath)
     }
 
@@ -137,7 +137,7 @@ object BookHelp {
                 .listFiles()?.forEach { bookFile ->
                     if (!bookFolderNames.contains(bookFile.name)) {
                         //删目录前先放掉 media3 缓存实例，否则实例会一直指向已删除的目录
-                        ExoPlayerHelper.releaseVideoCacheOf(bookFile)
+                        ExoPlayerHelper.releaseBookMediaCacheOf(bookFile)
                         FileUtils.delete(bookFile.absolutePath)
                     }
                 }
@@ -500,6 +500,8 @@ object BookHelp {
             book.getFolderName(),
             bookChapter.getFileName()
         ).delete()
+        //删掉缓存后清单里的"已缓存"要与实际一致
+        CacheManifestHelper.refreshAsync(book)
     }
 
     /**

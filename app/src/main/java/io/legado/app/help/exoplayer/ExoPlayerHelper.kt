@@ -8,7 +8,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -61,8 +60,14 @@ object ExoPlayerHelper {
     /** 单本书视频离线缓存上限，超出后按 LRU 淘汰 */
     private const val VIDEO_CACHE_MAX_BYTES = 4L * 1024 * 1024 * 1024
 
+    /** 单本书音频离线缓存上限，超出后按 LRU 淘汰 */
+    private const val AUDIO_CACHE_MAX_BYTES = 2L * 1024 * 1024 * 1024
+
     /** 每本书的视频离线缓存目录，放在书缓存目录内，随书缓存一起删除 */
     private const val VIDEO_BOOK_CACHE_DIR = "video_media"
+
+    /** 每本书的音频离线缓存目录，同上 */
+    private const val AUDIO_BOOK_CACHE_DIR = "audio_media"
 
     /** 下载完成后落一个标记，用于判定自适应流（m3u8/mpd）是否已完整缓存 */
     private const val VIDEO_COMPLETE_SUFFIX = "_complete"
@@ -184,6 +189,21 @@ object ExoPlayerHelper {
     }
 
     /**
+     * 每本书的音频离线缓存目录（book_cache/<书>/audio_media）
+     */
+    fun audioBookCacheDir(book: Book): File {
+        return File(BookHelp.getCacheDir(book), AUDIO_BOOK_CACHE_DIR)
+    }
+
+    /**
+     * 该书媒体缓存目录，音频与视频只在目录（与容量上限）上不同
+     * @param useVideoCache true 取视频目录，false 取音频目录
+     */
+    fun mediaBookCacheDir(book: Book, useVideoCache: Boolean): File {
+        return if (useVideoCache) videoBookCacheDir(book) else audioBookCacheDir(book)
+    }
+
+    /**
      * 释放指定缓存目录的实例，删除缓存目录前必须调用，否则 media3 会持有目录锁
      */
     private fun releaseCache(cacheDir: File) {
@@ -194,14 +214,16 @@ object ExoPlayerHelper {
 
     fun releaseBookCaches(book: Book) {
         releaseCache(videoBookCacheDir(book))
+        releaseCache(audioBookCacheDir(book))
     }
 
     /**
-     * 按书籍缓存目录释放视频缓存实例（删除/移动目录前调用）
+     * 按书籍缓存目录释放媒体缓存实例（删除/移动目录前调用）
      * @param bookCacheDir book_cache/<书籍文件夹名>
      */
-    fun releaseVideoCacheOf(bookCacheDir: File) {
+    fun releaseBookMediaCacheOf(bookCacheDir: File) {
         releaseCache(File(bookCacheDir, VIDEO_BOOK_CACHE_DIR))
+        releaseCache(File(bookCacheDir, AUDIO_BOOK_CACHE_DIR))
     }
 
     fun releaseAllBookCaches() {
@@ -240,26 +262,28 @@ object ExoPlayerHelper {
 
     /**
      * 把一章的媒体文件完整下载进缓存目录
+     * @param useVideoCache true 缓存进视频目录，false 缓存进音频目录
      * @return 本次实际下载到的字节数
      */
     fun cacheMedia(
         request: MediaRequest,
+        useVideoCache: Boolean = true,
         book: Book,
         progress: ((bytesCached: Long, newBytesCached: Long) -> Unit)? = null,
         shouldCancel: (() -> Boolean)? = null
     ): Long {
         val urls = getMediaUrls(request.url)
         require(urls.isNotEmpty()) { "媒体地址为空" }
-        val cacheDir = videoBookCacheDir(book)
+        val cacheDir = mediaBookCacheDir(book, useVideoCache)
         var totalCached = 0L
         urls.forEach { url ->
             require(isDownloadableMediaUrl(url)) { "不支持下载的媒体地址: $url" }
             if (shouldCancel?.invoke() == true) {
-                throw kotlinx.coroutines.CancellationException("video cache cancelled")
+                throw kotlinx.coroutines.CancellationException("媒体缓存已取消")
             }
             var cached = 0L
             val downloader = DefaultDownloaderFactory(
-                videoCacheDataSourceFactory(request.headers, cacheDir, writable = true),
+                mediaCacheDataSourceFactory(request.headers, cacheDir, writable = true),
                 Executor { it.run() }
             ).createDownloader(
                 DownloadRequest.Builder(MD5Utils.md5Encode(url), url.toUri())
@@ -269,7 +293,7 @@ object ExoPlayerHelper {
             downloader.download { _, bytesCached, _ ->
                 if (shouldCancel?.invoke() == true) {
                     downloader.cancel()
-                    throw kotlinx.coroutines.CancellationException("video cache cancelled")
+                    throw kotlinx.coroutines.CancellationException("媒体缓存已取消")
                 }
                 val newBytesCached = (bytesCached - cached).coerceAtLeast(0L)
                 cached = bytesCached
@@ -297,7 +321,7 @@ object ExoPlayerHelper {
         writable: Boolean = true
     ): MediaSource {
         return DefaultMediaSourceFactory(
-            videoPlaybackDataSourceFactory(url, headers, cacheDir, writable)
+            mediaPlaybackDataSourceFactory(url, headers, cacheDir, writable)
         )
             .setLiveTargetOffsetMs(5000)
             .createMediaSource(
@@ -321,23 +345,34 @@ object ExoPlayerHelper {
     }
 
     /**
-     * 判定该章节的媒体文件是否已经完整缓存
+     * 判定该章节的视频媒体文件是否已经完整缓存
      */
     fun isVideoCached(url: String?, book: Book): Boolean {
+        return isMediaCached(url, book, useVideoCache = true)
+    }
+
+    /**
+     * 判定该章节的音频媒体文件是否已经完整缓存
+     */
+    fun isMediaCached(url: String?, book: Book): Boolean {
+        return isMediaCached(url, book, useVideoCache = false)
+    }
+
+    private fun isMediaCached(url: String?, book: Book, useVideoCache: Boolean): Boolean {
         if (url.isNullOrBlank()) return false
-        val cacheDir = videoBookCacheDir(book)
+        val cacheDir = mediaBookCacheDir(book, useVideoCache)
         if (!cacheDir.exists()) return false
         val urls = getMediaUrls(url)
         if (urls.isEmpty()) return false
         if (urls.any { !isDownloadableMediaUrl(it) }) return false
-        val cache = simpleCache(cacheDir, VIDEO_CACHE_MAX_BYTES)
-        return urls.all { isVideoUrlCached(cache, it, cacheDir) }
+        val cache = simpleCache(cacheDir, cacheMaxBytes(cacheDir))
+        return urls.all { isMediaUrlCached(cache, it, cacheDir) }
     }
 
     /**
      * 缓存被 LRU 淘汰后完成标记可能残留，所以判定时都要求缓存里确实还有数据
      */
-    private fun isVideoUrlCached(cache: Cache, url: String, cacheDir: File): Boolean {
+    private fun isMediaUrlCached(cache: Cache, url: String, cacheDir: File): Boolean {
         val cachedBytes = cache.getCachedBytes(url, 0, Long.MAX_VALUE)
         if (cachedBytes <= 0) return false
         if (isAdaptiveMediaUrl(url)) {
@@ -353,11 +388,11 @@ object ExoPlayerHelper {
     }
 
     /**
-     * 播放数据源：始终优先读缓存目录（离线缓存的章节才能离线播放），
+     * 媒体播放数据源：始终优先读缓存目录（离线缓存的章节才能离线播放），
      * [writable] 为 false 时不写缓存，此时若缓存目录都还不存在就直接走网络，
-     * 避免"只是看视频"也在书籍缓存目录里凭空建出空目录
+     * 避免"只是播放"也在书籍缓存目录里凭空建出空目录
      */
-    private fun videoPlaybackDataSourceFactory(
+    private fun mediaPlaybackDataSourceFactory(
         url: String,
         headers: Map<String, String>,
         cacheDir: File? = null,
@@ -365,12 +400,12 @@ object ExoPlayerHelper {
     ): DataSource.Factory {
         val targetCacheDir = cacheDir ?: legacyCacheDir
         //不写缓存、缓存目录还不存在（也没缓存可读）且是网络地址时直接走网络，
-        //避免"只是看视频"在书籍缓存目录里凭空建出空目录；
+        //避免"只是播放"在书籍缓存目录里凭空建出空目录；
         //本地文件/内容 URI 不短路，仍走下面的缓存数据源（读侧是 FileDataSource）
         if (!writable && !targetCacheDir.exists() && isHttpUrl(url)) {
             return okhttpDataFactory(headers)
         }
-        return videoCacheDataSourceFactory(headers, targetCacheDir, writable, ignoreCacheError = true)
+        return mediaCacheDataSourceFactory(headers, targetCacheDir, writable, ignoreCacheError = true)
     }
 
     /**
@@ -379,21 +414,15 @@ object ExoPlayerHelper {
      * @param ignoreCacheError 播放可以容忍缓存读写出错（缓存只是加速器，出错后退回网络）；
      * 下载不允许，出错要暴露出来以便重试
      */
-    private fun videoCacheDataSourceFactory(
+    private fun mediaCacheDataSourceFactory(
         headers: Map<String, String>,
         cacheDir: File,
         writable: Boolean,
         ignoreCacheError: Boolean = false
     ): CacheDataSource.Factory {
-        //非书级的旧播放缓存沿用原来的 100MB 上限
-        val maxBytes = if (cacheDir == legacyCacheDir) {
-            PLAYBACK_CACHE_MAX_BYTES
-        } else {
-            VIDEO_CACHE_MAX_BYTES
-        }
-        val videoCache = simpleCache(cacheDir, maxBytes)
+        val dataCache = simpleCache(cacheDir, cacheMaxBytes(cacheDir))
         return CacheDataSource.Factory()
-            .setCache(videoCache)
+            .setCache(dataCache)
             .setUpstreamDataSourceFactory(okhttpDataFactory(headers))
             .setCacheReadDataSourceFactory(FileDataSource.Factory())
             .apply {
@@ -403,11 +432,22 @@ object ExoPlayerHelper {
                 if (writable) {
                     setCacheWriteDataSinkFactory(
                         CacheDataSink.Factory()
-                            .setCache(videoCache)
+                            .setCache(dataCache)
                             .setFragmentSize(CacheDataSink.DEFAULT_FRAGMENT_SIZE)
                     )
                 }
             }
+    }
+
+    /**
+     * 缓存目录对应的容量上限：旧全局播放缓存沿用历史的 100MB，视频 4GB，音频 2GB
+     */
+    private fun cacheMaxBytes(cacheDir: File): Long {
+        return when (cacheDir.name) {
+            VIDEO_BOOK_CACHE_DIR -> VIDEO_CACHE_MAX_BYTES
+            AUDIO_BOOK_CACHE_DIR -> AUDIO_CACHE_MAX_BYTES
+            else -> PLAYBACK_CACHE_MAX_BYTES
+        }
     }
 
     private fun markMediaComplete(url: String, cacheDir: File) {
@@ -459,9 +499,38 @@ object ExoPlayerHelper {
         val headers: Map<String, String> = emptyMap()
     )
 
-    fun getMediaSource(context: Context, url: String): MediaSource? {
-        val uris = GSON.fromJsonArray<String>(url).getOrNull() ?: return null
-        val dataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(context)
+    /**
+     * 音频播放用的媒体源：优先读该书的音频离线缓存目录（已缓存的章节离线可播），
+     * [writable] 为 true 时未缓存的章节边播边缓存
+     *
+     * 兼容书源返回 JSON 数组（多段媒体拼接播放）与单个地址两种形态
+     * @param book 为空时使用全局播放缓存目录
+     */
+    fun getMediaSource(
+        context: Context,
+        url: String,
+        book: Book? = null,
+        headers: Map<String, String> = emptyMap(),
+        writable: Boolean = true
+    ): MediaSource {
+        val cacheDir = book?.let(::audioBookCacheDir)
+        val dataSourceFactory = mediaPlaybackDataSourceFactory(url, headers, cacheDir, writable)
+        val uris = if (url.isJsonArray()) {
+            GSON.fromJsonArray<String>(url).getOrNull()?.filter { it.isNotBlank() }.orEmpty()
+        } else {
+            listOf(url)
+        }
+        if (uris.size <= 1) {
+            val singleUrl = uris.firstOrNull() ?: url
+            return DefaultMediaSourceFactory(dataSourceFactory)
+                .setLiveTargetOffsetMs(5000)
+                .createMediaSource(
+                    MediaItem.Builder()
+                        .setUri(singleUrl)
+                        .setMimeType(guessMediaMimeType(singleUrl))
+                        .build()
+                )
+        }
         val mediaSourceBuilder = ConcatenatingMediaSource2.Builder()
         for (uri in uris) {
             mediaSourceBuilder.add(

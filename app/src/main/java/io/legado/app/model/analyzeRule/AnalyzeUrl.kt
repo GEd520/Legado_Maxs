@@ -1,9 +1,11 @@
 package io.legado.app.model.analyzeRule
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.util.Base64
 import androidx.annotation.Keep
 import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.source.MediaSource
 import cn.hutool.core.codec.PercentCodec
 import cn.hutool.core.net.RFC3986
 import cn.hutool.core.util.HexUtil
@@ -865,6 +867,20 @@ class AnalyzeUrl(
         fun AnalyzeUrl.getMediaItem(): MediaItem {
             setCookie()
             return ExoPlayerHelper.createMediaItem(url, headerMap)
+        }
+
+        /**
+         * 音频播放用的 MediaSource：与 [getMediaItem] 一样先做 cookie 处理，
+         * 区别是会优先读该书的音频离线缓存目录（已缓存章节离线可播）
+         * @param writable false 时只读缓存不写，"边播放边缓存"关闭
+         */
+        fun AnalyzeUrl.getMediaSource(
+            context: Context,
+            book: Book?,
+            writable: Boolean
+        ): MediaSource {
+            setCookie()
+            return ExoPlayerHelper.getMediaSource(context, url, book, headerMap, writable)
         }
 
     }

@@ -39,8 +39,9 @@ import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
+import io.legado.app.model.VideoPlay
 import io.legado.app.model.analyzeRule.AnalyzeUrl
-import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaItem
+import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaSource
 import io.legado.app.receiver.MediaButtonReceiver
 import io.legado.app.ui.book.audio.AudioPlayActivity
 import io.legado.app.utils.activityPendingIntent
@@ -244,17 +245,21 @@ class AudioPlayService : BaseService(),
             return
         }
         val book = AudioPlay.book
+        //音频离线缓存按书隔离：优先读该书已缓存的音频；是否顺带边播边缓存跟随"边播放边缓存"设置
+        val playCacheEnabled = VideoPlay.playCacheEnabled
         execute(context = Main) {
             AudioPlay.status = Status.STOP
             postEvent(EventBus.AUDIO_STATE, Status.STOP)
             upPlayProgressJob?.cancel()
             if (url.isJsonArray()) {
-                val mediaSource = ExoPlayerHelper.getMediaSource(this@AudioPlayService, url)
-                if (mediaSource ==  null) {
-                    NoStackTraceException("url格式错误")
-                    return@execute
-                }
-                exoPlayer.setMediaSource(mediaSource)
+                exoPlayer.setMediaSource(
+                    ExoPlayerHelper.getMediaSource(
+                        this@AudioPlayService,
+                        url,
+                        book,
+                        writable = playCacheEnabled
+                    )
+                )
                 position = 0
             } else {
                 val analyzeUrl = AnalyzeUrl(
@@ -264,7 +269,9 @@ class AudioPlayService : BaseService(),
                     chapter = AudioPlay.durChapter,
                     coroutineContext = coroutineContext
                 )
-                exoPlayer.setMediaItem(analyzeUrl.getMediaItem())
+                exoPlayer.setMediaSource(
+                    analyzeUrl.getMediaSource(this@AudioPlayService, book, playCacheEnabled)
+                )
             }
             exoPlayer.playWhenReady = true
             //获取片头设定
