@@ -2181,6 +2181,7 @@
     <string name="cache_manage_delete_failed">刪除快取失敗：%1$s</string>
     <string name="cache_manage_chapter_load_failed">讀取章節失敗：%1$s</string>
     <string name="cache_manage_no_cache">沒有可上傳的快取</string>
+    <string name="cache_manage_use_cache_failed">找不到這本書的快取清單，無法把它加回書架</string>
     <string name="cache_manage_pack_failed">封裝快取失敗</string>
     <string name="cache_manage_batch_empty">沒有可操作的快取</string>
     <string name="cache_manage_batch_upload_done">批次上傳完成：成功 %1$d 個，失敗 %2$d 個</string>

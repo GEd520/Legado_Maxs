@@ -266,9 +266,14 @@ object CacheManifestHelper {
     }
 }
 
-/** 目录是否存在且非空 */
+/**
+ * 目录里除清单文件外是否还有缓存内容
+ *
+ * 只看"目录非空"会把清单自己算进去，导致清空缓存后清单永远删不掉
+ */
 private fun File?.hasContent(): Boolean {
-    return this != null && isDirectory && !listFiles().isNullOrEmpty()
+    if (this == null || !isDirectory) return false
+    return listFiles()?.any { it.name != CacheManifestHelper.MANIFEST_FILE_NAME } == true
 }
 
 data class CacheBookManifest(

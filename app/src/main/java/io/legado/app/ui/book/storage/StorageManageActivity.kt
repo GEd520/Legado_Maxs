@@ -3,9 +3,11 @@ package io.legado.app.ui.book.storage
 import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import io.legado.app.base.BaseComposeActivity
+import io.legado.app.constant.EventBus
 import io.legado.app.help.book.isLocal
 import io.legado.app.model.CacheBook
 import io.legado.app.ui.file.FileManageActivity
+import io.legado.app.utils.observeEvent
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toastOnUi
@@ -24,6 +26,19 @@ class StorageManageActivity : BaseComposeActivity() {
 
     private val cacheViewModel: CacheManageViewModel by viewModels {
         CacheManageViewModel.Factory(cacheTaskStarter())
+    }
+
+    /**
+     * 缓存任务在后台服务里跑，界面靠事件跟着刷新，否则缓存下完列表还停在"已缓存 0/1"
+     */
+    override fun observeLiveBus() {
+        //两个事件都订阅：进度事件带书地址，状态事件有时不带
+        observeEvent<String>(EventBus.UP_DOWNLOAD) {
+            if (it.isNotBlank()) cacheViewModel.refreshItem(it)
+        }
+        observeEvent<String>(EventBus.UP_DOWNLOAD_STATE) {
+            if (it.isNotBlank()) cacheViewModel.refreshItem(it)
+        }
     }
 
     /**

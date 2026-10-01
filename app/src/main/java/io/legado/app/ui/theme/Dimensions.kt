@@ -71,15 +71,15 @@ object AppDimens {
     /** 缓存卡片内各行的纵向间距 */
     val manageRowSpacing: Dp = 6.dp
 
-    /** 卡片操作按钮的高度与最小宽度 */
+    /** 卡片操作按钮的高度与最小宽度（48dp 同时满足无障碍最小命中区） */
     val manageActionHeight: Dp = 34.dp
-    val manageActionMinWidth: Dp = 56.dp
+    val manageActionMinWidth: Dp = 48.dp
 
     /** 卡片操作按钮之间的间距 */
     val manageActionSpacing: Dp = 8.dp
 
     /** 操作按钮的左右内边距 */
-    val manageActionPaddingHorizontal: Dp = 12.dp
+    val manageActionPaddingHorizontal: Dp = 10.dp
 
     /** 缓存列表卡片封面的宽高（3:4） */
     val manageCoverWidth: Dp = 60.dp

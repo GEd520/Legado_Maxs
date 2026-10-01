@@ -2644,6 +2644,7 @@
     <string name="cache_manage_delete_failed">删除缓存失败：%1$s</string>
     <string name="cache_manage_chapter_load_failed">读取章节失败：%1$s</string>
     <string name="cache_manage_no_cache">没有可上传的缓存</string>
+    <string name="cache_manage_use_cache_failed">找不到这本书的缓存清单，无法把它加回书架</string>
     <string name="cache_manage_pack_failed">打包缓存失败</string>
     <string name="cache_manage_batch_empty">没有可操作的缓存</string>
     <string name="cache_manage_batch_upload_done">批量上传完成：成功 %1$d 个，失败 %2$d 个</string>

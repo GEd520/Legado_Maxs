@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Error
@@ -52,6 +54,7 @@ import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.theme.composeActionShape
 import io.legado.app.ui.widget.components.AppPageTopBar
 import io.legado.app.ui.widget.components.AppScaffold
+import io.legado.app.ui.widget.components.VerticalScrollbar
 import io.legado.app.ui.widget.components.dialog.AppConfirmDialog
 import io.legado.app.ui.widget.components.navigationBarBottomInset
 
@@ -78,6 +81,8 @@ fun CacheManageScreen(
     val storageDialog by storageViewModel.dialog.collectAsStateWithLifecycle()
 
     var showStats by rememberSaveable { mutableStateOf(false) }
+    val bookListState = rememberLazyListState()
+    val statsListState = rememberLazyListState()
     val tabs = listOf(
         CacheManageMode.BOOK,
         CacheManageMode.AUDIO,
@@ -279,6 +284,7 @@ fun CacheManageScreen(
                     items = storageItems,
                     totalSize = storageTotalSize,
                     state = storageState,
+                    listState = statsListState,
                     onExpand = { storageViewModel.toggleExpand(CacheType.valueOf(it.id)) },
                     onClear = { storageViewModel.requestClear(CacheType.valueOf(it.id)) },
                     onDetailClear = { id, detailId ->
@@ -291,6 +297,7 @@ fun CacheManageScreen(
             } else {
                 CacheBookList(
                     state = state,
+                    listState = bookListState,
                     onOpenChapters = cacheViewModel::openChapterDialog,
                     onUpload = cacheViewModel::uploadBookCache,
                     onUseCache = cacheViewModel::requestRestoreToBookshelf,
@@ -305,6 +312,7 @@ fun CacheManageScreen(
 @Composable
 private fun CacheBookList(
     state: CacheManageUiState,
+    listState: LazyListState,
     onOpenChapters: (CacheBookItem) -> Unit,
     onUpload: (CacheBookItem) -> Unit,
     onUseCache: (CacheBookItem) -> Unit,
@@ -356,25 +364,32 @@ private fun CacheBookList(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        else -> LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = AppDimens.cardSpacing,
-                bottom = AppDimens.screenPadding,
-                start = AppDimens.screenPadding,
-                end = AppDimens.screenPadding
-            ),
-            verticalArrangement = Arrangement.spacedBy(AppDimens.cardSpacing)
-        ) {
-            items(state.items, key = { it.book.bookUrl }) { item ->
-                CacheManageBookCard(
-                    item = item,
-                    onOpenChapters = { onOpenChapters(item) },
-                    onUpload = { onUpload(item) },
-                    onUseCache = { onUseCache(item) },
-                    onDelete = { onDelete(item) }
-                )
+        else -> Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = AppDimens.cardSpacing,
+                    bottom = AppDimens.screenPadding,
+                    start = AppDimens.screenPadding,
+                    end = AppDimens.screenPadding
+                ),
+                verticalArrangement = Arrangement.spacedBy(AppDimens.cardSpacing)
+            ) {
+                items(state.items, key = { it.book.bookUrl }) { item ->
+                    CacheManageBookCard(
+                        item = item,
+                        onOpenChapters = { onOpenChapters(item) },
+                        onUpload = { onUpload(item) },
+                        onUseCache = { onUseCache(item) },
+                        onDelete = { onDelete(item) }
+                    )
+                }
             }
+            VerticalScrollbar(
+                state = listState,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 }
@@ -387,6 +402,7 @@ private fun StorageStatsTab(
     items: List<CacheItem>,
     totalSize: Long,
     state: StorageUiState,
+    listState: LazyListState,
     onExpand: (CacheItem) -> Unit,
     onClear: (CacheItem) -> Unit,
     onDetailClear: (String, String) -> Unit,
@@ -428,37 +444,44 @@ private fun StorageStatsTab(
                 }
             }
         }
-        else -> LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = AppDimens.cardSpacing,
-                bottom = AppDimens.screenPadding,
-                start = AppDimens.screenPadding,
-                end = AppDimens.screenPadding
-            ),
-            verticalArrangement = Arrangement.spacedBy(AppDimens.cardSpacing)
-        ) {
-            item {
-                CacheSummaryCard(
-                    totalSize = totalSize,
-                    itemCount = items.size
-                )
+        else -> Box(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = AppDimens.cardSpacing,
+                    bottom = AppDimens.screenPadding,
+                    start = AppDimens.screenPadding,
+                    end = AppDimens.screenPadding
+                ),
+                verticalArrangement = Arrangement.spacedBy(AppDimens.cardSpacing)
+            ) {
+                item {
+                    CacheSummaryCard(
+                        totalSize = totalSize,
+                        itemCount = items.size
+                    )
+                }
+                items(items, key = { it.id }) { item ->
+                    CacheItemCard(
+                        item = item,
+                        onExpandClick = { onExpand(item) },
+                        onClearClick = { onClear(item) },
+                        onDetailClearClick = { detailId -> onDetailClear(item.id, detailId) },
+                        onOpenPathClick = onOpenPath
+                    )
+                }
+                item {
+                    BatchTextButton(
+                        text = stringResource(R.string.storage_clear_all),
+                        onClick = onClearAll
+                    )
+                }
             }
-            items(items, key = { it.id }) { item ->
-                CacheItemCard(
-                    item = item,
-                    onExpandClick = { onExpand(item) },
-                    onClearClick = { onClear(item) },
-                    onDetailClearClick = { detailId -> onDetailClear(item.id, detailId) },
-                    onOpenPathClick = onOpenPath
-                )
-            }
-            item {
-                BatchTextButton(
-                    text = stringResource(R.string.storage_clear_all),
-                    onClick = onClearAll
-                )
-            }
+            VerticalScrollbar(
+                state = listState,
+                modifier = Modifier.align(Alignment.CenterEnd)
+            )
         }
     }
 }

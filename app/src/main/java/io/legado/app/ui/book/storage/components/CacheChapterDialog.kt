@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Checkbox
@@ -36,6 +38,7 @@ import io.legado.app.ui.book.storage.CacheChapterItem
 import io.legado.app.ui.config.widget.SegmentedTabRow
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.theme.composePanelShape
+import io.legado.app.ui.widget.components.VerticalScrollbar
 
 /**
  * 章节缓存弹窗
@@ -57,6 +60,7 @@ fun CacheChapterDialog(
     onDeleteSelected: () -> Unit
 ) {
     Dialog(onDismissRequest = onDismiss) {
+        val chapterListState = rememberLazyListState()
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -131,7 +135,12 @@ fun CacheChapterDialog(
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = chapterListState,
+                        //预留出滚动条的宽度，避免拖柄压住右侧的缓存状态文字
+                        contentPadding = PaddingValues(end = AppDimens.cardSpacing),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
                         items(state.chapters, key = { it.chapter.index }) { item ->
                             ChapterRow(
                                 item = item,
@@ -142,6 +151,10 @@ fun CacheChapterDialog(
                             )
                         }
                     }
+                    VerticalScrollbar(
+                        state = chapterListState,
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    )
                     if (state.loading) {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     } else if (state.error != null) {

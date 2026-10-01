@@ -21,7 +21,9 @@ import io.legado.app.help.book.isType
 import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.removeType
 import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.model.CacheBook
 import io.legado.app.utils.ConvertUtils
+import io.legado.app.utils.FileUtils
 import io.legado.app.utils.compress.ZipUtils
 import io.legado.app.utils.externalCache
 import io.legado.app.utils.normalizeFileName
@@ -67,6 +69,9 @@ class CacheManageViewModel(
     private var chapterJob: Job? = null
     private var sizeJob: Job? = null
 
+    /** 每本书最近一次单行重算的时刻，用于节流缓存任务进度事件 */
+    private val itemRefreshAt = hashMapOf<String, Long>()
+
     init {
         load()
     }
@@ -107,7 +112,7 @@ class CacheManageViewModel(
             withContext(Dispatchers.IO) {
                 _uiState.value.items.forEach { item ->
                     if (_uiState.value.mode != mode) return@withContext
-                    val size = BookHelp.getCacheDir(item.book).directorySize()
+                    val size = cacheDirOf(item.book).directorySize()
                     _uiState.update { state ->
                         state.copy(
                             items = state.items.map {
@@ -151,7 +156,7 @@ class CacheManageViewModel(
         val cachedCount = if (mode.isMedia) {
             realChapters.count { isMediaChapterCached(book, it) }
         } else {
-            val cacheNames = BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
+            val cacheNames = cacheDirOf(book).list()?.toSet().orEmpty()
             realChapters.count { cacheNames.contains(it.getFileName()) }
         }
         return CacheBookItem(
@@ -270,25 +275,12 @@ class CacheManageViewModel(
         }
     }
 
-    /**
-     * 读取缓存清单
-     *
-     * 先按书籍缓存目录找；书改名/换源导致目录名与当前书名不一致时，再按 bookUrl 扫一遍——
-     * 清单里的 folderName 才是缓存目录的权威来源，重算目录名未必对得上
-     */
-    private suspend fun readManifest(book: Book): CacheBookManifest? {
-        CacheManifestHelper.read(book)?.let { return it }
-        return withContext(Dispatchers.IO) {
-            CacheManifestHelper.listManifests().firstOrNull { it.bookUrl == book.bookUrl }
-        }
-    }
-
     private suspend fun loadChapterItems(
         book: Book,
         key: String,
         filter: CacheChapterFilter
     ): List<CacheChapterItem> {
-        val manifest = readManifest(book)
+        val manifest = findManifest(book)
         val dbChapters = if (key.isBlank()) {
             appDb.bookChapterDao.getChapterList(book.bookUrl)
         } else {
@@ -305,7 +297,7 @@ class CacheManageViewModel(
         val cacheNames = if (book.isMedia) {
             emptySet()
         } else {
-            BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
+            cacheDirOf(book).list()?.toSet().orEmpty()
         }
 
         return chapters.asSequence()
@@ -389,6 +381,8 @@ class CacheManageViewModel(
         }
         toast(R.string.cache_manage_cache_selected_done, count)
         clearChapterSelection()
+        //缓存任务在后台跑，事件不保证覆盖媒体下载的每个阶段，这里兜底轮询到本行数据落定
+        pollItemUntilSettled(dialog.book.bookUrl)
         //媒体缓存是后台排队下载，进度由缓存任务通知/事件反映，这里关掉弹窗避免误以为没反应
         if (dialog.book.isMedia) {
             dismissChapterDialog()
@@ -441,15 +435,36 @@ class CacheManageViewModel(
     }
 
     /**
-     * 把"只剩缓存"的书加回书架：书籍信息与章节都取自缓存清单，章节保留原地址以便直接用缓存
-     * @return 是否成功
+     * 查找书籍的缓存清单：先按书籍缓存目录找，书改名/换源导致目录名与当前书名不一致时按 bookUrl 兜底
      */
-    fun restoreToBookshelf(book: Book): Boolean {
+    private fun findManifest(book: Book): CacheBookManifest? {
+        return CacheManifestHelper.read(book)
+            ?: CacheManifestHelper.listManifests().firstOrNull { it.bookUrl == book.bookUrl }
+    }
+
+    /**
+     * 书籍缓存目录
+     *
+     * 优先按清单里的 folderName 取：书改过名时按当前书名算出的目录名与磁盘上的目录对不上，
+     * 会算成 0 占用、打不出缓存包，也删不掉缓存
+     */
+    private fun cacheDirOf(book: Book): File {
+        val folderName = findManifest(book)?.folderName
+        if (!folderName.isNullOrBlank()) {
+            val dir = File(BookHelp.cachePath, folderName)
+            if (dir.exists()) return dir
+        }
+        return BookHelp.getCacheDir(book)
+    }
+
+    /**
+     * 按清单把"只剩缓存"的书恢复进书架：书籍信息与章节都取自清单，章节保留原地址以便直接用缓存
+     *
+     * 只用于书已不在书架的场景。书还在书架时不要走这里——清单是某次刷新时的章节快照，
+     * 拿它整表覆盖会把用户后来新增/调整过的章节回滚掉
+     */
+    private fun restoreFromManifest(manifest: CacheBookManifest): Boolean {
         return runCatching {
-            //目录名可能与当前书名不一致（书改过名），按 bookUrl 兜底找一遍
-            val manifest = CacheManifestHelper.read(book)
-                ?: CacheManifestHelper.listManifests().firstOrNull { it.bookUrl == book.bookUrl }
-                ?: return false
             val sameUrlBook = appDb.bookDao.getBook(manifest.bookUrl)
             val sameNameBook = appDb.bookDao.getBook(manifest.name, manifest.author)
             val cacheBook = CacheManifestHelper.toBook(manifest).apply {
@@ -476,21 +491,56 @@ class CacheManageViewModel(
             }
             true
         }.onFailure {
-            AppLog.put("恢复缓存到书架失败 ${book.name}\n${it.localizedMessage}", it)
+            AppLog.put("从缓存恢复书籍失败 ${manifest.name}\n${it.localizedMessage}", it)
         }.getOrDefault(false)
+    }
+
+    /**
+     * "使用缓存"：书还在书架时把清单里的媒体地址同步给现有章节（音视频靠它才认得已缓存的媒体），
+     * 书已不在书架时才按清单整本恢复回来
+     *
+     * @return 书架中的书；没有可用的缓存信息时返回 null
+     */
+    private fun useCache(item: CacheBookItem): Book? {
+        val dbBook = appDb.bookDao.getBook(item.book.bookUrl)
+        val manifest = findManifest(item.book)
+        if (dbBook != null) {
+            //章节表保持不动，只把清单里记得的历史媒体地址并回去
+            if (manifest != null) {
+                val chapters = appDb.bookChapterDao.getChapterList(dbBook.bookUrl)
+                if (CacheManifestHelper.mergeResourceUrls(chapters, manifest)) {
+                    appDb.bookChapterDao.update(*chapters.toTypedArray())
+                }
+            }
+            return dbBook
+        }
+        val restored = manifest?.let { restoreFromManifest(it) } ?: false
+        return if (restored) appDb.bookDao.getBook(item.book.bookUrl) else null
+    }
+
+    /**
+     * 用缓存打开章节：书不在书架时先按清单把它恢复回书架
+     */
+    private fun restoreToBookshelf(book: Book): Boolean {
+        val manifest = findManifest(book) ?: return false
+        return restoreFromManifest(manifest)
     }
 
     fun requestRestoreToBookshelf(item: CacheBookItem) {
         viewModelScope.launch {
-            val target = withContext(Dispatchers.IO) {
-                if (restoreToBookshelf(item.book)) appDb.bookDao.getBook(item.book.bookUrl) else null
-            }
+            val target = withContext(Dispatchers.IO) { useCache(item) }
             if (target == null) {
-                toast(R.string.cache_manage_no_cache)
+                //只有"书已不在书架、又没有清单"才会走到这里：无法凭缓存把书恢复出来
+                toast(R.string.cache_manage_use_cache_failed)
                 return@launch
             }
-            //书本来就在书架时是"章节按缓存里的记录对齐"，否则是"从缓存加回书架"
-            toast(if (item.inBookshelf) R.string.cache_manage_use_cache_success else R.string.cache_manage_add_bookshelf_success)
+            toast(
+                if (item.inBookshelf) {
+                    R.string.cache_manage_use_cache_success
+                } else {
+                    R.string.cache_manage_add_bookshelf_success
+                }
+            )
             load()
         }
     }
@@ -555,16 +605,29 @@ class CacheManageViewModel(
         }
     }
 
+    /**
+     * 删除整本书的缓存目录（含媒体与缓存清单）
+     *
+     * 目录名以清单里的 folderName 为准：书改过名时按当前书名算出的目录名对不上，
+     * 会删不掉缓存
+     */
+    private fun clearBookCache(book: Book) {
+        CacheBook.cacheBookMap[book.bookUrl]?.stop()
+        val cacheDir = cacheDirOf(book)
+        if (cacheDir.exists()) {
+            ExoPlayerHelper.releaseBookMediaCacheOf(cacheDir)
+            FileUtils.delete(cacheDir.absolutePath)
+        } else {
+            BookHelp.clearCache(book)
+        }
+    }
+
     private fun deleteBookCaches(books: List<Book>) {
         viewModelScope.launch {
             _uiState.update { it.copy(working = true) }
             try {
                 withContext(Dispatchers.IO) {
-                    books.forEach { book ->
-                        ExoPlayerHelper.releaseBookCaches(book)
-                        //BookHelp.clearCache 会先停缓存任务再删整本缓存目录（含媒体与清单）
-                        BookHelp.clearCache(book)
-                    }
+                    books.forEach { book -> clearBookCache(book) }
                 }
                 toast(R.string.delete_success)
                 load()
@@ -632,7 +695,7 @@ class CacheManageViewModel(
      * 打包整本书的缓存目录（含 cache_manifest.json 与媒体目录），压缩包解压即还原缓存
      */
     private fun createCachePackage(book: Book): File {
-        val cacheDir = BookHelp.getCacheDir(book)
+        val cacheDir = cacheDirOf(book)
         if (!cacheDir.exists() || cacheDir.listFiles().isNullOrEmpty()) {
             throw IllegalStateException(appCtx.getString(R.string.cache_manage_no_cache))
         }
@@ -650,6 +713,44 @@ class CacheManageViewModel(
 
     // endregion
 
+    /**
+     * 缓存任务有进度或结束时重算那一行
+     *
+     * 下载是后台服务在做，界面拿不到结束时机；不跟着刷新的话，缓存下完界面还停在"已缓存 0/1"。
+     * 同一本书的进度事件每 500ms 就来一次，按书节流后再重算
+     */
+    fun refreshItem(bookUrl: String) {
+        if (bookUrl.isBlank()) return
+        if (_uiState.value.items.none { it.book.bookUrl == bookUrl }) return
+        val now = System.currentTimeMillis()
+        if (now - (itemRefreshAt[bookUrl] ?: 0L) < ITEM_REFRESH_INTERVAL_MS) return
+        itemRefreshAt[bookUrl] = now
+        viewModelScope.launch {
+            val book = withContext(Dispatchers.IO) { appDb.bookDao.getBook(bookUrl) } ?: return@launch
+            refreshCurrentItem(book)
+        }
+    }
+
+    /**
+     * 入队缓存后按固定间隔重算这一行，直到这本书的章节都缓存完或超出重试次数
+     *
+     * 缓存任务在后台服务里执行，事件只覆盖部分阶段（媒体下载完成就不一定发事件），
+     * 不兜底的话界面会一直停在缓存前的数字
+     */
+    private fun pollItemUntilSettled(bookUrl: String) {
+        viewModelScope.launch {
+            repeat(ITEM_POLL_ATTEMPTS) {
+                delay(ITEM_POLL_INTERVAL_MS)
+                val item = _uiState.value.items.firstOrNull { it.book.bookUrl == bookUrl }
+                    ?: return@launch
+                if (item.cachedCount >= item.totalChapterCount) return@launch
+                val book = withContext(Dispatchers.IO) { appDb.bookDao.getBook(bookUrl) }
+                    ?: return@launch
+                refreshCurrentItem(book)
+            }
+        }
+    }
+
     private fun refreshCurrentItem(book: Book) {
         val mode = _uiState.value.mode
         viewModelScope.launch {
@@ -659,7 +760,7 @@ class CacheManageViewModel(
                     items = state.items.map {
                         if (it.book.bookUrl == book.bookUrl) {
                             item.copy(
-                                storageSizeBytes = BookHelp.getCacheDir(book).directorySize(),
+                                storageSizeBytes = cacheDirOf(book).directorySize(),
                                 storageCalculated = true
                             )
                         } else {
@@ -682,6 +783,13 @@ class CacheManageViewModel(
     companion object {
         private const val CHAPTER_SEARCH_DEBOUNCE_MS = 180L
         private const val CACHE_PACKAGE_DIR = "cache_package"
+
+        /** 缓存任务进度事件的单行重算间隔 */
+        private const val ITEM_REFRESH_INTERVAL_MS = 500L
+
+        /** 入队缓存后的兜底轮询间隔与次数（3s × 20 = 1 分钟内落定） */
+        private const val ITEM_POLL_INTERVAL_MS = 3_000L
+        private const val ITEM_POLL_ATTEMPTS = 20
 
         /**
          * 默认工厂用于预览/测试：不启动真实缓存任务
