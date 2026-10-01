@@ -781,10 +781,7 @@ class CacheManageViewModel(
             _uiState.update { it.copy(working = true) }
             toast(R.string.cache_manage_uploading)
             try {
-                val zipFile = withContext(Dispatchers.IO) { createCachePackage(item.book) }
-                withContext(Dispatchers.IO) {
-                    AppWebDav.uploadCachePackage(zipFile.name, zipFile)
-                }
+                uploadPackage(item.book)
                 toast(R.string.cache_manage_upload_success)
             } catch (e: Exception) {
                 AppLog.put("上传缓存失败 ${item.book.name}\n${e.localizedMessage}", e)
@@ -808,10 +805,7 @@ class CacheManageViewModel(
             var failed = 0
             items.forEach { item ->
                 runCatching {
-                    val zipFile = withContext(Dispatchers.IO) { createCachePackage(item.book) }
-                    withContext(Dispatchers.IO) {
-                        AppWebDav.uploadCachePackage(zipFile.name, zipFile)
-                    }
+                    uploadPackage(item.book)
                 }.onSuccess {
                     success++
                 }.onFailure { e ->
@@ -821,6 +815,22 @@ class CacheManageViewModel(
             }
             _uiState.update { it.copy(working = false) }
             toast(R.string.cache_manage_batch_upload_done, success, failed)
+        }
+    }
+
+    /**
+     * 打包并上传一本书的缓存，随后删掉本地临时包
+     *
+     * 临时包等于整本缓存，上传完还留着会白占一份空间（缓存页会把整个目录算进去）
+     */
+    private suspend fun uploadPackage(book: Book) {
+        val zipFile = withContext(Dispatchers.IO) { createCachePackage(book) }
+        try {
+            withContext(Dispatchers.IO) {
+                AppWebDav.uploadCachePackage(zipFile.name, zipFile)
+            }
+        } finally {
+            withContext(Dispatchers.IO) { zipFile.delete() }
         }
     }
 
