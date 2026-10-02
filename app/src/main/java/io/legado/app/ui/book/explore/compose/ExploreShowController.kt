@@ -295,12 +295,18 @@ class ExploreShowController(
      * 对齐参考分支 clearDiscoverBooksToEmpty——不能保留上一个分组的内容，会误导）
      */
     fun clearBooksToEmpty() {
+        // 先作废 VM 在途响应再清 UI，否则旧分类数据到达后把空态回填
+        viewModel.invalidateInFlightLoads()
         updateBooks(emptyList())
-        footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty))
+        // hasMore 必须为 false：否则空列表触底会被视口上报当成"到底了"，
+        // 用残留的 exploreUrl 重新加载，把空态立刻回填成上一个分类的内容
+        footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty), hasMore = false)
         topFooter = ExploreLoadMoreState(visible = false)
         oldPage = -1
         restorePendingUrl = null
         clearAllPending = false
+        // 内容已空，屏蔽数失去参照
+        blockedCount = 0
     }
 
     fun onFooterError(message: String) {
