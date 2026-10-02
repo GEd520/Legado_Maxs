@@ -159,6 +159,19 @@ fun ModernExploreContent(
     }
     val settingItems = buildModernSettingItems(allItems, groups.isNotEmpty())
 
+    // 切换大分组（对齐参考分支 rvDiscoverSelects 点击 → applyDiscoverTagFilterAndSelect）：
+    // 当前选中标签不属于新分组时，自动选中并加载新分组的第一个 url 类标签，
+    // 否则只切分组条、内容区还停在旧分组（起点按钮筛选这类多分组源上必现）
+    fun selectGroup(group: String?) {
+        currentGroup = group
+        val groupTags = allItems.filter { it.group == group && it.url != null }
+        if (groupTags.none { it.url == selectedTagUrl }) {
+            val target = groupTags.firstOrNull()
+            selectedTagUrl = target?.url
+            target?.let { controller.loadExploreUrl(it.url.orEmpty(), it.text) }
+        }
+    }
+
     Column(modifier.fillMaxSize()) {
         ModernExploreHeader(
             controller = controller,
@@ -176,7 +189,7 @@ fun ModernExploreContent(
             ModernTagBar(
                 items = groups,
                 selectedIndex = groups.indexOf(currentGroupValue),
-                onSelect = { index -> currentGroup = groups.getOrNull(index) },
+                onSelect = { index -> selectGroup(groups.getOrNull(index)) },
                 onExpand = { showGroupPicker = true },
                 showExpand = groups.size >= TAG_EXPAND_THRESHOLD
             )
@@ -263,7 +276,7 @@ fun ModernExploreContent(
             selectedIndex = groups.indexOf(currentGroupValue),
             onSelect = { index ->
                 showGroupPicker = false
-                currentGroup = groups.getOrNull(index)
+                selectGroup(groups.getOrNull(index))
             },
             onDismissRequest = { showGroupPicker = false }
         )
