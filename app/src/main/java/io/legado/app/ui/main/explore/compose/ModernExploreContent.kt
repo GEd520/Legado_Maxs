@@ -55,6 +55,8 @@ import io.legado.app.ui.book.explore.compose.ExploreShowActions
 import io.legado.app.ui.book.explore.compose.ExploreShowController
 import io.legado.app.ui.book.explore.compose.ExploreShowListContent
 import io.legado.app.ui.theme.AppDimens
+import io.legado.app.ui.theme.pageTopBarBackground
+import io.legado.app.ui.theme.pageTopBarColors
 import io.legado.app.ui.widget.components.ModernTagBar
 import io.legado.app.ui.widget.components.dialog.AppSearchableChoiceDialog
 import io.legado.app.ui.widget.components.dialog.AppTagGridDialog
@@ -316,9 +318,13 @@ private fun ModernExploreHeader(
         ?: sources.firstOrNull()?.bookSourceName
         ?: stringResource(R.string.discovery)
     var showMoreMenu by remember { mutableStateOf(false) }
+    // 头部行顶替旧版 TitleBar，配色必须继续走 TopBarConfig 统一体系
+    val topBarColors = pageTopBarColors()
 
     Row(
         modifier = modifier
+            // 背景先于 statusBarsPadding：覆盖状态栏 + 顶栏区域，与旧版 TitleBar 一致
+            .pageTopBarBackground(topBarColors)
             .statusBarsPadding()
             // 自占旧版 TitleBar 的高度（状态栏 inset + 56dp toolbar），内容垂直居中
             .height(AppDimens.topBarHeight)
@@ -333,7 +339,7 @@ private fun ModernExploreHeader(
         ) {
             Text(
                 text = currentName,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = topBarColors.contentColor,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -343,7 +349,7 @@ private fun ModernExploreHeader(
             Icon(
                 painter = painterResource(R.drawable.ic_arrow_drop_down),
                 contentDescription = stringResource(R.string.discovery),
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = topBarColors.contentColor,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -352,7 +358,7 @@ private fun ModernExploreHeader(
                 Icon(
                     painter = painterResource(R.drawable.ic_settings),
                     contentDescription = stringResource(R.string.setting),
-                    tint = MaterialTheme.colorScheme.onBackground
+                    tint = topBarColors.contentColor
                 )
             }
         }
@@ -361,7 +367,7 @@ private fun ModernExploreHeader(
                 Icon(
                     painter = painterResource(R.drawable.ic_more_vert),
                     contentDescription = stringResource(R.string.more),
-                    tint = MaterialTheme.colorScheme.onBackground
+                    tint = topBarColors.contentColor
                 )
             }
             DropdownMenu(

@@ -52,6 +52,8 @@ import io.legado.app.R
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssSource
 import io.legado.app.ui.theme.AppDimens
+import io.legado.app.ui.theme.pageTopBarBackground
+import io.legado.app.ui.theme.pageTopBarColors
 import io.legado.app.ui.widget.components.AppImage
 import io.legado.app.ui.widget.components.dialog.AppSearchableChoiceDialog
 import io.legado.app.ui.widget.components.dialog.AppTagGridDialog
@@ -196,9 +198,13 @@ private fun ModernRssSourceRow(
         ?: sources.firstOrNull()?.sourceName
         ?: stringResource(R.string.rss)
     var showMoreMenu by remember { mutableStateOf(false) }
+    // 头部行顶替旧版 TitleBar，配色必须继续走 TopBarConfig 统一体系
+    val topBarColors = pageTopBarColors()
 
     Row(
         modifier = modifier
+            // 背景先于 statusBarsPadding：覆盖状态栏 + 顶栏区域，与旧版 TitleBar 一致
+            .pageTopBarBackground(topBarColors)
             .statusBarsPadding()
             // 自占旧版 TitleBar 的高度（状态栏 inset + 56dp toolbar），内容垂直居中
             .height(AppDimens.topBarHeight)
@@ -213,7 +219,7 @@ private fun ModernRssSourceRow(
         ) {
             Text(
                 text = currentName,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = topBarColors.contentColor,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -223,7 +229,7 @@ private fun ModernRssSourceRow(
             androidx.compose.material3.Icon(
                 painter = androidx.compose.ui.res.painterResource(R.drawable.ic_arrow_drop_down),
                 contentDescription = stringResource(R.string.rss),
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = topBarColors.contentColor,
                 modifier = Modifier
                     .padding(start = AppDimens.exploreShowTabSpacing)
                     .size(28.dp)
@@ -234,7 +240,7 @@ private fun ModernRssSourceRow(
                 androidx.compose.material3.Icon(
                     painter = androidx.compose.ui.res.painterResource(R.drawable.ic_more_vert),
                     contentDescription = stringResource(R.string.more),
-                    tint = MaterialTheme.colorScheme.onBackground
+                    tint = topBarColors.contentColor
                 )
             }
             androidx.compose.material3.DropdownMenu(
