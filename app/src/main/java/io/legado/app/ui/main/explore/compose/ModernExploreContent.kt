@@ -168,7 +168,13 @@ fun ModernExploreContent(
         if (groupTags.none { it.url == selectedTagUrl }) {
             val target = groupTags.firstOrNull()
             selectedTagUrl = target?.url
-            target?.let { controller.loadExploreUrl(it.url.orEmpty(), it.text) }
+            if (target != null) {
+                controller.loadExploreUrl(target.url.orEmpty(), target.text)
+            } else {
+                // 分组下没有可选分类（如按钮筛选组）：清空内容区显示空态，
+                // 不保留上一个分组的内容（对齐参考分支 clearDiscoverBooksToEmpty）
+                controller.clearBooksToEmpty()
+            }
         }
     }
 

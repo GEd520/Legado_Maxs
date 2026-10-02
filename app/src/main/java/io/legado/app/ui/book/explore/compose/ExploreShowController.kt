@@ -290,6 +290,19 @@ class ExploreShowController(
         }
     }
 
+    /**
+     * 清空内容区显示空态（新版发现切换到无 url 类分类的分组时用，
+     * 对齐参考分支 clearDiscoverBooksToEmpty——不能保留上一个分组的内容，会误导）
+     */
+    fun clearBooksToEmpty() {
+        updateBooks(emptyList())
+        footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty))
+        topFooter = ExploreLoadMoreState(visible = false)
+        oldPage = -1
+        restorePendingUrl = null
+        clearAllPending = false
+    }
+
     fun onFooterError(message: String) {
         footer = footer.copy(isLoading = false, hasMore = false, isError = true, message = message)
     }
