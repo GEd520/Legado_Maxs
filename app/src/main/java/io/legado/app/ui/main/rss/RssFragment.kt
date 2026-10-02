@@ -269,9 +269,19 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
         }
     }
 
-    /** 模式切换后同步 TitleBar 与菜单：新版模式下 TitleBar 隐藏（源切换/菜单在内容区头部行） */
+    /**
+     * 模式切换后同步 TitleBar 与菜单：新版模式下 TitleBar 保留占位
+     * （高度与旧版一致、仍受顶栏控制），标题与搜索框清空——
+     * 源切换行 / 三点菜单由内容区头部行承担。
+     */
     private fun upModernVisibility() {
-        binding.titleBar.isGone = modernRss
+        if (modernRss) {
+            binding.titleBar.title = ""
+            searchView.isVisible = false
+        } else {
+            binding.titleBar.title = getString(R.string.rss)
+            searchView.isVisible = true
+        }
         upMenuVisibility()
     }
 

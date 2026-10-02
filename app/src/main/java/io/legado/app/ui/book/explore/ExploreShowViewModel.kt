@@ -122,6 +122,14 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     }
 
     /**
+     * 重新解析当前书源的分类并重载当前分类（新版发现三点菜单的"刷新"用）：
+     * 书源内容更新后从源头重拉 exploreInfo 与列表。
+     */
+    fun refreshCurrent() {
+        initData(currentSourceUrl, exploreUrl)
+    }
+
+    /**
      * 加载书源的所有发现分类
      */
     private suspend fun loadExploreKinds() {

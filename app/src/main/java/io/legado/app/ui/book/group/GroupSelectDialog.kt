@@ -46,7 +46,9 @@ class GroupSelectDialog() : BaseDialogFragment(R.layout.dialog_book_group_picker
     private var requestCode: Int = -1
     private val viewModel: GroupViewModel by viewModels()
     private val adapter by lazy { GroupAdapter(requireContext()) }
-    private val callBack get() = (activity as? CallBack)
+    // 回调优先找宿主 Activity，Fragment 宿主（如新版发现主界面）回退到父 Fragment——
+    // 旧版只在 Activity 宿主下使用，新版发现把分组选择挂在了 Fragment 上
+    private val callBack get() = (activity as? CallBack) ?: (parentFragment as? CallBack)
     private var groupId: Long = 0
 
     override fun onStart() {

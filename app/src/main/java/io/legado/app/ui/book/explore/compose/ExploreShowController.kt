@@ -201,6 +201,9 @@ class ExploreShowController(
     fun cachedScrollSnapshot(url: String?): ExploreScrollSnapshot? =
         url?.let { scrollPositionCache[it] }
 
+    /** 重新解析当前书源的分类并重载当前分类（新版发现三点菜单的"刷新"用） */
+    fun refreshCurrent() = viewModel.refreshCurrent()
+
     /** Activity onDestroy 时清理缓存，避免内存泄漏（对齐 View 版） */
     fun clearCaches() {
         scrollPositionCache.clear()

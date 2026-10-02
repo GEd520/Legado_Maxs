@@ -47,6 +47,7 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.domain.model.BookShelfState
 import io.legado.app.ui.book.explore.compose.EXPLORE_LAYOUT_GRID
+import io.legado.app.ui.book.explore.compose.EXPLORE_LAYOUT_LIST
 import io.legado.app.ui.book.explore.compose.EXPLORE_LAYOUT_WATERFALL
 import io.legado.app.ui.book.explore.compose.ExploreShowActions
 import io.legado.app.ui.book.explore.compose.ExploreShowController
@@ -132,6 +133,15 @@ fun ModernExploreContent(
                 selectedTagUrl = it.url
                 controller.loadExploreUrl(it.url.orEmpty(), it.text)
             }
+        }
+    }
+
+    // 首次进入时控制器已自动选中第一个 url 类分类：
+    // 把控制器当前分类同步到标签条选中态，避免"加载了分类但标签无高亮"
+    LaunchedEffect(controller.currentExploreUrl) {
+        val url = controller.currentExploreUrl ?: return@LaunchedEffect
+        if (selectedTagUrl == null) {
+            selectedTagUrl = url
         }
     }
 
@@ -365,6 +375,13 @@ private fun ModernExploreHeader(
                     }
                 )
                 DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.refresh)) },
+                    onClick = {
+                        showMoreMenu = false
+                        controller.refreshCurrent()
+                    }
+                )
+                DropdownMenuItem(
                     text = { Text(text = stringResource(R.string.add_all_to_shelf)) },
                     onClick = {
                         showMoreMenu = false
@@ -385,15 +402,18 @@ private fun ModernExploreHeader(
                         controller.switchLayout()
                     }
                 )
-                DropdownMenuItem(
-                    text = { Text(text = stringResource(R.string.select_column_count)) },
-                    onClick = {
-                        showMoreMenu = false
-                        actions.onColumnPick(controller.effectiveColumnCount()) {
-                            controller.selectColumnCount(it)
+                // 列表布局没有列数概念，不显示选列入口
+                if (controller.layoutMode != EXPLORE_LAYOUT_LIST) {
+                    DropdownMenuItem(
+                        text = { Text(text = stringResource(R.string.select_column_count)) },
+                        onClick = {
+                            showMoreMenu = false
+                            actions.onColumnPick(controller.effectiveColumnCount()) {
+                                controller.selectColumnCount(it)
+                            }
                         }
-                    }
-                )
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(text = stringResource(R.string.explore_block_rule)) },
                     onClick = {
