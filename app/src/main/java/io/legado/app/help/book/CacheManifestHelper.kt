@@ -316,9 +316,9 @@ object CacheManifestHelper {
     /**
      * 找回"清单功能之前"缓存的媒体地址
      *
-     * 那时缓存是按当时的地址存的，而章节表里的地址之后被新解析结果覆盖了，
-     * 缓存里存的是哪个地址已无从反查（完成标记只存 md5）。唯一可靠的推断是：
-     * 该书只有一章、缓存里也只有一个内容时，这个内容就是这一章。
+     * 那时缓存按当时的地址存，章节表里的地址之后被新解析结果覆盖了：缓存 key 虽然还是那个地址，
+     * 但"哪个 key 属于哪一章"没有任何记录可查（完成标记的文件名也只是 url 的 md5）。
+     * 唯一可靠的推断是：该书只有一章、缓存里也只有一个内容时，这个内容就是这一章。
      *
      * 推断出来后把地址写回章节表，播放、判定、章节弹窗就都能正常用上这份缓存。
      *
@@ -331,7 +331,7 @@ object CacheManifestHelper {
      */
     fun recoverLegacyMediaUrl(book: Book): String? {
         if (!book.isVideo && !book.isAudio) return null
-        // 先做最便宜的判断：整库绝大多数书没有媒体缓存，不必为它们查章节表与下载索引
+        // 先做最便宜的判断：整库绝大多数书没有媒体缓存，不必为它们查章节表与缓存内容
         if (!ExoPlayerHelper.hasDownloadedMedia(book)) return null
         val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl).filterNot { it.isVolume }
         if (chapters.size != 1) return null

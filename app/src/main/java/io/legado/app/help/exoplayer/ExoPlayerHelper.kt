@@ -331,6 +331,8 @@ object ExoPlayerHelper {
                 throw kotlinx.coroutines.CancellationException("媒体缓存已取消")
             }
             var cached = 0L
+            // DownloadRequest 的 id 只是下载索引里的主键（本项目不写索引）；缓存 key 仍是地址本身，
+            // 所以判定/删除/找回都能直接拿地址当 key 用
             val downloader = DefaultDownloaderFactory(
                 mediaCacheDataSourceFactory(request.headers, cacheDir, writable = true),
                 Executor { it.run() },
@@ -398,7 +400,7 @@ object ExoPlayerHelper {
      * 该书是否有下载器写入的媒体缓存（完成标记目录非空）
      *
      * 只是目录检查，给"找回老缓存"做前置判断：整个书架里绝大多数书都没有媒体缓存，
-     * 不该为了它们去查下载索引
+     * 不该为了它们再去查章节表与缓存内容
      */
     fun hasDownloadedMedia(book: Book): Boolean {
         val cacheDir = mediaBookCacheDir(book, book.isVideo)
@@ -409,8 +411,10 @@ object ExoPlayerHelper {
     /**
      * 该书媒体缓存里已经存在的内容：(缓存 key -> 媒体地址)
      *
-     * 播放时写进缓存的以媒体地址本身为 key；离线缓存任务走下载器，key 是 url 的 md5，
-     * 真实地址存在下载索引里。两种都还原成地址，供"章节表里的地址变了"时回查缓存。
+     * 缓存 key 就是媒体地址本身：下载器（ProgressiveDownloader / HlsDownloader，media3 1.8.0）
+     * 与边播边写都按 DataSpec 的地址做 key；DownloadRequest 的 id（url 的 md5）只是下载索引里的
+     * 主键，不参与缓存 key——本项目也从没往下载索引里写过记录。所以 key 直接当地址用，
+     * [downloadUriById] 只是索引里万一有记录时的兜底。供"章节表里的地址变了"时回查缓存。
      */
     fun cachedMediaEntries(book: Book): List<Pair<String, String>> {
         val useVideoCache = book.isVideo
@@ -429,9 +433,10 @@ object ExoPlayerHelper {
     }
 
     /**
-     * 下载索引里的缓存 key -> 媒体地址
+     * 下载索引里的记录：(请求 id -> 媒体地址)
      *
-     * 下载器的 key 是 url 的 md5，地址只存在索引里，不查索引就还原不出可播的地址
+     * DownloadRequest 的 id 是 url 的 md5，但 media3 的下载器并不拿它当缓存 key（key 还是地址），
+     * 本项目也没写过下载索引，这个映射通常为空——留着只是兜底，索引里万一有历史记录时能还原出地址
      */
     private fun downloadUriById(): Map<String, String> = runCatching {
         val index = DefaultDownloadIndex(databaseProvider)
