@@ -55,8 +55,8 @@ class ModernRssController(
     var blockedCount by mutableIntStateOf(0)
         private set
 
-    /** 文章布局：false=列表（对齐 articleStyle 0），true=双列网格（对齐 articleStyle 2） */
-    var gridMode by mutableStateOf(false)
+    /** 文章布局：0=列表 1=单列大图 2=双列网格 3=瀑布流 4=三列网格（对齐 View 版 articleStyle） */
+    var articleStyle by mutableIntStateOf(0)
         private set
     var footer by mutableStateOf(RssLoadMoreState(isLoading = true))
         private set
@@ -79,7 +79,7 @@ class ModernRssController(
     /** 切换订阅源：解析分类后加载第一个分类（保存 Job 取消旧任务，防快速连点串数据） */
     fun selectSource(source: RssSource) {
         this.source = source
-        gridMode = source.articleStyle == 2
+        articleStyle = source.articleStyle.coerceIn(0, 4)
         footer = RssLoadMoreState(isLoading = true)
         // 供"清除文章缓存"等源级操作使用
         sortViewModel.initData(source.sourceUrl) {}
@@ -170,11 +170,11 @@ class ModernRssController(
         articlesViewModel.loadArticles(source, page)
     }
 
-    /** 文章布局切换：列表 ↔ 双列网格，按源持久化 */
+    /** 文章布局切换：0→1→2→3→4 五态循环（对齐 View 版 switchLayout），按源持久化 */
     fun toggleLayout() {
         val source = source ?: return
-        gridMode = !gridMode
-        source.articleStyle = if (gridMode) 2 else 0
+        source.articleStyle = (source.articleStyle + 1) % 5
+        articleStyle = source.articleStyle
         scope.launch(Dispatchers.IO) {
             appDb.rssSourceDao.update(source)
         }

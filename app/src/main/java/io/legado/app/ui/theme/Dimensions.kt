@@ -414,6 +414,17 @@ object AppDimens {
     val exploreShowBlockChipOuterHorizontal: Dp = 16.dp
     val exploreShowBlockChipOuterTop: Dp = 8.dp
 
+    /** 新版发现分类区的最大高度（超高时内部滚动，保证内容列表可见） */
+    val exploreShowKindsMaxHeight: Dp = 280.dp
+
+    // ── 新版订阅文章布局（对齐 item_rss_article_1/4 的图高）──
+
+    /** 单列大图条目的图片高度（对齐 item_rss_article_1 的 220dp） */
+    val rssModernCardImageHeight: Dp = 220.dp
+
+    /** 三列网格条目的图片高度（对齐 item_rss_article_4 的 182dp） */
+    val rssModernCompactImageHeight: Dp = 182.dp
+
     // ── 弹窗 ──
 
     /** 单选列表弹窗的选项区最大高度，超出后滚动，避免弹窗顶穿屏幕 */

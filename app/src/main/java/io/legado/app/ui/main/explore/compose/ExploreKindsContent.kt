@@ -17,7 +17,7 @@ import io.legado.app.ui.theme.AppDimens
 @Composable
 internal fun ExploreKindsContent(
     modifier: Modifier = Modifier,
-    sourceItem: ExploreSourceItem,
+    sourceUrl: String,
     kindsState: ExploreKindsState,
     controller: ExploreKindsController,
     actions: ExploreSourceActions,
@@ -45,20 +45,21 @@ internal fun ExploreKindsContent(
     ) { index ->
         ExploreKindItem(
             kind = kinds[index],
-            sourceUrl = sourceItem.sourceUrl,
+            sourceUrl = sourceUrl,
             controller = controller,
             actions = actions,
         )
     }
 }
 
-/** 按分类类型分发到对应的交互组件 */
+/** 按分类类型分发到对应的交互组件（分类区与新版发现的"发现页管理"表单共用） */
 @Composable
-private fun ExploreKindItem(
+internal fun ExploreKindItem(
     kind: ExploreKind,
     sourceUrl: String,
     controller: ExploreKindsController,
     actions: ExploreSourceActions,
+    onSelected: ((String) -> Unit)? = null,
 ) {
     when (kind.type) {
         ExploreKind.Type.url -> ExploreKindActionChip(
@@ -102,6 +103,7 @@ private fun ExploreKindItem(
             kind = kind,
             sourceUrl = sourceUrl,
             controller = controller,
+            onSelected = onSelected,
         )
 
         ExploreKind.Type.html -> ExploreHtmlContent(

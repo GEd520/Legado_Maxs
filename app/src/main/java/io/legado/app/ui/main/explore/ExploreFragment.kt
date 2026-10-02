@@ -135,8 +135,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         private const val MENU_ID_PAGE = 1
         private const val MENU_ID_ADD_ALL_TO_SHELF = 2
         private const val MENU_ID_SWITCH_LAYOUT = 3
-        private const val MENU_ID_BLOCK_RULE = 4
-        private const val MENU_ID_SWITCH_LEGACY = 5
+        private const val MENU_ID_SELECT_COLUMN = 4
+        private const val MENU_ID_BLOCK_RULE = 5
+        private const val MENU_ID_SWITCH_LEGACY = 6
         private const val REQUEST_CODE_ADD_ALL_TO_SHELF = 2001
     }
 
@@ -201,6 +202,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                 }
             },
             addToShelf = { exploreShowViewModel.addToShelf(it) },
+            onShowError = { message -> showDialogFragment(TextDialog("ERROR", message)) },
+            onShowPhoto = { url, sourceUrl -> showDialogFragment(PhotoDialog(url, sourceUrl)) },
             persistLayoutMode = { AppConfig.exploreModernLayout = it },
             persistColumnGrid = { AppConfig.exploreModernColumnGrid = it },
             persistColumnWaterfall = { AppConfig.exploreModernColumnWaterfall = it },
@@ -287,9 +290,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                     ModernExploreContent(
                         controller = modernController,
                         actions = modernExploreActions,
+                        kindsController = kindsController,
                         sources = sourceItems,
                         selectedSourceUrl = modernExploreSourceUrl,
                         onSelectSource = ::selectModernExploreSource,
+                        onSwitchLegacy = { applyModernExplore(false) },
                         showBlockProgress = modernShowBlockProgress
                     )
                 } else {
@@ -338,14 +343,16 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         supportToolbar?.menu?.let { m ->
             m.findItem(R.id.action_sort)?.isVisible = !modernExplore
             m.findItem(R.id.menu_group)?.isVisible = !modernExplore
-            m.findItem(R.id.menu_select_column)?.isVisible =
-                modernExplore && modernController.layoutMode != EXPLORE_LAYOUT_LIST
+            m.findItem(R.id.menu_select_column)?.isVisible = false
+            // 新版模式下 TitleBar 整体隐藏（源切换/菜单移到内容区头部行），
+            // 新旧版切换入口由头部三点菜单承担
+            m.findItem(R.id.menu_more)?.isVisible = !modernExplore
         }
     }
 
-    /** 模式切换后同步搜索框与菜单 */
+    /** 模式切换后同步 TitleBar 与菜单：新版模式下 TitleBar 隐藏（源切换/菜单在内容区头部行） */
     private fun upModernVisibility() {
-        searchView.isVisible = !modernExplore
+        binding.titleBar.isGone = modernExplore
         upMenuVisibility()
     }
 
@@ -632,9 +639,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         exploreShowViewModel.initData(source.bookSourceUrl, null)
     }
 
-    /** TitleBar 三点菜单：旧版只有切换入口；新版带发现列表页的全部菜单项 */
+    /** 三点菜单：旧版只有切换入口；新版带发现列表页的全部菜单项 */
     private fun showExploreMoreMenu(anchor: View) {
-        val popup = PopupMenu(requireContext(), anchor, Gravity.END)
+        // 锚可能是全屏的 ComposeView：TOP|END 让菜单贴屏幕右上，而不是弹到锚底（屏幕外）
+        val popup = PopupMenu(requireContext(), anchor, Gravity.END or Gravity.TOP)
         val menu = popup.menu
         if (!modernExplore) {
             menu.add(Menu.NONE, MENU_ID_SWITCH_LEGACY, 0, R.string.switch_to_new_explore)
@@ -646,8 +654,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             menu.add(Menu.NONE, MENU_ID_PAGE, 0, getString(R.string.menu_page, modernController.currentPage))
             menu.add(Menu.NONE, MENU_ID_ADD_ALL_TO_SHELF, 1, R.string.add_all_to_shelf)
             menu.add(Menu.NONE, MENU_ID_SWITCH_LAYOUT, 2, switchLayoutTitle())
-            menu.add(Menu.NONE, MENU_ID_BLOCK_RULE, 3, R.string.explore_block_rule)
-            menu.add(Menu.NONE, MENU_ID_SWITCH_LEGACY, 4, R.string.switch_to_old_explore)
+            menu.add(Menu.NONE, MENU_ID_SELECT_COLUMN, 3, R.string.select_column_count)
+            menu.add(Menu.NONE, MENU_ID_BLOCK_RULE, 4, R.string.explore_block_rule)
+            menu.add(Menu.NONE, MENU_ID_SWITCH_LEGACY, 5, R.string.switch_to_old_explore)
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_ID_PAGE -> modernExploreActions.onPagePick(modernController.currentPage) {
@@ -659,6 +668,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         modernController.switchLayout()
                         upMenuVisibility()
                     }
+
+                    MENU_ID_SELECT_COLUMN -> modernExploreActions.onColumnPick(
+                        modernController.effectiveColumnCount()
+                    ) { modernController.selectColumnCount(it) }
 
                     MENU_ID_BLOCK_RULE -> modernExploreActions.onShowBlockRuleClick()
                     else -> applyModernExplore(false)

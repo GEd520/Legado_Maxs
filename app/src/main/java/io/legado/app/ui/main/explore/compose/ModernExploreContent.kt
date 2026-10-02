@@ -1,58 +1,98 @@
 package io.legado.app.ui.main.explore.compose
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.legado.app.R
 import io.legado.app.data.entities.BookSourcePart
+import io.legado.app.data.entities.SearchBook
+import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.domain.model.BookShelfState
+import io.legado.app.ui.book.explore.compose.EXPLORE_LAYOUT_GRID
+import io.legado.app.ui.book.explore.compose.EXPLORE_LAYOUT_WATERFALL
 import io.legado.app.ui.book.explore.compose.ExploreShowActions
 import io.legado.app.ui.book.explore.compose.ExploreShowController
 import io.legado.app.ui.book.explore.compose.ExploreShowListContent
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.widget.components.dialog.AppRadioChoiceDialog
 import io.legado.app.ui.widget.components.BlockProgressChip
-import io.legado.app.ui.widget.components.CategoryTabs
 import io.legado.app.ui.widget.components.BookBottomSheet
-import io.legado.app.data.entities.SearchBook
-import io.legado.app.domain.model.BookShelfState
+
+/** 标签条里的一个分类项（参考分支 DiscoverTagItem 的精简版） */
+private data class ModernTagItem(
+    val text: String,
+    val url: String?,
+    val group: String?,
+    val kind: ExploreKind,
+)
+
+/** 标签/分组展开弹窗的数量阈值（对齐参考分支 ExpandableTagSelector.EXPAND_THRESHOLD） */
+private const val TAG_EXPAND_THRESHOLD = 12
 
 /**
- * 新版发现：在发现主 Tab 内直接显示"源选择行 + 分类标签栏 + 内容列表"，
- * 省掉"书源列表 → 分类列表"的两级跳转（参考 Legado_R 新版发现）。
+ * 新版发现：在发现主 Tab 内直接显示"源切换 + 分类标签 + 内容列表"，
+ * 免去"书源列表 → 分类列表"的两级跳转（对齐 Legado_R 新版发现的结构）。
  *
- * 内容区复用 [ExploreShowListContent]（三布局 + 双向翻页 + 手势切分类），
- * 菜单动作由宿主 Fragment 的 TitleBar 三点菜单承担，经 [actions] 下发。
+ * 结构对齐参考分支：
+ * - 头部行在 TitleBar 正下方左上角：源名（20sp 粗体）+ ▾ 下拉切换源；
+ *   右侧是"发现页管理"（齿轮）与功能菜单（三点）两个圆钮；
+ * - 分类按整行项拆成大分组：分组条（可切换分组）+ 当前分组的 url 类标签条
+ *   （每分组自动带「全部」项），标签条末尾 ▾ 展开全部标签；
+ * - select/text/button 类不进标签条，收进「发现页管理」表单弹窗：
+ *   select 值写入书源 infoMap 并触发分类重建，与旧版展开分类区同一套机制。
  *
- * @param controller 页面状态（与独立发现列表页同一套控制器）
- * @param sources 启用发现的书源列表（Flow 实时数据）
- * @param selectedSourceUrl 当前选中的源
- * @param onSelectSource 选中源回调（宿主负责持久化与触发重新加载）
- * @param showBlockProgress 是否显示屏蔽进度芯片
+ * @param controller 内容区状态（与独立发现列表页同一套控制器）
+ * @param kindsController 分类控制器（JS 求值 / infoMap / 内联 WebView，宿主 Fragment 持有）
+ * @param onSwitchLegacy 切换回旧版发现
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ModernExploreContent(
     controller: ExploreShowController,
     actions: ExploreShowActions,
+    kindsController: ExploreKindsController,
     sources: List<BookSourcePart>,
     selectedSourceUrl: String?,
     onSelectSource: (BookSourcePart) -> Unit,
+    onSwitchLegacy: () -> Unit,
     showBlockProgress: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -60,21 +100,85 @@ fun ModernExploreContent(
     var showBookSheet by remember { mutableStateOf(false) }
     var sheetBook by remember { mutableStateOf<SearchBook?>(null) }
     var sheetShelfState by remember { mutableStateOf(BookShelfState.NOT_IN_SHELF) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
+    var showTagPicker by remember { mutableStateOf(false) }
+    var showGroupPicker by remember { mutableStateOf(false) }
+
+    // 分类区状态：随选中源重建；书源规则刷新信号（长按刷新/登录/筛选回调）变化时重建
+    val kindsState = remember(selectedSourceUrl) { ExploreKindsState() }
+    val refreshTick = selectedSourceUrl?.let { kindsController.refreshTick(it) } ?: 0
+    var handledRefreshTick by remember(selectedSourceUrl) { mutableStateOf(0) }
+    // 当前选中的标签 URL（筛选重建后据此恢复）
+    var selectedTagUrl by remember(selectedSourceUrl) { mutableStateOf<String?>(null) }
+    // 当前大分组（随选中源重置）
+    var currentGroup by remember(selectedSourceUrl) { mutableStateOf<String?>(null) }
+
+    val allLabel = stringResource(R.string.all)
+    val otherLabel = stringResource(R.string.other)
+
+    LaunchedEffect(selectedSourceUrl, refreshTick) {
+        val sourceUrl = selectedSourceUrl ?: return@LaunchedEffect
+        val force = refreshTick != handledRefreshTick
+        handledRefreshTick = refreshTick
+        kindsState.load(kindsController, sourceUrl, refreshTick)
+        if (force) {
+            // 筛选变化后分类已被书源重建：恢复原选中分类，失效则落到第一个 url 类
+            val items = buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
+            val target = items.firstOrNull { it.url == selectedTagUrl && it.url != null }
+                ?: items.firstOrNull { it.url != null }
+            target?.let {
+                selectedTagUrl = it.url
+                controller.loadExploreUrl(it.url.orEmpty(), it.text)
+            }
+        }
+    }
+
+    val allItems = buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
+    val groups = allItems.mapNotNull { it.group }.distinct()
+    val currentGroupValue = groups.firstOrNull { it == currentGroup } ?: groups.firstOrNull()
+    val tagItems = if (currentGroupValue == null) {
+        allItems.filter { it.url != null }
+    } else {
+        allItems.filter { it.group == currentGroupValue && it.url != null }
+    }
+    val settingItems = buildModernSettingItems(allItems, groups.isNotEmpty())
 
     Column(modifier.fillMaxSize()) {
-        ModernExploreSourceRow(
+        ModernExploreHeader(
+            controller = controller,
+            actions = actions,
+            onSwitchLegacy = onSwitchLegacy,
             sources = sources,
             selectedSourceUrl = selectedSourceUrl,
+            hasSettings = settingItems.isNotEmpty(),
             onPickSource = { showSourcePicker = true },
+            onOpenSettings = { showSettingsSheet = true },
             modifier = Modifier.fillMaxWidth()
         )
-        if (controller.showCategoryTab && controller.kinds.isNotEmpty()) {
-            CategoryTabs(
-                titles = controller.kinds.map { it.title },
-                selectedIndex = controller.currentCategoryIndex,
-                onSelect = { controller.selectCategory(it) }
+        // 大分组条：仅当书源声明了整行分组项时显示
+        if (currentGroupValue != null) {
+            ModernTagBar(
+                items = groups,
+                selectedIndex = groups.indexOf(currentGroupValue),
+                onSelect = { index -> currentGroup = groups.getOrNull(index) },
+                onExpand = { showGroupPicker = true },
+                showExpand = groups.size >= TAG_EXPAND_THRESHOLD
             )
         }
+        // 当前分组的 url 类标签条
+        ModernTagBar(
+            items = tagItems.map { it.text },
+            selectedIndex = tagItems.indexOfFirst { it.url == selectedTagUrl },
+            onSelect = { index ->
+                val item = tagItems.getOrNull(index) ?: return@ModernTagBar
+                item.url?.let {
+                    selectedTagUrl = it
+                    controller.loadExploreUrl(it, item.text)
+                }
+            },
+            onExpand = { showTagPicker = true },
+            showExpand = tagItems.size >= TAG_EXPAND_THRESHOLD
+        )
         Box(
             Modifier
                 .fillMaxWidth()
@@ -118,6 +222,51 @@ fun ModernExploreContent(
         )
     }
 
+    if (showTagPicker) {
+        AppRadioChoiceDialog(
+            title = stringResource(R.string.select),
+            options = tagItems.map { it.text },
+            selectedIndex = tagItems.indexOfFirst { it.url == selectedTagUrl },
+            onSelect = { index ->
+                showTagPicker = false
+                tagItems.getOrNull(index)?.let { item ->
+                    item.url?.let {
+                        selectedTagUrl = it
+                        controller.loadExploreUrl(it, item.text)
+                    }
+                }
+            },
+            onDismissRequest = { showTagPicker = false }
+        )
+    }
+
+    if (showGroupPicker) {
+        AppRadioChoiceDialog(
+            title = stringResource(R.string.select),
+            options = groups,
+            selectedIndex = groups.indexOf(currentGroupValue),
+            onSelect = { index ->
+                showGroupPicker = false
+                currentGroup = groups.getOrNull(index)
+            },
+            onDismissRequest = { showGroupPicker = false }
+        )
+    }
+
+    if (showSettingsSheet && selectedSourceUrl != null) {
+        ModernExploreSettingsSheet(
+            sourceUrl = selectedSourceUrl,
+            items = settingItems,
+            kindsController = kindsController,
+            onOpenExplore = { url, title ->
+                showSettingsSheet = false
+                selectedTagUrl = url
+                controller.loadExploreUrl(url, title)
+            },
+            onDismiss = { showSettingsSheet = false }
+        )
+    }
+
     if (showBookSheet) {
         BookBottomSheet(
             show = true,
@@ -130,12 +279,21 @@ fun ModernExploreContent(
     }
 }
 
-/** 源选择行：当前源名的胶囊按钮，点击弹出源选择弹窗 */
+/**
+ * 头部行：左上角"源名 ▾"（20sp 粗体，点击切换源），右侧"发现页管理"（齿轮）
+ * 与功能菜单（三点，Compose DropdownMenu 锚定按钮）圆钮——对齐参考分支
+ * ll_discover_source_row。
+ */
 @Composable
-private fun ModernExploreSourceRow(
+private fun ModernExploreHeader(
+    controller: ExploreShowController,
+    actions: ExploreShowActions,
+    onSwitchLegacy: () -> Unit,
     sources: List<BookSourcePart>,
     selectedSourceUrl: String?,
+    hasSettings: Boolean,
     onPickSource: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentName = sources
@@ -143,30 +301,342 @@ private fun ModernExploreSourceRow(
         ?.bookSourceName
         ?: sources.firstOrNull()?.bookSourceName
         ?: stringResource(R.string.discovery)
+    var showMoreMenu by remember { mutableStateOf(false) }
 
     Row(
         modifier.padding(
-            horizontal = AppDimens.exploreShowTabsHorizontalPadding,
-            vertical = AppDimens.exploreShowTabsVerticalPadding
-        )
+            start = AppDimens.exploreShowTabsHorizontalPadding,
+            end = AppDimens.exploreShowTabsHorizontalPadding,
+            top = 12.dp,
+            bottom = AppDimens.exploreShowTabsVerticalPadding
+        ),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Surface(
-            shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            onClick = onPickSource
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onPickSource),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = currentName,
-                modifier = Modifier.padding(
-                    horizontal = AppDimens.exploreShowTabHorizontalPadding,
-                    vertical = AppDimens.exploreShowTabVerticalPadding
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Icon(
+                painter = painterResource(R.drawable.ic_arrow_drop_down),
+                contentDescription = stringResource(R.string.discovery),
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.size(28.dp)
             )
         }
+        if (hasSettings) {
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_settings),
+                    contentDescription = stringResource(R.string.setting),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+        Box {
+            IconButton(onClick = { showMoreMenu = true }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_more_vert),
+                    contentDescription = stringResource(R.string.more),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            DropdownMenu(
+                expanded = showMoreMenu,
+                onDismissRequest = { showMoreMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.menu_page, controller.currentPage)) },
+                    onClick = {
+                        showMoreMenu = false
+                        actions.onPagePick(controller.currentPage) { controller.skipPageTo(it) }
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.add_all_to_shelf)) },
+                    onClick = {
+                        showMoreMenu = false
+                        actions.onAddAllToShelfClick()
+                    }
+                )
+                DropdownMenuItem(
+                    text = {
+                        val modeName = when (controller.layoutMode) {
+                            EXPLORE_LAYOUT_GRID -> stringResource(R.string.switch_layout_grid)
+                            EXPLORE_LAYOUT_WATERFALL -> stringResource(R.string.switch_layout_waterfall)
+                            else -> stringResource(R.string.switch_layout_list)
+                        }
+                        Text(text = stringResource(R.string.switch_layout_current, modeName))
+                    },
+                    onClick = {
+                        showMoreMenu = false
+                        controller.switchLayout()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.select_column_count)) },
+                    onClick = {
+                        showMoreMenu = false
+                        actions.onColumnPick(controller.effectiveColumnCount()) {
+                            controller.selectColumnCount(it)
+                        }
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.explore_block_rule)) },
+                    onClick = {
+                        showMoreMenu = false
+                        actions.onShowBlockRuleClick()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.switch_to_old_explore)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onSwitchLegacy()
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 横滚胶囊标签条（对齐参考分支 RoundedTagBarView 的观感）：
+ * 选中项描边，末尾可带展开按钮。
+ */
+@Composable
+private fun ModernTagBar(
+    items: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    onExpand: () -> Unit,
+    showExpand: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    if (items.isEmpty()) return
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = AppDimens.exploreShowTabsHorizontalPadding),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(AppDimens.exploreShowTabSpacing)
+        ) {
+            itemsIndexed(items) { index, title ->
+                val selected = index == selectedIndex
+                Surface(
+                    shape = RoundedCornerShape(AppDimens.exploreShowTabCornerRadius),
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                    border = if (selected) {
+                        BorderStroke(
+                            AppDimens.exploreShowTabBorderWidth,
+                            MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        null
+                    },
+                    onClick = { onSelect(index) }
+                ) {
+                    Text(
+                        text = title,
+                        modifier = Modifier.padding(
+                            horizontal = AppDimens.exploreShowTabHorizontalPadding,
+                            vertical = AppDimens.exploreShowTabVerticalPadding
+                        ),
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        if (showExpand) {
+            IconButton(onClick = onExpand, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_arrow_drop_down),
+                    contentDescription = stringResource(R.string.expand),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 「发现页管理」表单弹窗（对齐参考分支 RowUiDialog）：
+ * select/text/button 类分类项以流式表单呈现，select 选中即关闭并重建分类。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ModernExploreSettingsSheet(
+    sourceUrl: String,
+    items: List<ModernTagItem>,
+    kindsController: ExploreKindsController,
+    onOpenExplore: (url: String, title: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val kindsActions = remember(sourceUrl) {
+        ExploreSourceActions(
+            onToggleExpand = {},
+            onMenuAction = { _, _ -> },
+            onOpenExplore = { _, title, url -> onOpenExplore(url, title) },
+            onShowError = {},
+            onShowPhoto = { _, _ -> },
+        )
+    }
+    var selectChanged by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = {
+            if (selectChanged) {
+                // select 改值后分类可能已被书源重建：走刷新信号重建分类区
+                kindsController.requestRefresh(sourceUrl)
+            }
+            onDismiss()
+        },
+        title = { Text(text = stringResource(R.string.setting)) },
+        text = {
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(AppDimens.exploreKindSpacing),
+                verticalArrangement = Arrangement.spacedBy(AppDimens.exploreKindSpacing)
+            ) {
+                items.forEach { item ->
+                    ExploreKindItem(
+                        kind = item.kind,
+                        sourceUrl = sourceUrl,
+                        controller = kindsController,
+                        actions = kindsActions,
+                        onSelected = if (item.kind.type == ExploreKind.Type.select) {
+                            {
+                                selectChanged = true
+                                onDismiss()
+                            }
+                        } else {
+                            null
+                        }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (selectChanged) {
+                    kindsController.requestRefresh(sourceUrl)
+                }
+                onDismiss()
+            }) {
+                Text(text = stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {}
+    )
+}
+
+/**
+ * 分类项分组（对齐参考分支 buildDiscoverTagItems）：
+ * - 整行类（flexBasisPercent>=0.95 或 flexGrow>=1）且无 action 的项作为分组标题，
+ *   其后的项归入该分组；分组标题自带 url 时补一个「全部」项；
+ * - url 类（非 button/select）进标签条；select/button/text 进设置表单；
+ * - 无分组时全部归「其它」。
+ */
+private fun buildModernTagItems(
+    kinds: List<ExploreKind>,
+    allLabel: String,
+    otherLabel: String,
+): List<ModernTagItem> {
+    var currentGroup: String? = null
+    val result = mutableListOf<ModernTagItem>()
+    kinds.forEach { kind ->
+        val action = kind.action?.takeIf { it.isNotBlank() }
+        val url = kind.url?.takeIf { it.isNotBlank() }
+        val isSelect = kind.type == ExploreKind.Type.select
+        val isButton = kind.type == ExploreKind.Type.button && !action.isNullOrBlank()
+
+        if (isModernMajorGroupKind(kind, currentGroup != null)) {
+            currentGroup = kind.title.trim().ifBlank { null }
+            if (!url.isNullOrBlank()) {
+                result += ModernTagItem(
+                    text = allLabel,
+                    url = url,
+                    group = currentGroup,
+                    kind = kind
+                )
+            }
+            return@forEach
+        }
+
+        if (!url.isNullOrBlank() && !isButton && !isSelect) {
+            result += ModernTagItem(
+                text = kind.title,
+                url = url,
+                group = currentGroup,
+                kind = kind
+            )
+            return@forEach
+        }
+
+        if (isSelect || isButton || kind.type == ExploreKind.Type.text || !action.isNullOrBlank()) {
+            result += ModernTagItem(
+                text = kind.title,
+                url = url,
+                group = currentGroup,
+                kind = kind
+            )
+        }
+    }
+    val hasGroup = result.any { it.group != null }
+    return if (hasGroup) {
+        result
+    } else {
+        result.map { it.copy(group = otherLabel) }
+    }.distinctBy { "${it.group}|${it.kind.type}|${it.kind.title}|${it.kind.url}|${it.kind.action}" }
+}
+
+/** 整行项判定（对齐参考分支 isDiscoverMajorGroupKind / isDiscoverFullLineKind） */
+private fun isModernMajorGroupKind(kind: ExploreKind, hasStartedGroup: Boolean): Boolean {
+    if (!kind.action.isNullOrBlank()) return false
+    if (kind.type == ExploreKind.Type.button || kind.type == ExploreKind.Type.select) return false
+    if (!kind.url.isNullOrBlank() && !hasStartedGroup) return false
+    val style = kind.style()
+    if (style.layout_flexBasisPercent >= 0.95f) return true
+    if (style.layout_flexGrow >= 1f && style.layout_flexBasisPercent < 0f) return true
+    return false
+}
+
+/** 设置表单内容：select / text / button（含 action）类 */
+private fun buildModernSettingItems(
+    items: List<ModernTagItem>,
+    hasGroups: Boolean,
+): List<ModernTagItem> {
+    return items.filter {
+        it.kind.type == ExploreKind.Type.select ||
+            it.kind.type == ExploreKind.Type.text ||
+            (it.kind.type == ExploreKind.Type.button && !it.kind.action.isNullOrBlank()) ||
+            (hasGroups && it.group == null && it.url != null)
     }
 }

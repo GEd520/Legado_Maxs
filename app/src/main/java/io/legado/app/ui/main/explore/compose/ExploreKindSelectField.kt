@@ -44,6 +44,7 @@ internal fun ExploreKindSelectField(
     kind: ExploreKind,
     sourceUrl: String,
     controller: ExploreKindsController,
+    onSelected: ((String) -> Unit)? = null,
 ) {
     val name by rememberKindName(sourceUrl, kind, controller)
     // 候选项按 chars 记忆：书源切换"模式"后"平台"的候选列表会整体换掉（其余字段可能一样），
@@ -131,6 +132,7 @@ internal fun ExploreKindSelectField(
                         kind.action?.takeIf { it.isNotBlank() }?.let {
                             controller.evalAction(sourceUrl, it, kind.title)
                         }
+                        onSelected?.invoke(char)
                     },
                 )
             }

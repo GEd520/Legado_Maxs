@@ -110,7 +110,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                     }
                 }.getOrDefault(emptyList())
                 exploreKindsData.postValue(kinds)
-                val firstUrl = kinds.firstOrNull()?.url
+                // 初始分类必须是可直接访问的 url 类：select/button 类的 url 是模板/脚本，
+                // 依赖 infoMap 求值，不能直接当 exploreUrl 加载
+                val firstUrl = kinds.firstOrNull { it.type == ExploreKind.Type.url }?.url
                 exploreUrl = firstUrl
                 page = parsePageFromUrl(firstUrl)
                 pageLiveData.postValue(page)

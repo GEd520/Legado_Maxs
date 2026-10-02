@@ -147,7 +147,7 @@ internal fun ExploreSourceRow(
         }
         if (expanded) {
             ExploreKindsContent(
-                sourceItem = sourceItem,
+                sourceUrl = sourceItem.sourceUrl,
                 kindsState = kindsState,
                 controller = controller,
                 actions = actions,

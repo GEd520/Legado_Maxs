@@ -49,6 +49,10 @@ class ExploreShowActions(
     val onShowBlockRuleClick: () -> Unit,
     val onShowBookInfo: (SearchBook) -> Unit,
     val addToShelf: (SearchBook) -> Unit,
+    /** 分类区书源规则求值失败时弹出错误详情（仅新版发现的分类区使用） */
+    val onShowError: (String) -> Unit = {},
+    /** usehtml 内容里的图片长按查看（仅新版发现的分类区使用） */
+    val onShowPhoto: (url: String, sourceUrl: String) -> Unit = { _, _ -> },
     val persistLayoutMode: (Int) -> Unit,
     val persistColumnGrid: (Int) -> Unit,
     val persistColumnWaterfall: (Int) -> Unit,
@@ -137,6 +141,10 @@ class ExploreShowController(
     var currentCategoryIndex by mutableIntStateOf(0)
         private set
     var pageTitle by mutableStateOf(initialArgs.exploreName)
+        private set
+
+    /** 当前加载的分类 URL（新版发现据此恢复标签选中态） */
+    var currentExploreUrl by mutableStateOf<String?>(null)
         private set
     var currentPage by mutableIntStateOf(1)
         private set
@@ -423,6 +431,29 @@ class ExploreShowController(
         )
         pageTitle = kind.title
         return kind
+    }
+
+    /**
+     * 新版发现：按分类区选中的 URL 就地加载（不跳转发现列表页）。
+     * 与 [selectCategory] 的区别：以 URL 定位（可指向 select/toggle 更新 infoMap
+     * 之后的同一个 URL，需要强制重载），无同项短路。
+     */
+    fun loadExploreUrl(url: String, title: String) {
+        currentExploreUrl = url
+        viewModel.clearPreloadCache()
+        currentCategoryIndex = kinds.indexOfFirst { it.url == url }.coerceAtLeast(0)
+        books = emptyList()
+        footer = ExploreLoadMoreState(isLoading = true)
+        topFooter = ExploreLoadMoreState(visible = false)
+        oldPage = -1
+        restorePendingUrl = url
+        viewModel.switchCategory(
+            newUrl = url,
+            exploreName = title,
+            preload = preloadMode == 1,
+            allKinds = kinds
+        )
+        pageTitle = title
     }
 
     fun switchToPreviousCategory() {

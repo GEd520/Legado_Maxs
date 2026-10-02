@@ -38,6 +38,7 @@ import io.legado.app.ui.main.MainActivity
 import io.legado.app.ui.main.MainFragmentInterface
 import io.legado.app.ui.main.rss.compose.ModernRssContent
 import io.legado.app.ui.main.rss.compose.ModernRssController
+import io.legado.app.ui.main.rss.compose.RssMoreMenuItem
 import io.legado.app.ui.main.rss.compose.RssSourceActions
 import io.legado.app.ui.main.rss.compose.RssSourceGrid
 import io.legado.app.ui.main.rss.compose.RssSourceItem
@@ -222,7 +223,9 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
                         showBlockProgress = modernShowBlockProgress,
                         onReadArticle = ::readModernArticle,
                         onSelectSource = ::selectModernRssSource,
-                        onShowBlockRule = { showModernBlockRuleConfig() }
+                        onShowBlockRule = { showModernBlockRuleConfig() },
+                        moreMenuItems = ::buildModernRssMenuItems,
+                        onMenuItem = ::handleModernRssMenu
                     )
                 } else {
                     RssSourceGrid(
@@ -258,19 +261,17 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
      * 按新旧版模式调整顶栏菜单可见性（新版模式下分组无意义）。
      * Fragment 菜单不走 Activity 的 onPrepareOptionsMenu 体系，需直接改 Toolbar 菜单。
      */
+    /** 按新旧版模式调整顶栏菜单可见性（新版下分组/三点均无意义：入口移到内容区头部行） */
     private fun upMenuVisibility() {
-        supportToolbar?.menu?.findItem(R.id.menu_group)?.isVisible = !modernRss
+        supportToolbar?.menu?.let { m ->
+            m.findItem(R.id.menu_group)?.isVisible = !modernRss
+            m.findItem(R.id.menu_more)?.isVisible = !modernRss
+        }
     }
 
-    /** 模式切换后同步搜索框 / 顶栏标题 / 菜单 */
+    /** 模式切换后同步 TitleBar 与菜单：新版模式下 TitleBar 隐藏（源切换/菜单在内容区头部行） */
     private fun upModernVisibility() {
-        searchView.isVisible = !modernRss
-        binding.titleBar.title = if (modernRss) {
-            sourceItems.firstOrNull { it.sourceUrl == modernRssSourceUrl }?.sourceName
-                ?: getString(R.string.rss)
-        } else {
-            getString(R.string.rss)
-        }
+        binding.titleBar.isGone = modernRss
         upMenuVisibility()
     }
 
@@ -453,9 +454,9 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
 
     // ── 新版订阅 ──
 
-    /** TitleBar 三点菜单：旧版只有切换入口；新版保留分类页的全部菜单项 */
+    /** 三点菜单：旧版只有切换入口；新版保留分类页的全部菜单项 */
     private fun showRssMoreMenu(anchor: View) {
-        val popup = PopupMenu(requireContext(), anchor, Gravity.END)
+        val popup = PopupMenu(requireContext(), anchor, Gravity.END or Gravity.TOP)
         val menu = popup.menu
         if (!modernRss) {
             menu.add(Menu.NONE, MENU_ID_SWITCH_MODERN, 0, R.string.switch_to_new_rss)
@@ -486,6 +487,31 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
             }
         }
         popup.show()
+    }
+
+    /** 新版订阅头部三点菜单项（弹出时求值，携带动态可见性与页码标题） */
+    private fun buildModernRssMenuItems(): List<RssMoreMenuItem> {
+        val source = modernController.source
+        return listOf(
+            RssMoreMenuItem(
+                MENU_ID_PAGE,
+                getString(R.string.menu_page, modernController.currentPage),
+                visible = !source?.ruleNextPage.isNullOrEmpty()
+            ),
+            RssMoreMenuItem(
+                MENU_ID_LOGIN,
+                getString(R.string.login),
+                visible = !source?.loginUrl.isNullOrBlank()
+            ),
+            RssMoreMenuItem(MENU_ID_REFRESH_SORT, getString(R.string.refresh_sort)),
+            RssMoreMenuItem(MENU_ID_SET_VARIABLE, getString(R.string.set_source_variable)),
+            RssMoreMenuItem(MENU_ID_EDIT_SOURCE, getString(R.string.edit_source)),
+            RssMoreMenuItem(MENU_ID_SWITCH_LAYOUT, getString(R.string.switchLayout)),
+            RssMoreMenuItem(MENU_ID_BLOCK_RULE, getString(R.string.explore_block_rule)),
+            RssMoreMenuItem(MENU_ID_READ_RECORD, getString(R.string.read_record)),
+            RssMoreMenuItem(MENU_ID_CLEAR, getString(R.string.clear)),
+            RssMoreMenuItem(MENU_ID_SWITCH_LEGACY, getString(R.string.switch_to_old_rss))
+        )
     }
 
     private fun handleModernRssMenu(itemId: Int) {
