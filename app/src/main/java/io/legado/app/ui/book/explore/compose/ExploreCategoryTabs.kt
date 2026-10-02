@@ -1,6 +1,5 @@
 package io.legado.app.ui.book.explore.compose
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -77,7 +76,7 @@ fun ExploreCategoryTabs(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
+            // 对齐 View 版 tabs_container：无背景，透出页面壁纸
             .padding(
                 horizontal = AppDimens.exploreShowTabsHorizontalPadding,
                 vertical = AppDimens.exploreShowTabsVerticalPadding

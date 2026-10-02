@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
@@ -54,6 +55,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.HtmlCoverRenderer
 import io.legado.app.model.BookCover
 import io.legado.app.ui.theme.AppDimens
+import io.legado.app.ui.theme.composeActionShape
 import io.legado.app.ui.widget.components.AppBookCover
 import io.legado.app.ui.widget.components.AppDrawablePainter
 import io.legado.app.ui.widget.components.BookCoverTextOverlay
@@ -310,11 +312,13 @@ fun ExploreShowWaterfallItem(
     onBookLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val cardShape = composeActionShape()
     Column(
         modifier
             .fillMaxWidth()
+            .clip(cardShape)
             .background(WATERFALL_FILL)
-            .border(AppDimens.exploreShowWaterfallBorderWidth, WATERFALL_BORDER)
+            .border(AppDimens.exploreShowWaterfallBorderWidth, WATERFALL_BORDER, cardShape)
             .combinedClickable(
                 onClick = onBookClick,
                 onLongClick = onBookLongClick,
