@@ -218,6 +218,7 @@ object PreferKey {
     const val webServiceAuthEnabled = "webServiceAuthEnabled"
     const val unsafeSsl = "unsafeSsl"
     const val audioPlayWakeLock = "audioPlayWakeLock"
+    const val audioPlayCache = "audioPlayCache"
     const val readAloudWakeLock = "readAloudWakeLock"
     const val showLastUpdateTime = "showLastUpdateTime"
     const val showWaitUpCount = "showWaitUpCount"

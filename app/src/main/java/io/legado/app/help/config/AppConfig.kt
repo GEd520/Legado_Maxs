@@ -1063,6 +1063,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
             appCtx.putPrefBoolean(PreferKey.audioPlayWakeLock, value)
         }
 
+    /**  音频边播放边缓存：开启后播放的音频会写进书籍音频缓存目录（听完即可离线），默认关闭  **/
+    var audioPlayCacheEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.audioPlayCache)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.audioPlayCache, value)
+        }
+
     var brightnessVwPos: Boolean
         get() = appCtx.getPrefBoolean(PreferKey.brightnessVwPos)
         set(value) {

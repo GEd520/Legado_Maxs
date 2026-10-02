@@ -1685,6 +1685,7 @@
     <string name="video_cache_settings">Cache</string>
     <string name="video_play_cache">Cache while playing</string>
     <string name="video_play_cache_summary">Cache while playing for offline playback; off = no caching</string>
+    <string name="audio_play_cache">Cache while playing</string>
 
     <!-- Reading & Source Settings -->
     <string name="no_more_chapter">No More Chapters</string>

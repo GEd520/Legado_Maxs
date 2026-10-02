@@ -1579,6 +1579,7 @@
     <string name="video_cache_settings">缓存</string>
     <string name="video_play_cache">边播放边缓存</string>
     <string name="video_play_cache_summary">播放时缓存视频，看完可离线播放；关闭则只播放不缓存</string>
+    <string name="audio_play_cache">边播放边缓存</string>
     <string name="auto_play">自动播放</string>
     <string name="start_full">直接全屏播放</string>
     <string name="history">历史</string>

@@ -40,7 +40,6 @@ import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.glide.ImageLoader
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
-import io.legado.app.model.VideoPlay
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.analyzeRule.AnalyzeUrl.Companion.getMediaSource
 import io.legado.app.receiver.MediaButtonReceiver
@@ -246,8 +245,8 @@ class AudioPlayService : BaseService(),
             return
         }
         val book = AudioPlay.book
-        //音频离线缓存按书隔离：优先读该书已缓存的音频；是否顺带边播边缓存跟随"边播放边缓存"设置
-        val playCacheEnabled = VideoPlay.playCacheEnabled
+        //音频离线缓存按书隔离：优先读该书已缓存的音频；是否顺带边播边缓存跟随音频自己的开关（与视频分开）
+        val playCacheEnabled = AppConfig.audioPlayCacheEnabled
         //缓存按缓存当时的地址做 key：章节表里的地址过期/被覆盖后，用清单里那个仍能读到缓存的地址播
         val cachedUrl = book?.let { b ->
             AudioPlay.durChapter?.let { chapter -> CacheManifestHelper.cachedMediaUrl(b, chapter) }
