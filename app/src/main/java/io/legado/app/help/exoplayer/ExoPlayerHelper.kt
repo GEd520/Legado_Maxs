@@ -8,6 +8,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -45,6 +46,7 @@ import io.legado.app.utils.isJsonArray
 import okhttp3.CacheControl
 import splitties.init.appCtx
 import java.io.File
+import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
@@ -126,6 +128,9 @@ object ExoPlayerHelper {
 
     /** 完成标记里表示"按普通文件（渐进式）下载"的内容 */
     private const val MEDIA_MARK_PROGRESSIVE = "progressive"
+
+    /** 确认假缓存时最多读多少字节的播放列表（切片的第一个地址都在很前面） */
+    private const val PLAYLIST_SNIFF_BYTES = 16 * 1024
 
     private val mapType by lazy {
         object : TypeToken<Map<String, String>>() {}.type
@@ -471,10 +476,17 @@ object ExoPlayerHelper {
             // 标记里必须写着同一个自适应流类型，才算真的按自适应流下过（见 [markMediaComplete]）
             val mark = readCompleteMarker(url, cacheDir)
             if (mark == mediaMimeType) return true
-            // 标记写着别的类型，或只有旧版本留下的空标记：
-            // 这份内容是按普通文件下的（多半只有一个播放列表），清掉见 [clearFakeAdaptiveCache]
-            if (mark != null) clearFakeAdaptiveCache(cache, url, cacheDir)
-            return false
+            // 没落过标记：只是边播边写的缓存，不算完整
+            if (mark == null) return false
+            // 旧版本的标记没记类型，按内容确认一次：
+            // 确认是"只下到播放列表"的假缓存才清掉；读不准的一律当真缓存，绝不误删用户下好的内容
+            if (adaptiveCacheLooksFake(cache, url)) {
+                clearFakeAdaptiveCache(cache, url, cacheDir)
+                return false
+            }
+            // 确认过就补齐标记，之后判定不用再读内容
+            markMediaComplete(url, cacheDir)
+            return true
         }
         val contentLength = ContentMetadata.getContentLength(cache.getContentMetadata(url))
         return if (contentLength > 0) {
@@ -581,6 +593,43 @@ object ExoPlayerHelper {
     }
 
     /**
+     * 缓存里的这份内容是不是"只下到播放列表"的假缓存
+     *
+     * 播放列表本身很小，把播放列表当普通文件下就只有一个列表、不带任何切片；
+     * 真下过的缓存里，列表引用的切片按各自地址单独缓存着。
+     * 只有内容确实是一份播放列表（`#EXTM3U` 开头）**并且**它引用的第一个切片不在缓存里才判定为假：
+     * 读不到内容、或内容不像列表（byte-range 这类会把媒体写在同一个 key 上）时一律返回 false，
+     * 宁可当作真缓存，也不能误删用户已经下好的内容。
+     */
+    private fun adaptiveCacheLooksFake(cache: Cache, url: String): Boolean {
+        val playlist = readCachedText(cache, url) ?: return false
+        if (!playlist.trimStart().startsWith("#EXTM3U")) return false
+        val firstUri = playlist.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
+            ?: return false
+        val segmentUrl = runCatching { URI(url).resolve(firstUri).toString() }.getOrNull() ?: return false
+        return cache.getCachedBytes(segmentUrl, 0, Long.MAX_VALUE) <= 0
+    }
+
+    /** 读缓存里某个地址的内容（只读缓存，不联网；没缓存时返回 null） */
+    private fun readCachedText(cache: Cache, url: String): String? {
+        val dataSource = CacheDataSource.Factory()
+            .setCache(cache)
+            .setCacheReadDataSourceFactory(FileDataSource.Factory())
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+            .createDataSource()
+        return runCatching {
+            dataSource.open(DataSpec(url.toUri()))
+            val buffer = ByteArray(PLAYLIST_SNIFF_BYTES)
+            val read = dataSource.read(buffer, 0, buffer.size)
+            if (read <= 0) null else String(buffer, 0, read)
+        }.also {
+            runCatching { dataSource.close() }
+        }.getOrNull()
+    }
+
+    /**
      * 清掉"把自适应流当普通文件下"留下的假缓存
      *
      * 这种缓存里只有一个播放列表（切片从没下过），而播放走缓存时命中已缓存的列表后就不会再去网络取，
@@ -599,6 +648,20 @@ object ExoPlayerHelper {
 
     /** 完成标记所在目录，与缓存目录同级（video_media -> video_media_complete） */
     private fun completeMarkerDir(cacheDir: File): File = File(cacheDir.parentFile, cacheDir.name + VIDEO_COMPLETE_SUFFIX)
+
+    /**
+     * 章节内容/媒体地址文本 -> 候选媒体地址列表
+     *
+     * 供"从缓存正文里找回媒体地址"用（音视频章节的缓存正文就是缓存当时的媒体地址），
+     * 地址可能是 JSON 数组、单个地址或多行文本，这里都拆开，由调用方逐个去缓存里核对。
+     */
+    fun mediaUrlsOf(content: String?): List<String> {
+        if (content.isNullOrBlank()) return emptyList()
+        return getMediaUrls(content.trim())
+            .flatMap { it.lineSequence().toList() }
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+    }
 
     private fun getMediaUrls(url: String): List<String> {
         if (url.isJsonArray()) {
