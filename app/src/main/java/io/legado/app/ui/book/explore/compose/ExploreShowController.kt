@@ -373,6 +373,21 @@ class ExploreShowController(
 
     // ── 分类切换 ──
 
+    /**
+     * 切换书源前的状态复位（新版发现主界面用）：
+     * kinds 由调用方在 initData 之后通过 [onKindsLoaded] 桥接进来，
+     * initialExploreUrl 为空时选中项自然落在第一个分类。
+     */
+    fun resetForNewSource() {
+        updateBooks(emptyList())
+        footer = ExploreLoadMoreState(isLoading = true)
+        topFooter = ExploreLoadMoreState(visible = false)
+        oldPage = -1
+        currentCategoryIndex = 0
+        restorePendingUrl = null
+        clearAllPending = false
+    }
+
     private fun currentKindUrl(): String? =
         kinds.getOrNull(currentCategoryIndex)?.url?.takeIf { it.isNotBlank() }
 

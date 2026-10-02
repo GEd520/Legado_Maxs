@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.domain.model.BookShelfState
 import io.legado.app.ui.theme.AppDimens
+import io.legado.app.ui.widget.components.LoadMoreFooter
 import io.legado.app.ui.widget.components.navigationBarBottomInset
 import kotlin.math.abs
 
@@ -129,7 +130,12 @@ private fun ExploreShowLazyList(
     ) {
         if (controller.topFooter.visible) {
             item(key = "top_footer") {
-                ExploreLoadMoreFooter(state = controller.topFooter)
+                LoadMoreFooter(
+                    isLoading = controller.topFooter.isLoading,
+                    hasMore = controller.topFooter.hasMore,
+                    message = controller.topFooter.message,
+                    isError = controller.topFooter.isError
+                )
             }
         }
         itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
@@ -148,8 +154,11 @@ private fun ExploreShowLazyList(
             }
         }
         item(key = "bottom_footer") {
-            ExploreLoadMoreFooter(
-                state = controller.footer,
+            LoadMoreFooter(
+                isLoading = controller.footer.isLoading,
+                hasMore = controller.footer.hasMore,
+                message = controller.footer.message,
+                isError = controller.footer.isError,
                 onClick = { controller.requestLoadNext(forceLoad = true) }
             )
         }
@@ -223,7 +232,12 @@ private fun ExploreShowLazyGrid(
     ) {
         if (controller.topFooter.visible) {
             item(key = "top_footer", span = { GridItemSpan(maxLineSpan) }) {
-                ExploreLoadMoreFooter(state = controller.topFooter)
+                LoadMoreFooter(
+                    isLoading = controller.topFooter.isLoading,
+                    hasMore = controller.topFooter.hasMore,
+                    message = controller.topFooter.message,
+                    isError = controller.topFooter.isError
+                )
             }
         }
         itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
@@ -236,8 +250,11 @@ private fun ExploreShowLazyGrid(
             )
         }
         item(key = "bottom_footer", span = { GridItemSpan(maxLineSpan) }) {
-            ExploreLoadMoreFooter(
-                state = controller.footer,
+            LoadMoreFooter(
+                isLoading = controller.footer.isLoading,
+                hasMore = controller.footer.hasMore,
+                message = controller.footer.message,
+                isError = controller.footer.isError,
                 onClick = { controller.requestLoadNext(forceLoad = true) }
             )
         }
@@ -305,7 +322,12 @@ private fun ExploreShowStaggeredContent(
     ) {
         if (controller.topFooter.visible) {
             item(key = "top_footer", span = StaggeredGridItemSpan.FullLine) {
-                ExploreLoadMoreFooter(state = controller.topFooter)
+                LoadMoreFooter(
+                    isLoading = controller.topFooter.isLoading,
+                    hasMore = controller.topFooter.hasMore,
+                    message = controller.topFooter.message,
+                    isError = controller.topFooter.isError
+                )
             }
         }
         itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
@@ -319,8 +341,11 @@ private fun ExploreShowStaggeredContent(
             )
         }
         item(key = "bottom_footer", span = StaggeredGridItemSpan.FullLine) {
-            ExploreLoadMoreFooter(
-                state = controller.footer,
+            LoadMoreFooter(
+                isLoading = controller.footer.isLoading,
+                hasMore = controller.footer.hasMore,
+                message = controller.footer.message,
+                isError = controller.footer.isError,
                 onClick = { controller.requestLoadNext(forceLoad = true) }
             )
         }

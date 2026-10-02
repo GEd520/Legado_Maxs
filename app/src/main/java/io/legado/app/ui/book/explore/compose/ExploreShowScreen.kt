@@ -34,6 +34,8 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.domain.model.BookShelfState
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.widget.components.AppPageTopBar
+import io.legado.app.ui.widget.components.BlockProgressChip
+import io.legado.app.ui.widget.components.CategoryTabs
 import io.legado.app.ui.widget.components.AppScaffold
 import io.legado.app.ui.widget.components.BookBottomSheet
 
@@ -69,8 +71,8 @@ fun ExploreShowScreen(
                 .padding(paddingValues)
         ) {
             if (controller.showCategoryTab && controller.kinds.isNotEmpty()) {
-                ExploreCategoryTabs(
-                    kinds = controller.kinds,
+                CategoryTabs(
+                    titles = controller.kinds.map { it.title },
                     selectedIndex = controller.currentCategoryIndex,
                     onSelect = { controller.selectCategory(it) }
                 )
@@ -90,32 +92,17 @@ fun ExploreShowScreen(
                     }
                 )
                 if (controller.showBlockProgress && controller.blockedCount > 0) {
-                    Surface(
+                    BlockProgressChip(
+                        blockedCount = controller.blockedCount,
+                        onClick = actions.onShowBlockRuleClick,
                         modifier = Modifier
                             .align(Alignment.TopEnd)
                             .padding(
                                 start = AppDimens.exploreShowBlockChipOuterHorizontal,
                                 top = AppDimens.exploreShowBlockChipOuterTop,
                                 end = AppDimens.exploreShowBlockChipOuterHorizontal
-                            ),
-                        shape = RoundedCornerShape(AppDimens.exploreShowBlockChipCornerRadius),
-                        color = MaterialTheme.colorScheme.tertiaryContainer,
-                        shadowElevation = AppDimens.exploreShowBlockChipShadowElevation,
-                        onClick = actions.onShowBlockRuleClick
-                    ) {
-                        Text(
-                            text = stringResource(
-                                R.string.explore_block_rule_progress_text,
-                                controller.blockedCount
-                            ),
-                            modifier = Modifier.padding(
-                                horizontal = AppDimens.exploreShowBlockChipPaddingHorizontal,
-                                vertical = AppDimens.exploreShowBlockChipPaddingVertical
-                            ),
-                            color = MaterialTheme.colorScheme.onTertiaryContainer,
-                            fontSize = 13.sp
-                        )
-                    }
+                            )
+                    )
                 }
             }
         }

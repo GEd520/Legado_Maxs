@@ -77,18 +77,41 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
      * ViewModel初始化数据
      */
     fun initData(intent: Intent) {
+        initData(intent.getStringExtra("sourceUrl"), intent.getStringExtra("exploreUrl"))
+    }
+
+    /**
+     * 无 Intent 入口的初始化（新版发现主界面按源切换时使用）：
+     * exploreUrl 传 null 时取源的第一个分类作为初始分类。
+     */
+    fun initData(sourceUrl: String?, newExploreUrl: String?) {
         execute {
-            val sourceUrl = intent.getStringExtra("sourceUrl")
             currentSourceUrl = sourceUrl ?: ""
-            exploreUrl = intent.getStringExtra("exploreUrl")
-            page = parsePageFromUrl(exploreUrl)
             if (bookSource == null && sourceUrl != null) {
                 bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
+            } else if (sourceUrl != null && bookSource?.bookSourceUrl != sourceUrl) {
+                bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
             }
-            pageLiveData.postValue(page)
-            // 加载所有发现分类（用于Tab显示）
-            loadExploreKinds()
-            explore()
+            if (newExploreUrl != null) {
+                exploreUrl = newExploreUrl
+                page = parsePageFromUrl(newExploreUrl)
+                pageLiveData.postValue(page)
+                // 加载所有发现分类（用于Tab显示）
+                loadExploreKinds()
+                explore()
+            } else {
+                val kinds = runCatching {
+                    withContext(IO) {
+                        bookSource?.exploreKinds().orEmpty().filter { !it.url.isNullOrBlank() }
+                    }
+                }.getOrDefault(emptyList())
+                exploreKindsData.postValue(kinds)
+                val firstUrl = kinds.firstOrNull()?.url
+                exploreUrl = firstUrl
+                page = parsePageFromUrl(firstUrl)
+                pageLiveData.postValue(page)
+                explore()
+            }
         }
     }
 

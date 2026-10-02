@@ -61,4 +61,19 @@
 
     </item>
 
+    <!-- 新版发现的列数选择（仅新版模式可见） -->
+    <item
+        android:id="@+id/menu_select_column"
+        android:icon="@drawable/ic_view_quilt"
+        android:title="@string/select_column_count"
+        android:visible="false"
+        app:showAsAction="always" />
+
+    <!-- 三点菜单：切换新版/旧版发现；新版模式下的跳页/加入书架/布局/屏蔽规则 -->
+    <item
+        android:id="@+id/menu_more"
+        android:icon="@drawable/ic_more_vert"
+        android:title="@string/more"
+        app:showAsAction="always" />
+
 </menu>

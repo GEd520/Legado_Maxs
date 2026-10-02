@@ -73,6 +73,43 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     // ==================== 主题与界面配置 ====================
     var themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
     var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
+
+    // ==================== 新版发现 / 新版订阅 ====================
+
+    /** 发现主界面显示新版（源选择行 + 分类标签 + 内容列表） */
+    var exploreModernPage: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.exploreModernPage, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.exploreModernPage, value)
+
+    /** 订阅主界面显示新版（源选择行 + 分类标签 + 文章列表） */
+    var rssModernPage: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.rssModernPage, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.rssModernPage, value)
+
+    /** 新版发现上次选中的书源 */
+    var modernExploreSourceUrl: String?
+        get() = appCtx.getPrefString(PreferKey.exploreModernSourceUrl)
+        set(value) = appCtx.putPrefString(PreferKey.exploreModernSourceUrl, value)
+
+    /** 新版订阅上次选中的订阅源 */
+    var modernRssSourceUrl: String?
+        get() = appCtx.getPrefString(PreferKey.rssModernSourceUrl)
+        set(value) = appCtx.putPrefString(PreferKey.rssModernSourceUrl, value)
+
+    /** 新版发现布局模式 0=列表 1=网格 2=瀑布流（全局，不按书源区分） */
+    var exploreModernLayout: Int
+        get() = appCtx.getPrefInt(PreferKey.exploreModernLayout, 0)
+        set(value) = appCtx.putPrefInt(PreferKey.exploreModernLayout, value)
+
+    /** 新版发现网格列数 */
+    var exploreModernColumnGrid: Int
+        get() = appCtx.getPrefInt(PreferKey.exploreModernColumnGrid, 2)
+        set(value) = appCtx.putPrefInt(PreferKey.exploreModernColumnGrid, value)
+
+    /** 新版发现瀑布流列数 */
+    var exploreModernColumnWaterfall: Int
+        get() = appCtx.getPrefInt(PreferKey.exploreModernColumnWaterfall, 2)
+        set(value) = appCtx.putPrefInt(PreferKey.exploreModernColumnWaterfall, value)
     var optimizeRender = CanvasRecorderFactory.isSupport &&
         appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)

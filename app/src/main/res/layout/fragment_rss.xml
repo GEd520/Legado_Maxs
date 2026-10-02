@@ -14,7 +14,8 @@
         app:layout_constraintTop_toTopOf="parent"
         app:title="@string/rss" />
 
-    <!-- 订阅源网格 Compose 化：顶栏仍是 View 体系（TopBarConfig 统一配色），网格交给 Compose 渲染 -->
+    <!-- 订阅内容 Compose 化：顶栏仍是 View 体系（TopBarConfig 统一配色），
+         旧版为订阅源网格，新版为"源选择行 + 分类标签 + 文章列表"，由 Fragment 按模式切换 -->
     <androidx.compose.ui.platform.ComposeView
         android:id="@+id/compose_source_grid"
         android:layout_width="match_parent"

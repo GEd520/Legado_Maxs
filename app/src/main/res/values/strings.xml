@@ -2093,6 +2093,10 @@
     <!-- Explore Show Column Layout -->
     <string name="switch_layout">Switch Layout</string>
     <string name="switch_layout_current">Switch Layout (Current: %1$s)</string>
+    <string name="switch_to_new_explore">Switch to New Explore</string>
+    <string name="switch_to_old_explore">Switch to Legacy Explore</string>
+    <string name="switch_to_new_rss">Switch to New RSS</string>
+    <string name="switch_to_old_rss">Switch to Legacy RSS</string>
     <string name="error_view_detail">Tap to view details</string>
     <string name="select_column">Select Column(%d)</string>
     <string name="select_column_count">Select Column Count</string>

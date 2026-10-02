@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.explore.compose
+package io.legado.app.ui.widget.components
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,16 +25,22 @@ import io.legado.app.R
 import io.legado.app.ui.theme.AppDimens
 
 /**
- * 发现列表的"加载更多"footer，复刻 View 版 LoadMoreView 的语义：
+ * 列表"加载更多"footer（发现列表页与新版订阅共用），复刻 View 版 LoadMoreView 的语义：
  * 加载中显示转圈；出错显示"加载失败 + 点击查看详情"，点击弹错误弹窗（带重试）；
  * 到底显示文案，点击可强制加载下一页；其余状态不占内容（仅保留布局高度）。
  *
- * @param state footer 状态
- * @param onClick 文本区点击（重试/强制加载）；顶部翻页 footer 对齐 View 版不传
+ * @param isLoading 是否正在加载
+ * @param hasMore 是否还有更多
+ * @param message 到底文案 / 错误信息
+ * @param isError true 时点击弹错误弹窗
+ * @param onClick 文本区点击（重试/强制加载）；对齐 View 版顶部翻页 footer 可不传
  */
 @Composable
-fun ExploreLoadMoreFooter(
-    state: ExploreLoadMoreState,
+fun LoadMoreFooter(
+    isLoading: Boolean,
+    hasMore: Boolean,
+    message: String?,
+    isError: Boolean,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
@@ -45,7 +51,7 @@ fun ExploreLoadMoreFooter(
         contentAlignment = Alignment.Center
     ) {
         when {
-            state.isLoading -> CircularProgressIndicator(
+            isLoading -> CircularProgressIndicator(
                 modifier = Modifier
                     .padding(AppDimens.exploreShowLoadMoreSpacing)
                     .size(AppDimens.exploreShowLoadMoreSize),
@@ -53,7 +59,7 @@ fun ExploreLoadMoreFooter(
                 color = MaterialTheme.colorScheme.primary
             )
 
-            state.isError -> Text(
+            isError -> Text(
                 text = stringResource(R.string.error_load_msg, stringResource(R.string.error_view_detail)),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -69,8 +75,8 @@ fun ExploreLoadMoreFooter(
                 overflow = TextOverflow.Ellipsis
             )
 
-            !state.hasMore -> Text(
-                text = state.message ?: stringResource(R.string.bottom_line),
+            !hasMore -> Text(
+                text = message ?: stringResource(R.string.bottom_line),
                 modifier = Modifier
                     .fillMaxWidth()
                     .then(
@@ -97,7 +103,7 @@ fun ExploreLoadMoreFooter(
         AlertDialog(
             onDismissRequest = { showErrorDialog = false },
             title = { Text(stringResource(R.string.error)) },
-            text = { Text(state.message.orEmpty()) },
+            text = { Text(message.orEmpty()) },
             confirmButton = {
                 if (onClick != null) {
                     TextButton(onClick = {

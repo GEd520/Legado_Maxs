@@ -32,9 +32,20 @@ class RssSortViewModel(
     var sourceName: String? = null
 
     fun initData(intent: Intent, onFinally: () -> Unit) {
+        initData(intent.getStringExtra("sourceUrl"), onFinally)
+        // Intent 入口可能携带指定分类与搜索词
+        sortUrl = intent.getStringExtra("sortUrl") ?: sortUrl
+        searchKey = intent.getStringExtra("key")
+    }
+
+    /**
+     * 无 Intent 入口（新版订阅主界面按源切换时使用）：
+     * 只重置源相关状态，不携带指定分类与搜索词。
+     */
+    fun initData(sourceUrl: String?, onFinally: () -> Unit) {
         viewModelScope.launch(ioDispatcher) {
             try {
-                url = intent.getStringExtra("sourceUrl")
+                url = sourceUrl
                 url?.let { key ->
                     rssSource = repository.getSourceByKey(key)
                     rssSource?.let {
@@ -43,8 +54,8 @@ class RssSortViewModel(
                         rssSource = RssSource(sourceUrl = key)
                     }
                 }
-                sortUrl = intent.getStringExtra("sortUrl") ?: sortUrl
-                searchKey = intent.getStringExtra("key")
+                sortUrl = null
+                searchKey = null
             } finally {
                 withContext(Dispatchers.Main) { onFinally() }
             }

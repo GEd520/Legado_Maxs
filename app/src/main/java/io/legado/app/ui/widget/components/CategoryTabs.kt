@@ -1,4 +1,4 @@
-package io.legado.app.ui.book.explore.compose
+package io.legado.app.ui.widget.components
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,8 +19,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -28,40 +28,39 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.legado.app.data.entities.rule.ExploreKind
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import io.legado.app.ui.theme.AppDimens
 import kotlin.math.ceil
 
 /**
- * 发现列表页的多行分类 Tab（复刻 View 版 setupMultiLineTabs）：
+ * 多行分类标签栏（发现列表页与新版订阅共用，复刻 View 版 setupMultiLineTabs）：
  * 最多 3 行（横屏最多 2 行），每行可横向滚动、内容不足时居中；
  * 选中 Tab 显示强调色描边，切换后自动滚入所在行的视野。
  *
  * 与 View 版一致，点击过的 Tab 文字色转为次要色（保留原实现的视觉反馈）。
  *
- * @param kinds 分类列表
+ * @param titles 分类标题列表（下标即业务下标）
  * @param selectedIndex 当前选中下标
  * @param onSelect 选中回调（携带全局下标）
  */
 @Composable
-fun ExploreCategoryTabs(
-    kinds: List<ExploreKind>,
+fun CategoryTabs(
+    titles: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val orientation = LocalConfiguration.current.orientation
-    val rowCount = remember(kinds.size, orientation) {
+    val rowCount = remember(titles.size, orientation) {
         var rows = when {
-            kinds.size <= 10 -> 1
-            kinds.size <= 20 -> 2
+            titles.size <= 10 -> 1
+            titles.size <= 20 -> 2
             else -> 3
         }
         // 横屏最多 2 行
@@ -70,7 +69,7 @@ fun ExploreCategoryTabs(
         }
         rows
     }
-    val maxPerRow = ceil(kinds.size / rowCount.toDouble()).toInt().coerceAtLeast(1)
+    val maxPerRow = ceil(titles.size / rowCount.toDouble()).toInt().coerceAtLeast(1)
     val clickedIndexes = remember { mutableStateListOf<Int>() }
 
     Column(
@@ -82,7 +81,7 @@ fun ExploreCategoryTabs(
                 vertical = AppDimens.exploreShowTabsVerticalPadding
             )
     ) {
-        kinds.chunked(maxPerRow).forEachIndexed { rowIndex, rowItems ->
+        titles.chunked(maxPerRow).forEachIndexed { rowIndex, rowItems ->
             val rowState = rememberScrollState()
             val rowWidth = remember { mutableIntStateOf(0) }
             val tabBounds = remember { mutableStateMapOf<Int, IntRect>() }
@@ -95,10 +94,10 @@ fun ExploreCategoryTabs(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                rowItems.forEachIndexed { indexInRow, kind ->
+                rowItems.forEachIndexed { indexInRow, title ->
                     val globalIndex = rowIndex * maxPerRow + indexInRow
-                    ExploreCategoryTab(
-                        title = kind.title,
+                    CategoryTab(
+                        title = title,
                         selected = globalIndex == selectedIndex,
                         clicked = globalIndex in clickedIndexes,
                         onSelect = {
@@ -140,7 +139,7 @@ fun ExploreCategoryTabs(
 }
 
 @Composable
-private fun ExploreCategoryTab(
+private fun CategoryTab(
     title: String,
     selected: Boolean,
     clicked: Boolean,
@@ -157,7 +156,13 @@ private fun ExploreCategoryTab(
                 val pos = coords.positionInParent()
                 onBoundsChanged(IntRect(IntOffset(pos.x.toInt(), pos.y.toInt()), coords.size))
             }
-            .then(if (selected) Modifier.border(AppDimens.exploreShowTabBorderWidth, MaterialTheme.colorScheme.primary, shape) else Modifier)
+            .then(
+                if (selected) {
+                    Modifier.border(AppDimens.exploreShowTabBorderWidth, MaterialTheme.colorScheme.primary, shape)
+                } else {
+                    Modifier
+                }
+            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
