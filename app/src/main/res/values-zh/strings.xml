@@ -2027,6 +2027,8 @@
 
     <!-- Explore Show Column Layout -->
     <string name="switch_layout">切换布局</string>
+    <string name="switch_layout_current">切换布局(当前:%1$s)</string>
+    <string name="error_view_detail">点击查看详情</string>
     <string name="select_column">选择分列(%d)</string>
     <string name="select_column_count">选择列数</string>
     <string name="switch_layout_list">列表</string>

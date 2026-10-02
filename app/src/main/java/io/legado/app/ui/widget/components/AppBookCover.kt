@@ -247,13 +247,17 @@ internal fun BookCoverTextOverlay(
  *
  * 取消时清掉 target，避免列表滑走后 Glide 继续解码；`onResourceReady` 与 `onLoadFailed`
  * 可能被先后调用（后台恢复时 Glide 会重新调度资源），用 [AtomicBoolean] 保证只 resume 一次。
+ *
+ * @param centerCrop 请求是否 centerCrop；瀑布流等自由比例场景传 false，
+ *   保持图片原始宽高比（对齐 View 版 CoverLoader 的 fixedRatio = false）
  */
-private suspend fun loadCoverDrawable(
+internal suspend fun loadCoverDrawable(
     context: Context,
     path: String,
     sourceOrigin: String?,
     loadOnlyWifi: Boolean,
     requestSize: IntSize,
+    centerCrop: Boolean = true,
 ): Drawable? = suspendCancellableCoroutine { cont ->
     // 先在协程存活时取到 RequestManager：取消回调里 Activity 可能已 destroy，
     // 那时再 Glide.with(context) 会抛 "You cannot start a load for a destroyed activity"
@@ -281,7 +285,10 @@ private suspend fun loadCoverDrawable(
     if (sourceOrigin != null) {
         options = options.set(OkHttpModelLoader.sourceOriginOption, sourceOrigin)
     }
-    var builder = ImageLoader.load(context, path).apply(options).centerCrop()
+    var builder = ImageLoader.load(context, path).apply(options)
+    if (centerCrop) {
+        builder = builder.centerCrop()
+    }
     // 高清封面设置开启时不做降采样，与 View 版行为一致；
     // override 返回的是同一个 RequestBuilder（原地修改），这里回写只是让 CheckResult 告警消失
     if (!AppConfig.loadCoverHighQuality) {

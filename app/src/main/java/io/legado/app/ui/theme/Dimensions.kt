@@ -320,6 +320,100 @@ object AppDimens {
     /** 图标与名称之间的间距（对齐原 tv_name 的 marginTop 16dp） */
     val rssGridNameSpacing: Dp = 16.dp
 
+    // ── 发现列表页（ExploreShow，对齐原 View 布局）──
+
+    /** 列表条目内边距（对齐 item_search 封面与文字列的 8dp margin） */
+    val exploreShowItemPadding: Dp = 8.dp
+
+    /** 列表条目封面尺寸（对齐 item_search 的 iv_cover 80x110dp） */
+    val exploreShowListCoverWidth: Dp = 80.dp
+    val exploreShowListCoverHeight: Dp = 110.dp
+
+    /** 书架状态角标尺寸（对齐 iv_in_bookshelf 的 18dp） */
+    val exploreShowShelfBadgeSize: Dp = 18.dp
+
+    /** 书架状态角标到封面的间距与内边距（对齐 margin/padding 4dp/2dp） */
+    val exploreShowShelfBadgeMargin: Dp = 4.dp
+    val exploreShowShelfBadgePadding: Dp = 2.dp
+
+    /** 书架状态角标背景圆角（对齐 bg_shelf_icon 的 4dp） */
+    val exploreShowShelfBadgeCornerRadius: Dp = 4.dp
+
+    /** 网格/瀑布流小绿点与书名的间距（对齐 marginEnd 3dp） */
+    val exploreShowShelfDotSpacing: Dp = 3.dp
+
+    /** 分类标签胶囊：内边距 / 圆角 / 间距（对齐 LabelsBar 的 3px padding、2px 圆角与 margin） */
+    val exploreShowLabelPaddingHorizontal: Dp = 3.dp
+    val exploreShowLabelCornerRadius: Dp = 2.dp
+    val exploreShowLabelSpacing: Dp = 2.dp
+
+    /** 左右滑动手势切换分类的最小水平距离 */
+    val exploreShowMinSwipeDistance: Dp = 100.dp
+
+    /** 屏蔽进度悬浮芯片的圆角与阴影（对齐原 Compose 芯片 16dp/4dp） */
+    val exploreShowBlockChipCornerRadius: Dp = 16.dp
+    val exploreShowBlockChipShadowElevation: Dp = 4.dp
+
+    /** 书架状态小绿点尺寸（列表 8dp、网格/瀑布流 6dp，对齐 CircleImageView） */
+    val exploreShowShelfDotSizeList: Dp = 8.dp
+    val exploreShowShelfDotSizeSmall: Dp = 6.dp
+
+    /** 列表条目内各行的纵向间距（对齐 name container 与文字列的 3dp 间距） */
+    val exploreShowRowSpacing: Dp = 3.dp
+
+    /** 分类 Tab 容器内边距（对齐 tabs_container 的 8/4dp） */
+    val exploreShowTabsHorizontalPadding: Dp = 8.dp
+    val exploreShowTabsVerticalPadding: Dp = 4.dp
+
+    /** 分类 Tab 行之间的间距（对齐行 bottomMargin 2dp） */
+    val exploreShowTabRowSpacing: Dp = 2.dp
+
+    /** 分类 Tab 内边距（对齐 createTabView 的 12/6dp） */
+    val exploreShowTabHorizontalPadding: Dp = 12.dp
+    val exploreShowTabVerticalPadding: Dp = 6.dp
+
+    /** 分类 Tab 之间的间距（对齐 marginEnd 6dp） */
+    val exploreShowTabSpacing: Dp = 6.dp
+
+    /** 分类 Tab 圆角与描边粗细（对齐 createTabBackground 的 16dp/1dp） */
+    val exploreShowTabCornerRadius: Dp = 16.dp
+    val exploreShowTabBorderWidth: Dp = 1.dp
+
+    /** 选中 Tab 自动滚入视野时的边缘留白（对齐 ensureTabVisible 的 12dp） */
+    val exploreShowTabVisiblePadding: Dp = 12.dp
+
+    /** 网格/瀑布流的列间距 = clamp(列宽 * 5%, 2dp..80dp)，换算后按半份作条目边距 */
+    const val EXPLORE_SHOW_COLUMN_SPACING_RATIO = 0.05f
+    val exploreShowMinColumnSpacing: Dp = 2.dp
+    val exploreShowMaxColumnSpacing: Dp = 80.dp
+
+    /** 网格书名与封面的间距（对齐 item_explore_show_grid 的 4dp） */
+    val exploreShowGridNameSpacing: Dp = 4.dp
+
+    /** 瀑布流卡片内文字边距（对齐 6dp） */
+    val exploreShowWaterfallPadding: Dp = 6.dp
+
+    /** 瀑布流卡片边框粗细（对齐 card_border_background_no_radius 的 0.8dp） */
+    val exploreShowWaterfallBorderWidth: Dp = 0.8.dp
+
+    /** 瀑布流卡片背景填充透明度（对齐 card_bg_water #69 的 41%） */
+    const val EXPLORE_SHOW_WATERFALL_FILL_ALPHA = 0.41f
+
+    /** 瀑布流卡片边框透明度（对齐 card_border_water #39 的 22%） */
+    const val EXPLORE_SHOW_WATERFALL_BORDER_ALPHA = 0.22f
+
+    /** 加载更多 footer 的 spinner 尺寸与上下留白（对齐 view_load_more 的 36dp/6dp） */
+    val exploreShowLoadMoreSize: Dp = 36.dp
+    val exploreShowLoadMoreSpacing: Dp = 6.dp
+    val exploreShowLoadMorePadding: Dp = 10.dp
+    val exploreShowLoadMoreStrokeWidth: Dp = 2.dp
+
+    /** 屏蔽进度悬浮芯片的内边距与外边距（对齐原 Compose 芯片 16/8dp） */
+    val exploreShowBlockChipPaddingHorizontal: Dp = 16.dp
+    val exploreShowBlockChipPaddingVertical: Dp = 8.dp
+    val exploreShowBlockChipOuterHorizontal: Dp = 16.dp
+    val exploreShowBlockChipOuterTop: Dp = 8.dp
+
     // ── 弹窗 ──
 
     /** 单选列表弹窗的选项区最大高度，超出后滚动，避免弹窗顶穿屏幕 */
