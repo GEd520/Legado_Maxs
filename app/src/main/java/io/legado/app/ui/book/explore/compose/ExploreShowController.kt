@@ -401,6 +401,11 @@ class ExploreShowController(
         topFooter = ExploreLoadMoreState(visible = false)
         oldPage = -1
         currentCategoryIndex = 0
+        // currentExploreUrl 必须一并清掉：它还挂着旧源的分类 URL，
+        // onKindsLoaded 的"补记首个分类"分支（currentExploreUrl == null）会被跳过，
+        // 新源的标签条就选不中第一个分类；置 null 后 Compose 侧
+        // LaunchedEffect(controller.currentExploreUrl) 也会重启等待新值
+        currentExploreUrl = null
         restorePendingUrl = null
         clearAllPending = false
         scrollPositionCache.clear()
