@@ -19,6 +19,7 @@ import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewModelScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseFragment
 import io.legado.app.constant.AppLog
@@ -173,7 +174,9 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
         ModernRssController(
             articlesViewModel = rssArticlesViewModel,
             sortViewModel = rssSortViewModel,
-            scope = viewLifecycleOwner.lifecycleScope
+            // 用 VM 作用域：视图在 offscreen 分步放开期间可能销毁重建，
+            // viewLifecycleOwner 的 scope 会随视图死亡导致控制器协程静默失效
+            scope = rssSortViewModel.viewModelScope
         )
     }
 
@@ -528,12 +531,12 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
             .show { targetPage -> modernController.skipPageTo(targetPage) }
     }
 
-    /** 首次进入新版模式时选中上次的订阅源并加载数据 */
+    /** 首次进入新版模式时选中上次的订阅源并加载数据；源列表未就绪时不置位，等数据流再触发 */
     private fun initModernRssData() {
-        modernRssInited = true
         val source = sourceItems.firstOrNull { it.sourceUrl == modernRssSourceUrl }
             ?: sourceItems.firstOrNull()
             ?: return
+        modernRssInited = true
         selectModernRssSource(source)
     }
 
@@ -565,7 +568,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
         viewLifecycleOwner.lifecycleScope.launch {
             val source = modernController.source
             if (source == null) {
-                toastOnUi("源不存在")
+                toastOnUi(R.string.source_not_exist)
                 return@launch
             }
             val comment =
@@ -586,6 +589,10 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
         modernRss = value
         AppConfig.rssModernPage = value
         upModernVisibility()
+        if (value && !modernRssInited) {
+            // 数据流处于 RESUMED 不会重发，就地初始化
+            initModernRssData()
+        }
     }
 
     override fun setVariable(key: String, variable: String?) {

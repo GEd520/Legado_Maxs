@@ -87,6 +87,10 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
     fun initData(sourceUrl: String?, newExploreUrl: String?) {
         execute {
             currentSourceUrl = sourceUrl ?: ""
+            // 新版发现复用常驻 VM 按源切换：先清上一源的数据，避免新旧源串流
+            books.clear()
+            allBooks.clear()
+            preloadCache.clear()
             if (bookSource == null && sourceUrl != null) {
                 bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
             } else if (sourceUrl != null && bookSource?.bookSourceUrl != sourceUrl) {

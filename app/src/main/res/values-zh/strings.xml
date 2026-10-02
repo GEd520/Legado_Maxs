@@ -2032,6 +2032,7 @@
     <string name="switch_to_old_explore">切换到旧版发现</string>
     <string name="switch_to_new_rss">切换到新版订阅</string>
     <string name="switch_to_old_rss">切换到旧版订阅</string>
+    <string name="source_not_exist">源不存在</string>
     <string name="error_view_detail">点击查看详情</string>
     <string name="select_column">选择分列(%d)</string>
     <string name="select_column_count">选择列数</string>

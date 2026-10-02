@@ -67,22 +67,33 @@ class ModernRssController(
 
     private var rawArticles: List<RssArticle> = emptyList()
     private var dbFlowJob: Job? = null
+    private var selectJob: Job? = null
 
     /** 屏蔽规则弹窗需要的原始未过滤文章列表（对齐 View 版 rawArticles） */
     fun rawArticlesForRules(): List<RssArticle> = rawArticles
 
-    /** 切换订阅源：解析分类后加载第一个分类 */
+    /** 跳页/换分类后内容区滚动复位信号 */
+    var scrollToTopTick by mutableIntStateOf(0)
+        private set
+
+    /** 切换订阅源：解析分类后加载第一个分类（保存 Job 取消旧任务，防快速连点串数据） */
     fun selectSource(source: RssSource) {
         this.source = source
         gridMode = source.articleStyle == 2
         footer = RssLoadMoreState(isLoading = true)
-        scope.launch {
+        // 供"清除文章缓存"等源级操作使用
+        sortViewModel.initData(source.sourceUrl) {}
+        selectJob?.cancel()
+        selectJob = scope.launch {
             val loaded = runCatching {
                 withContext(Dispatchers.IO) { source.sortUrls() }
             }.getOrElse {
                 AppLog.put("新版订阅获取分类失败", it)
                 emptyList()
             }.ifEmpty { listOf(Pair("", source.sourceUrl)) }
+            if (this@ModernRssController.source?.sourceUrl != source.sourceUrl) {
+                return@launch
+            }
             sorts = loaded
             loadSort(0)
         }
@@ -97,12 +108,13 @@ class ModernRssController(
 
     private fun loadSort(index: Int) {
         val source = source ?: return
-        selectedSortIndex = index
         val sort = sorts.getOrNull(index) ?: return
+        selectedSortIndex = index
         articles = emptyList()
         rawArticles = emptyList()
         blockedCount = 0
         footer = RssLoadMoreState(isLoading = true)
+        scrollToTopTick++
         observeDbFlow(source.sourceUrl, sort.first)
         articlesViewModel.init(sort.first, sort.second)
         articlesViewModel.loadArticles(source)
@@ -126,6 +138,8 @@ class ModernRssController(
         val filtered = runCatching {
             BlockRuleStore.filterRssArticles(appCtx, loaded, sourceUrl)
         }.getOrDefault(loaded)
+            // 批次内去重：LazyColumn 的 item key 含 link，重复会直接崩溃
+            .distinctBy { "${it.origin}_${it.link}_${it.sort}" }
         blockedCount = loaded.size - filtered.size
         articles = filtered
     }
@@ -146,11 +160,12 @@ class ModernRssController(
         }
     }
 
-    /** 跳页菜单确认后调用 */
+    /** 跳页菜单确认后调用（内容区随后滚动复位，避免停在底部触发自动续翻） */
     fun skipPageTo(page: Int) {
         val source = source ?: return
         if (page == currentPage) return
         footer = RssLoadMoreState(isLoading = true)
+        scrollToTopTick++
         articlesViewModel.skipPage(page)
         articlesViewModel.loadArticles(source, page)
     }

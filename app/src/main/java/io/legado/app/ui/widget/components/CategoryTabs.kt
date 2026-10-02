@@ -70,7 +70,8 @@ fun CategoryTabs(
         rows
     }
     val maxPerRow = ceil(titles.size / rowCount.toDouble()).toInt().coerceAtLeast(1)
-    val clickedIndexes = remember { mutableStateListOf<Int>() }
+    // keyed by titles：换源/换分类集后点击态不残留到同下标的新 Tab
+    val clickedIndexes = remember(titles) { mutableStateListOf<Int>() }
 
     Column(
         modifier = modifier

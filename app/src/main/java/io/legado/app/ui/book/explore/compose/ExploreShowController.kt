@@ -386,6 +386,7 @@ class ExploreShowController(
         currentCategoryIndex = 0
         restorePendingUrl = null
         clearAllPending = false
+        scrollPositionCache.clear()
     }
 
     private fun currentKindUrl(): String? =

@@ -196,6 +196,10 @@ private fun ModernRssList(
             )
         }
     }
+    // 跳页/换分类后滚动复位
+    LaunchedEffect(controller.scrollToTopTick) {
+        if (controller.scrollToTopTick > 0) listState.scrollToItem(0)
+    }
     ModernRssPagingEffect(controller) {
         ModernRssViewport(
             firstIndex = listState.firstVisibleItemIndex,
@@ -238,6 +242,10 @@ private fun ModernRssGrid(
                 onClick = { controller.requestLoadMore(forceLoad = true) }
             )
         }
+    }
+    // 跳页/换分类后滚动复位
+    LaunchedEffect(controller.scrollToTopTick) {
+        if (controller.scrollToTopTick > 0) gridState.scrollToItem(0)
     }
     ModernRssPagingEffect(controller) {
         ModernRssViewport(

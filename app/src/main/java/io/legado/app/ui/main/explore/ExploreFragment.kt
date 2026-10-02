@@ -325,9 +325,8 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
      * 更新排序菜单项的选中状态
      */
     override fun onPrepareOptionsMenu(menu: Menu) {
-        val sortSubMenu = menu.findItem(R.id.action_sort).subMenu!!
-        sortSubMenu.findItem(R.id.menu_sort_desc).isChecked = !sortAscending
-        sortSubMenu.setGroupCheckable(R.id.menu_group_sort, true, true)
+        // Fragment 菜单不走 Activity 菜单体系，此方法不会被执行（排序勾选在
+        // onCompatCreateOptionsMenu 里初始化）；保留覆盖仅为兼容签名
         super.onPrepareOptionsMenu(menu)
     }
 
@@ -616,12 +615,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
 
     // ── 新版发现 ──
 
-    /** 首次进入新版模式时选中上次的书源并加载数据 */
+    /** 首次进入新版模式时选中上次的书源并加载数据；源列表未就绪时不置位，等数据流再触发 */
     private fun initModernExploreData() {
-        modernExploreInited = true
         val source = sourceItems.firstOrNull { it.bookSourceUrl == modernExploreSourceUrl }
             ?: sourceItems.firstOrNull()
             ?: return
+        modernExploreInited = true
         selectModernExploreSource(source)
     }
 
@@ -683,6 +682,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         modernExplore = value
         AppConfig.exploreModernPage = value
         upModernVisibility()
+        if (value && !modernExploreInited) {
+            // 数据流处于 RESUMED 不会重发，就地初始化
+            initModernExploreData()
+        }
     }
 
     /** 新版发现的屏蔽规则配置（复用发现列表页的做法） */
