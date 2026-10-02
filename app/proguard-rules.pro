@@ -72,6 +72,11 @@
 # 不在 data.entities 包内，字段名被混淆会导致正式包恢复缓存时索引解析失败、.nb 文件无法复制
 -keep class io.legado.app.help.storage.BookCacheIndex{*;}
 -keep class io.legado.app.help.storage.ChapterCacheInfo{*;}
+# 缓存清单数据类：GSON 反射读写 book_cache/<书>/cache_manifest.json，
+# 字段名被混淆后 GSON 按名字匹配不到字段（chapters 退化成 LinkedTreeMap），
+# 缓存管理页会因 ClassCastException 崩溃、已缓存计数恒为 0
+-keep class io.legado.app.help.book.CacheBookManifest{*;}
+-keep class io.legado.app.help.book.CacheChapterManifest{*;}
 
 # Room 数据库（防止 R8 在 release 构建中剥离生成的 _Impl 类）
 -keep class io.legado.app.data.AppDatabase {*;}

@@ -43,6 +43,12 @@ object CacheManifestHelper {
         val manifest = runCatching {
             GSON.fromJsonObject<CacheBookManifest>(file.readText()).getOrNull()
         }.getOrNull()
+            // 清单字段靠 GSON 反射按名字匹配，混淆包里字段被混淆（见 proguard-rules 的保留规则）
+            // 会反序列化出 LinkedTreeMap 之类的坏数据；在这里摸一遍就地失败成 null（当没有清单），
+            // 避免到迭代时才 ClassCastException 崩溃
+            ?.takeIf { parsed ->
+                runCatching { parsed.chapters.forEach { it.index >= 0 } }.isSuccess
+            }
         manifestMemo[path] = modified to manifest
         return manifest
     }
