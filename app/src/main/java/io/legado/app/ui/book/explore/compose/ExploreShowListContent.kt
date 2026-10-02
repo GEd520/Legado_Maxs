@@ -424,20 +424,24 @@ private fun Modifier.exploreCategorySwipe(
             val delta = change.positionChange()
             totalX += delta.x
             totalY += delta.y
+            if (!controller.showCategoryTab || controller.kinds.isEmpty()) break
+            // 移动过程中判定（不等抬起）：一旦确认水平 fling 立即切换分类并消费
+            // 剩余事件——消费会让条目 clickable 的 tap 判定取消，避免切换分类的
+            // 同时点开落点处的条目（View 版由 RecyclerView 拦截 press 兜底）
+            if (abs(totalX) > minSwipePx && abs(totalX) > abs(totalY)) {
+                val velocity = tracker.calculateVelocity()
+                if (abs(velocity.x) > minFlingVelocity) {
+                    if (totalX > 0) {
+                        controller.switchToPreviousCategory()
+                    } else {
+                        controller.switchToNextCategory()
+                    }
+                    event.changes.forEach { it.consume() }
+                    break
+                }
+            }
             if (event.changes.none { it.pressed }) break
         }
-        if (!controller.showCategoryTab || controller.kinds.isEmpty()) return@awaitEachGesture
-        val velocity = tracker.calculateVelocity()
-        if (abs(totalX) > abs(totalY) &&
-            abs(totalX) > minSwipePx &&
-            abs(velocity.x) > minFlingVelocity
-        ) {
-            if (totalX > 0) {
-                controller.switchToPreviousCategory()
-            } else {
-                controller.switchToNextCategory()
-            }
-        }
     }
-    }
+}
 }
