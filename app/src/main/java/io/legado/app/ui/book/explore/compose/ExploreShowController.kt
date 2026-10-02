@@ -128,6 +128,10 @@ class ExploreShowController(
 
     var books by mutableStateOf<List<SearchBook>>(emptyList())
         private set
+
+    /** 条目稳定 key：首次出现序号按 origin+bookUrl 计数，前插/追加都不使旧 key 失效 */
+    var bookKeys by mutableStateOf<List<String>>(emptyList())
+        private set
     var kinds by mutableStateOf<List<ExploreKind>>(emptyList())
         private set
     var currentCategoryIndex by mutableIntStateOf(0)
@@ -172,6 +176,19 @@ class ExploreShowController(
 
     fun getBookShelfState(book: SearchBook) = viewModel.getBookShelfState(book)
 
+    /** books 的唯一写入口：同步重建条目稳定 key */
+    private fun updateBooks(newBooks: List<SearchBook>) {
+        books = newBooks
+        val seen = HashMap<String, Int>()
+        bookKeys = newBooks.map { book ->
+            val key = "${book.origin}_${book.bookUrl}"
+            "${key}__${seen.merge(key, 1, Int::plus)}"
+        }
+    }
+
+    /** 按下标取条目稳定 key（供 Lazy 列表 items 的 key 使用） */
+    fun bookKey(index: Int): String = bookKeys.getOrElse(index) { "b_$index" }
+
     /** 读取指定分类缓存中的滚动位置快照 */
     fun cachedScrollSnapshot(url: String?): ExploreScrollSnapshot? =
         url?.let { scrollPositionCache[it] }
@@ -213,11 +230,11 @@ class ExploreShowController(
             footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty))
         } else if (books.size == loaded.size) {
             // 书源没有返回新增数据（整页被屏蔽等），显示到底
-            footer = ExploreLoadMoreState()
+            footer = ExploreLoadMoreState(hasMore = false)
         } else {
             val oldCount = books.size
             if (oldCount == 0) {
-                books = loaded
+                updateBooks(loaded)
                 if (clearAllPending) {
                     // 跳页场景：落回列表顶部（restore 会被跳页目标覆盖）
                     clearAllPending = false
@@ -227,9 +244,9 @@ class ExploreShowController(
                     scrollCommand = ExploreScrollCommand.RestoreCategory(restorePendingUrl)
                 }
             } else if (loaded.size > oldCount) {
-                books = books + loaded.subList(oldCount, loaded.size)
+                updateBooks(books + loaded.subList(oldCount, loaded.size))
             } else {
-                books = loaded
+                updateBooks(loaded)
             }
         }
     }
@@ -238,8 +255,10 @@ class ExploreShowController(
     fun upDataTop(added: List<SearchBook>) {
         topFooter = topFooter.copy(isLoading = false)
         if (added.isEmpty()) return
-        books = added + books
-        scrollCommand = ExploreScrollCommand.PrependAnchor(books.size)
+        updateBooks(added + books)
+        // 对齐 View 版 scrollToPositionWithOffset(books.size, 0)：
+        // 顶部 footer 占 0 号位时，最后一个新条目位于 added.size
+        scrollCommand = ExploreScrollCommand.PrependAnchor(added.size)
         if (oldPage <= 1) {
             topFooter = topFooter.copy(visible = false)
         }
@@ -248,7 +267,7 @@ class ExploreShowController(
     /** 屏蔽规则变化后全量刷新列表 */
     fun refreshAfterBlock(loaded: List<SearchBook>) {
         footer = footer.copy(isLoading = false)
-        books = loaded
+        updateBooks(loaded)
         if (loaded.isEmpty()) {
             footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty))
         }
@@ -344,7 +363,7 @@ class ExploreShowController(
         }
         oldPage = newPage
         viewModel.skipPage(newPage)
-        books = emptyList()
+        updateBooks(emptyList())
         clearAllPending = true
         if (!footer.hasMore) {
             // footer 已到底时不会有滚动事件触发加载，主动强载（对齐 View 版）
@@ -374,8 +393,11 @@ class ExploreShowController(
         val url = kind.url ?: return null
         saveCurrentScrollPosition()
         currentCategoryIndex = position
-        books = emptyList()
+        updateBooks(emptyList())
         footer = ExploreLoadMoreState(isLoading = true)
+        // VM 已把页码重置为新分类基准页，向上翻页状态同步归零
+        oldPage = -1
+        topFooter = ExploreLoadMoreState(visible = false)
         restorePendingUrl = url
         viewModel.switchCategory(
             newUrl = url,

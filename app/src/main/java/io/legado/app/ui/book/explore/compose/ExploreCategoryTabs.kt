@@ -26,8 +26,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -152,7 +153,11 @@ private fun ExploreCategoryTab(
     Text(
         text = title,
         modifier = modifier
-            .onSizeChanged { onBoundsChanged(IntRect(IntOffset.Zero, it)) }
+            // 记录 Tab 在所在行内的偏移与尺寸（供选中后滚入视野计算）
+            .onGloballyPositioned { coords ->
+                val pos = coords.positionInParent()
+                onBoundsChanged(IntRect(IntOffset(pos.x.toInt(), pos.y.toInt()), coords.size))
+            }
             .then(if (selected) Modifier.border(AppDimens.exploreShowTabBorderWidth, MaterialTheme.colorScheme.primary, shape) else Modifier)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },

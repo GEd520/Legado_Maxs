@@ -434,7 +434,10 @@ fun ExploreWaterfallCover(
     val requestKey = listOf(realPath, book.origin, htmlCover, useDefaultCover, cleanName, cleanAuthor)
         .joinToString("|")
 
-    var drawable by remember(requestKey) { mutableStateOf<Drawable?>(null) }
+    // 占位图：与 View 版 placeholder 一致，加载完成前显示默认封面（绘名封面对除外）
+    var drawable by remember(requestKey) {
+        mutableStateOf<Drawable?>(if (drawNameOverlay) null else defaultCoverDrawable())
+    }
     // 高度/宽度比：默认封面 600x900；绘名封面对齐 CoverLoader 用 4:3
     var heightRatio by remember(requestKey) { mutableFloatStateOf(1.5f) }
     var bounds by remember { mutableStateOf(IntSize.Zero) }

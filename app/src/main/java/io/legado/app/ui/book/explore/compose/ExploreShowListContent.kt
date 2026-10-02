@@ -105,8 +105,9 @@ private fun getShelfState(
     return controller.getBookShelfState(book)
 }
 
-/** 条目 key：下标 + bookUrl，追加/前插场景保持稳定 */
-private fun bookItemKey(index: Int, book: SearchBook): String = "b_${index}_${book.bookUrl}"
+/** 条目 key：由 controller 维护的"origin+bookUrl+首次出现序号"，追加/前插都保持稳定 */
+private fun bookItemKey(controller: ExploreShowController, index: Int): String =
+    controller.bookKey(index)
 
 // ── 列表模式 ──
 
@@ -131,7 +132,7 @@ private fun ExploreShowLazyList(
                 ExploreLoadMoreFooter(state = controller.topFooter)
             }
         }
-        itemsIndexed(controller.books, key = { index, book -> bookItemKey(index, book) }) {
+        itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
                 index, book ->
             Column {
                 if (index == 0 && controller.topFooter.visible) {
@@ -163,14 +164,17 @@ private fun ExploreShowLazyList(
         )
     }
     ExploreScrollCommandEffect(controller) { command ->
-        val total = listState.layoutInfo.totalItemsCount
+        // 守卫必须用 controller 的数据量：指令消费发生在新数据测量完成之前，
+        // layoutInfo.totalItemsCount 此时还是旧值，会导致恢复/跳页定位静默失效
+        val topFooterCount = if (controller.topFooter.visible) 1 else 0
+        val total = controller.books.size + topFooterCount + 1
         when (command) {
             is ExploreScrollCommand.SkipPageTop ->
-                if (total > 1) listState.scrollToItem(1, 0)
+                if (total > 2) listState.scrollToItem(1, 0)
 
             is ExploreScrollCommand.RestoreCategory -> {
                 val saved = controller.cachedScrollSnapshot(command.url)
-                if (saved != null && saved.index in 1 until total) {
+                if (saved != null && saved.index in 1..controller.books.size + topFooterCount) {
                     listState.scrollToItem(saved.index, saved.offset)
                 } else {
                     listState.scrollToItem(0, 0)
@@ -183,7 +187,7 @@ private fun ExploreShowLazyList(
                 }
 
             is ExploreScrollCommand.RestoreIndex ->
-                if (command.index in 0 until total) listState.scrollToItem(command.index)
+                if (command.index < total) listState.scrollToItem(command.index)
         }
     }
 }
@@ -222,7 +226,7 @@ private fun ExploreShowLazyGrid(
                 ExploreLoadMoreFooter(state = controller.topFooter)
             }
         }
-        itemsIndexed(controller.books, key = { index, book -> bookItemKey(index, book) }) {
+        itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
                 _, book ->
             ExploreShowGridItem(
                 book = book,
@@ -248,7 +252,8 @@ private fun ExploreShowLazyGrid(
         )
     }
     ExploreScrollCommandEffect(controller) { command ->
-        val total = gridState.layoutInfo.totalItemsCount
+        val topFooterCount = if (controller.topFooter.visible) 1 else 0
+        val total = controller.books.size + topFooterCount + 1
         when (command) {
             is ExploreScrollCommand.SkipPageTop -> Unit
 
@@ -264,7 +269,7 @@ private fun ExploreShowLazyGrid(
             is ExploreScrollCommand.PrependAnchor -> Unit
 
             is ExploreScrollCommand.RestoreIndex ->
-                if (command.index in 0 until total) gridState.scrollToItem(command.index)
+                if (command.index < total) gridState.scrollToItem(command.index)
         }
     }
 }
@@ -303,7 +308,7 @@ private fun ExploreShowStaggeredContent(
                 ExploreLoadMoreFooter(state = controller.topFooter)
             }
         }
-        itemsIndexed(controller.books, key = { index, book -> bookItemKey(index, book) }) {
+        itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
                 _, book ->
             ExploreShowWaterfallItem(
                 book = book,
@@ -330,7 +335,8 @@ private fun ExploreShowStaggeredContent(
         )
     }
     ExploreScrollCommandEffect(controller) { command ->
-        val total = staggeredState.layoutInfo.totalItemsCount
+        val topFooterCount = if (controller.topFooter.visible) 1 else 0
+        val total = controller.books.size + topFooterCount + 1
         when (command) {
             is ExploreScrollCommand.SkipPageTop -> Unit
 
@@ -346,14 +352,20 @@ private fun ExploreShowStaggeredContent(
             is ExploreScrollCommand.PrependAnchor -> Unit
 
             is ExploreScrollCommand.RestoreIndex ->
-                if (command.index in 0 until total) staggeredState.scrollToItem(command.index)
+                if (command.index < total) staggeredState.scrollToItem(command.index)
         }
     }
 }
 
 // ── 共用副作用 ──
 
-/** 视口上报 → 翻页触发与滚动位置缓存 */
+/**
+ * 视口上报 → 翻页触发与滚动位置缓存。
+ *
+ * 用 snapshotFlow 观察替代 View 版的 onScrolled 逐帧回调：停在底部时加载完成、
+ * 状态变化都会再次触发（与 View 版行为一致，由 hasMore/loading 与冷却防重）；
+ * 差异是首屏不足一屏时也会直接连发加载直到填满（View 版需一次滚动事件）。
+ */
 @Composable
 private fun ExploreViewportEffect(
     controller: ExploreShowController,
@@ -407,12 +419,11 @@ private fun Modifier.exploreCategorySwipe(
             val event = awaitPointerEvent()
             val change = event.changes.firstOrNull { it.id == down.id }
                 ?: event.changes.firstOrNull()
-            if (change != null) {
-                tracker.addPosition(change.uptimeMillis, change.position)
-                val delta = change.positionChange()
-                totalX += delta.x
-                totalY += delta.y
-            }
+            if (change == null || !change.pressed) break
+            tracker.addPosition(change.uptimeMillis, change.position)
+            val delta = change.positionChange()
+            totalX += delta.x
+            totalY += delta.y
             if (event.changes.none { it.pressed }) break
         }
         if (!controller.showCategoryTab || controller.kinds.isEmpty()) return@awaitEachGesture
