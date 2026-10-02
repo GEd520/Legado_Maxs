@@ -351,15 +351,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     }
 
     /**
-     * 模式切换后同步 TitleBar 与菜单：新版模式下 TitleBar 保留占位
-     * （高度与旧版一致、仍受顶栏控制），标题与搜索框清空——
-     * 源切换行 / 三点菜单由内容区头部行承担。
+     * 模式切换后同步 TitleBar 与菜单：新版模式下 TitleBar 隐藏，
+     * 源切换行 / 三点菜单由内容区头部行承担——头部行自占
+     * 状态栏 + 顶栏高度（statusBarsPadding + topBarHeight），
+     * 位置与高度与旧版 TitleBar 完全一致。
      */
     private fun upModernVisibility() {
-        if (modernExplore) {
-            binding.titleBar.title = ""
-            searchView.isVisible = false
-        } else {
+        binding.titleBar.isGone = modernExplore
+        if (!modernExplore) {
             searchView.isVisible = true
         }
         upMenuVisibility()

@@ -220,6 +220,12 @@ class ExploreShowController(
     fun onKindsLoaded(loaded: List<ExploreKind>) {
         kinds = loaded
         currentCategoryIndex = loaded.indexOfFirst { it.url == initialExploreUrl }.coerceAtLeast(0)
+        if (currentExploreUrl == null) {
+            // VM initData(sourceUrl, null) 会自动选中第一个 url 类分类，
+            // 但不经过 loadExploreUrl：这里把该初始分类同步到控制器，
+            // 供新版发现的头部标签条显示选中态
+            currentExploreUrl = loaded.firstOrNull { it.type == ExploreKind.Type.url }?.url
+        }
     }
 
     fun onPageChanged(page: Int) {

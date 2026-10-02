@@ -358,6 +358,9 @@ object AppDimens {
     const val TAG_DIALOG_COLUMNS = 3
     const val TAG_DIALOG_CONTAINER_ALPHA = 0.92f
 
+    /** 顶栏高度：新版发现/订阅头部行自占的高度（对齐旧版 TitleBar 的 toolbar 56dp） */
+    val topBarHeight: Dp = 56.dp
+
     /** 书架状态小绿点尺寸（列表 8dp、网格/瀑布流 6dp，对齐 CircleImageView） */
     val exploreShowShelfDotSizeList: Dp = 8.dp
     val exploreShowShelfDotSizeSmall: Dp = 6.dp

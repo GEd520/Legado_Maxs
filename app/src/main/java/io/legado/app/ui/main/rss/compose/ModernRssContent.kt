@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -197,12 +198,11 @@ private fun ModernRssSourceRow(
     var showMoreMenu by remember { mutableStateOf(false) }
 
     Row(
-        modifier.padding(
-            start = AppDimens.exploreShowTabsHorizontalPadding,
-            end = AppDimens.exploreShowTabsHorizontalPadding,
-            top = 12.dp,
-            bottom = AppDimens.exploreShowTabsVerticalPadding
-        ),
+        modifier = modifier
+            .statusBarsPadding()
+            // 自占旧版 TitleBar 的高度（状态栏 inset + 56dp toolbar），内容垂直居中
+            .height(AppDimens.topBarHeight)
+            .padding(horizontal = AppDimens.exploreShowTabsHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
