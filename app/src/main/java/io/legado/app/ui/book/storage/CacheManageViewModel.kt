@@ -59,7 +59,7 @@ import java.util.concurrent.ConcurrentHashMap
  * 不持有界面引用，暂不为此再引一层 DI。
  */
 class CacheManageViewModel(
-    private val cacheTaskStarter: CacheTaskStarter = CacheTaskStarter { _, _ -> 0 }
+    private val cacheTaskStarter: CacheTaskStarter = CacheTaskStarter { _, _ -> 0 },
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CacheManageUiState())
@@ -144,12 +144,12 @@ class CacheManageViewModel(
         _uiState.update { it.copy(mode = mode, loading = true, error = null) }
         loadJob = viewModelScope.launch {
             try {
-                //第一阶段只拿书单与章节数（一次 group by），先把书名显示出来
+                // 第一阶段只拿书单与章节数（一次 group by），先把书名显示出来
                 val items = withContext(Dispatchers.IO) { loadItems(mode) }
                 allItems = items
                 applyFilter()
                 _uiState.update { it.copy(loading = false) }
-                //第二阶段并行补"已缓存章节数 + 占用"，算完一批刷一批
+                // 第二阶段并行补"已缓存章节数 + 占用"，算完一批刷一批
                 fillCacheInfo()
             } catch (e: CancellationException) {
                 throw e
@@ -191,7 +191,7 @@ class CacheManageViewModel(
                             item.copy(
                                 cachedCount = info.first,
                                 storageSizeBytes = info.second,
-                                storageCalculated = true
+                                storageCalculated = true,
                             )
                         }
                     }
@@ -219,7 +219,7 @@ class CacheManageViewModel(
         }
         val cachedCount = if (item.mode.isMedia) {
             var count = countCachedMediaChapters(book, item.manifest)
-            //清单功能之前缓存的老书地址不可知，只有一章时按缓存内容反推
+            // 清单功能之前缓存的老书地址不可知，只有一章时按缓存内容反推
             if (count == 0 && item.totalChapterCount == 1) {
                 if (CacheManifestHelper.recoverLegacyMediaUrl(book) != null) {
                     count = countCachedMediaChapters(book, item.manifest)
@@ -227,7 +227,7 @@ class CacheManageViewModel(
             }
             count
         } else {
-            //文本/漫画一章一个 .nb 文件，直接数文件比逐章比对便宜得多
+            // 文本/漫画一章一个 .nb 文件，直接数文件比逐章比对便宜得多
             chapterFiles
         }
         val total = item.totalChapterCount.takeIf { it > 0 } ?: cachedCount
@@ -238,16 +238,16 @@ class CacheManageViewModel(
         val books = appDb.bookDao.all
             .filter { !it.isLocal && it.isType(mode.bookType) }
         val manifests = CacheManifestHelper.listManifests()
-        //清单只读一遍，之后的逐本查询都走内存，避免每本书都去扫一遍缓存目录
+        // 清单只读一遍，之后的逐本查询都走内存，避免每本书都去扫一遍缓存目录
         manifestCache.clear()
         manifestCache.putAll(manifests.associateBy { it.bookUrl })
-        //章节总数一次查全，不要逐本读章节表
+        // 章节总数一次查全，不要逐本读章节表
         val chapterCounts = appDb.bookChapterDao.getChapterCounts()
             .associate { it.bookUrl to it.count }
         val items = books.mapTo(mutableListOf()) { book ->
             buildItem(book, mode, manifestCache[book.bookUrl], chapterCounts[book.bookUrl])
         }
-        //缓存还在、书籍记录已删除的：靠清单列出来，卡片上提供"加入书架"
+        // 缓存还在、书籍记录已删除的：靠清单列出来，卡片上提供"加入书架"
         val bookUrls = books.mapTo(hashSetOf()) { it.bookUrl }
         manifests.asSequence()
             .filter { !bookUrls.contains(it.bookUrl) }
@@ -266,14 +266,14 @@ class CacheManageViewModel(
         book: Book,
         mode: CacheManageMode,
         manifest: CacheBookManifest?,
-        chapterCount: Int? = null
+        chapterCount: Int? = null,
     ): CacheBookItem {
         val totalChapterCount = chapterCount?.takeIf { it > 0 }
-            //批量查询没覆盖到这本书（全是卷标题之类）时按同口径再查一次：
-            //已缓存数不含卷标题，分母也不能含，否则这个分数没有意义
+            // 批量查询没覆盖到这本书（全是卷标题之类）时按同口径再查一次：
+            // 已缓存数不含卷标题，分母也不能含，否则这个分数没有意义
             ?: appDb.bookChapterDao.getChapterCountWithoutVolume(book.bookUrl).takeIf { it > 0 }
             ?: book.totalChapterNum
-        //已经算过这本书就直接带上：切分类、重进页面不重复扫盘
+        // 已经算过这本书就直接带上：切分类、重进页面不重复扫盘
         val known = computedByBookUrl[book.bookUrl]
         return CacheBookItem(
             book = book,
@@ -283,15 +283,16 @@ class CacheManageViewModel(
             storageSizeBytes = known?.second ?: 0L,
             storageCalculated = known != null,
             manifest = manifest,
-            inBookshelf = !book.isNotShelf
+            inBookshelf = !book.isNotShelf,
         )
     }
 
     /**
-     * 媒体：只核对清单里记过"已缓存"的那几章
+     * 媒体：优先只核对清单里记过"已缓存"的那几章
      *
      * 清单里的缓存标记是上次刷新按同一口径写的，逐章查媒体缓存对大书同样很慢；
-     * 没有清单的老缓存才退化成逐章核对
+     * 清单里一章都没记（清单功能之前的老缓存、或清单还没按现在的口径刷新过）才退化成逐章核对，
+     * 否则磁盘上明明有缓存的书会永远显示 0
      */
     private fun countCachedMediaChapters(book: Book, manifest: CacheBookManifest?): Int {
         if (manifest == null) {
@@ -300,19 +301,26 @@ class CacheManageViewModel(
                 .count { isMediaChapterCached(book, it) }
         }
         val candidate = manifest.cachedIndexes
-        if (candidate.isEmpty()) return 0
+        // 清单里一章都没记"已缓存"：多半是清单功能之前的老缓存，或清单还没按现在的口径刷新过——
+        // 直接返回 0 会让磁盘上明明有缓存的书永远显示 0，退化成逐章核对
+        if (candidate.isEmpty()) {
+            return appDb.bookChapterDao.getChapterList(book.bookUrl)
+                .filterNot { it.isVolume }
+                .count { isMediaChapterCached(book, it, manifest) }
+        }
         return manifest.chapters.count { recorded ->
-            recorded.index in candidate && isMediaChapterCached(
-                book,
-                CacheManifestHelper.toChapter(recorded, book.bookUrl),
-                manifest
-            )
+            recorded.index in candidate &&
+                isMediaChapterCached(
+                    book,
+                    CacheManifestHelper.toChapter(recorded, book.bookUrl),
+                    manifest,
+                )
         }
     }
 
     private fun buildItemFromManifest(
         manifest: CacheBookManifest,
-        mode: CacheManageMode
+        mode: CacheManageMode,
     ): CacheBookItem {
         val book = CacheManifestHelper.toBook(manifest)
         val chapters = CacheManifestHelper.toChapters(manifest)
@@ -327,7 +335,7 @@ class CacheManageViewModel(
             cachedCount = cachedCount,
             totalChapterCount = chapters.size.takeIf { it > 0 } ?: manifest.totalChapterNum,
             manifest = manifest,
-            inBookshelf = false
+            inBookshelf = false,
         )
     }
 
@@ -339,14 +347,12 @@ class CacheManageViewModel(
     private fun isMediaChapterCached(
         book: Book,
         chapter: BookChapter,
-        manifest: CacheBookManifest? = null
-    ): Boolean {
-        return CacheManifestHelper.cachedMediaUrl(
-            book,
-            chapter,
-            manifest ?: findManifest(book)
-        ) != null
-    }
+        manifest: CacheBookManifest? = null,
+    ): Boolean = CacheManifestHelper.cachedMediaUrl(
+        book,
+        chapter,
+        manifest ?: findManifest(book),
+    ) != null
 
     // region 章节弹窗
 
@@ -378,8 +384,8 @@ class CacheManageViewModel(
                 chapterDialog = dialog.copy(
                     filter = filter,
                     selectedIndexes = emptySet(),
-                    selectionMode = false
-                )
+                    selectionMode = false,
+                ),
             )
         }
         loadChapters()
@@ -404,21 +410,21 @@ class CacheManageViewModel(
                         chapterDialog = state.chapterDialog?.copy(
                             chapters = items,
                             loading = false,
-                            error = null
-                        )
+                            error = null,
+                        ),
                     )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 AppLog.put("读取缓存章节失败 ${dialog.book.name}\n${e.localizedMessage}", e)
-                //错误显示在弹窗里而不是只在 Toast：弹窗还开着时用户能看到原因与重试入口
+                // 错误显示在弹窗里而不是只在 Toast：弹窗还开着时用户能看到原因与重试入口
                 _uiState.update { state ->
                     state.copy(
                         chapterDialog = state.chapterDialog?.copy(
                             loading = false,
-                            error = e.localizedMessage ?: appCtx.getString(R.string.error)
-                        )
+                            error = e.localizedMessage ?: appCtx.getString(R.string.error),
+                        ),
                     )
                 }
             }
@@ -428,7 +434,7 @@ class CacheManageViewModel(
     private suspend fun loadChapterItems(
         book: Book,
         key: String,
-        filter: CacheChapterFilter
+        filter: CacheChapterFilter,
     ): List<CacheChapterItem> {
         val manifest = findManifestDeep(book)
         val dbChapters = if (key.isBlank()) {
@@ -436,8 +442,8 @@ class CacheManageViewModel(
         } else {
             appDb.bookChapterDao.search(book.bookUrl, key)
         }
-        //音视频章节的播放地址会被目录刷新清空，用清单里记的历史地址补回来，
-        //否则已缓存的媒体会变成"判定不到缓存"的孤儿
+        // 音视频章节的播放地址会被目录刷新清空，用清单里记的历史地址补回来，
+        // 否则已缓存的媒体会变成"判定不到缓存"的孤儿
         if (book.isMedia && CacheManifestHelper.mergeResourceUrls(book, dbChapters, manifest)) {
             appDb.bookChapterDao.update(*dbChapters.toTypedArray())
         }
@@ -456,7 +462,7 @@ class CacheManageViewModel(
                 val cached = if (book.isMedia) {
                     isMediaChapterCached(book, chapter, manifest)
                 } else {
-                    //标题/序号被目录刷新改过时，按清单里缓存当时的名字找回
+                    // 标题/序号被目录刷新改过时，按清单里缓存当时的名字找回
                     CacheManifestHelper.cachedTextFileName(book, chapter, manifest, cacheNames) != null
                 }
                 CacheChapterItem(chapter = chapter, cached = cached)
@@ -475,8 +481,8 @@ class CacheManageViewModel(
             state.copy(
                 chapterDialog = dialog.copy(
                     selectedIndexes = selected,
-                    selectionMode = true
-                )
+                    selectionMode = true,
+                ),
             )
         }
     }
@@ -487,8 +493,8 @@ class CacheManageViewModel(
             state.copy(
                 chapterDialog = dialog.copy(
                     selectedIndexes = dialog.chapters.mapTo(hashSetOf()) { it.chapter.index },
-                    selectionMode = true
-                )
+                    selectionMode = true,
+                ),
             )
         }
     }
@@ -497,7 +503,7 @@ class CacheManageViewModel(
         _uiState.update { state ->
             val dialog = state.chapterDialog ?: return@update state
             state.copy(
-                chapterDialog = dialog.copy(selectedIndexes = emptySet(), selectionMode = false)
+                chapterDialog = dialog.copy(selectedIndexes = emptySet(), selectionMode = false),
             )
         }
     }
@@ -521,9 +527,9 @@ class CacheManageViewModel(
         }
         toast(R.string.cache_manage_cache_selected_done, count)
         clearChapterSelection()
-        //缓存任务在后台跑，事件不保证覆盖媒体下载的每个阶段，这里兜底轮询到本行数据落定
+        // 缓存任务在后台跑，事件不保证覆盖媒体下载的每个阶段，这里兜底轮询到本行数据落定
         pollItemUntilSettled(dialog.book.bookUrl)
-        //媒体缓存是后台排队下载，进度由缓存任务通知/事件反映，这里关掉弹窗避免误以为没反应
+        // 媒体缓存是后台排队下载，进度由缓存任务通知/事件反映，这里关掉弹窗避免误以为没反应
         if (dialog.book.isMedia) {
             dismissChapterDialog()
         } else {
@@ -558,7 +564,7 @@ class CacheManageViewModel(
             val target = withContext(Dispatchers.IO) {
                 var target = appDb.bookDao.getBook(book.bookUrl)
                 if (target == null) {
-                    //只有缓存、书已删除：先用清单把书与章节恢复回来
+                    // 只有缓存、书已删除：先用清单把书与章节恢复回来
                     if (!restoreToBookshelf(book)) return@withContext null
                     target = appDb.bookDao.getBook(book.bookUrl)
                 }
@@ -583,10 +589,8 @@ class CacheManageViewModel(
     }
 
     /** 按 bookUrl 兜底找清单（书改过名、目录名与书名不一致时用）：只用于单次操作，不进列表热路径 */
-    private fun findManifestDeep(book: Book): CacheBookManifest? {
-        return findManifest(book)
-            ?: CacheManifestHelper.listManifests().firstOrNull { it.bookUrl == book.bookUrl }
-    }
+    private fun findManifestDeep(book: Book): CacheBookManifest? = findManifest(book)
+        ?: CacheManifestHelper.listManifests().firstOrNull { it.bookUrl == book.bookUrl }
 
     /**
      * 书籍缓存目录
@@ -609,37 +613,35 @@ class CacheManageViewModel(
      * 只用于书已不在书架的场景。书还在书架时不要走这里——清单是某次刷新时的章节快照，
      * 拿它整表覆盖会把用户后来新增/调整过的章节回滚掉
      */
-    private fun restoreFromManifest(manifest: CacheBookManifest): Boolean {
-        return runCatching {
-            val sameUrlBook = appDb.bookDao.getBook(manifest.bookUrl)
-            val sameNameBook = appDb.bookDao.getBook(manifest.name, manifest.author)
-            val cacheBook = CacheManifestHelper.toBook(manifest).apply {
-                removeType(BookType.notShelf)
-                val source = sameUrlBook ?: sameNameBook
-                source?.let {
-                    group = it.group
-                    order = it.order
-                    durChapterIndex = it.durChapterIndex
-                    durChapterTitle = it.durChapterTitle
-                    durChapterPos = it.durChapterPos
-                    readConfig = it.readConfig
-                }
+    private fun restoreFromManifest(manifest: CacheBookManifest): Boolean = runCatching {
+        val sameUrlBook = appDb.bookDao.getBook(manifest.bookUrl)
+        val sameNameBook = appDb.bookDao.getBook(manifest.name, manifest.author)
+        val cacheBook = CacheManifestHelper.toBook(manifest).apply {
+            removeType(BookType.notShelf)
+            val source = sameUrlBook ?: sameNameBook
+            source?.let {
+                group = it.group
+                order = it.order
+                durChapterIndex = it.durChapterIndex
+                durChapterTitle = it.durChapterTitle
+                durChapterPos = it.durChapterPos
+                readConfig = it.readConfig
             }
-            when {
-                sameUrlBook != null -> appDb.bookDao.update(cacheBook)
-                sameNameBook != null -> appDb.bookDao.replace(sameNameBook, cacheBook)
-                else -> appDb.bookDao.insert(cacheBook)
-            }
-            val chapters = CacheManifestHelper.toChapters(manifest, cacheBook.bookUrl)
-            if (chapters.isNotEmpty()) {
-                appDb.bookChapterDao.delByBook(cacheBook.bookUrl)
-                appDb.bookChapterDao.insert(*chapters.toTypedArray())
-            }
-            true
-        }.onFailure {
-            AppLog.put("从缓存恢复书籍失败 ${manifest.name}\n${it.localizedMessage}", it)
-        }.getOrDefault(false)
-    }
+        }
+        when {
+            sameUrlBook != null -> appDb.bookDao.update(cacheBook)
+            sameNameBook != null -> appDb.bookDao.replace(sameNameBook, cacheBook)
+            else -> appDb.bookDao.insert(cacheBook)
+        }
+        val chapters = CacheManifestHelper.toChapters(manifest, cacheBook.bookUrl)
+        if (chapters.isNotEmpty()) {
+            appDb.bookChapterDao.delByBook(cacheBook.bookUrl)
+            appDb.bookChapterDao.insert(*chapters.toTypedArray())
+        }
+        true
+    }.onFailure {
+        AppLog.put("从缓存恢复书籍失败 ${manifest.name}\n${it.localizedMessage}", it)
+    }.getOrDefault(false)
 
     /**
      * "使用缓存"：书还在书架时把清单里的媒体地址同步给现有章节（音视频靠它才认得已缓存的媒体），
@@ -651,8 +653,8 @@ class CacheManageViewModel(
         val dbBook = appDb.bookDao.getBook(item.book.bookUrl)
         val manifest = findManifestDeep(item.book)
         if (dbBook != null) {
-            //章节表结构保持不动，只把媒体地址对齐成"确实有缓存的那个"：
-            //只补空值救不回"地址被新解析结果覆盖"的情况，那正是缓存读不到的原因
+            // 章节表结构保持不动，只把媒体地址对齐成"确实有缓存的那个"：
+            // 只补空值救不回"地址被新解析结果覆盖"的情况，那正是缓存读不到的原因
             if (manifest != null) {
                 val chapters = appDb.bookChapterDao.getChapterList(dbBook.bookUrl)
                 if (CacheManifestHelper.mergeResourceUrls(dbBook, chapters, manifest)) {
@@ -677,7 +679,7 @@ class CacheManageViewModel(
         viewModelScope.launch {
             val target = withContext(Dispatchers.IO) { useCache(item) }
             if (target == null) {
-                //只有"书已不在书架、又没有清单"才会走到这里：无法凭缓存把书恢复出来
+                // 只有"书已不在书架、又没有清单"才会走到这里：无法凭缓存把书恢复出来
                 toast(R.string.cache_manage_use_cache_failed)
                 return@launch
             }
@@ -686,7 +688,7 @@ class CacheManageViewModel(
                     R.string.cache_manage_use_cache_success
                 } else {
                     R.string.cache_manage_add_bookshelf_success
-                }
+                },
             )
             load()
         }
@@ -738,7 +740,7 @@ class CacheManageViewModel(
                             ExoPlayerHelper.removeMediaCache(
                                 url = chapter.resourceUrl,
                                 book = book,
-                                useVideoCache = book.isVideo
+                                useVideoCache = book.isVideo,
                             )
                         } else {
                             BookHelp.delContent(book, chapter)
@@ -782,7 +784,7 @@ class CacheManageViewModel(
                 withContext(Dispatchers.IO) {
                     books.forEach { book -> clearBookCache(book) }
                 }
-                //概况会喂给重建后的列表当"已算过"的初值，不丢掉的话删完还显示删除前的数字
+                // 概况会喂给重建后的列表当"已算过"的初值，不丢掉的话删完还显示删除前的数字
                 books.forEach { computedByBookUrl.remove(it.bookUrl) }
                 toast(R.string.delete_success)
                 load()
@@ -939,10 +941,10 @@ class CacheManageViewModel(
                 item.copy(
                     cachedCount = info.first,
                     storageSizeBytes = info.second,
-                    storageCalculated = true
+                    storageCalculated = true,
                 )
             }
-            //全量列表换掉这一行，再按当前搜索关键字重新过滤
+            // 全量列表换掉这一行，再按当前搜索关键字重新过滤
             allItems = allItems.map { if (it.book.bookUrl == book.bookUrl) fresh else it }
             applyFilter()
         }
@@ -976,7 +978,7 @@ class CacheManageViewModel(
         val Factory = Factory()
 
         fun Factory(
-            cacheTaskStarter: CacheTaskStarter = CacheTaskStarter { _, _ -> 0 }
+            cacheTaskStarter: CacheTaskStarter = CacheTaskStarter { _, _ -> 0 },
         ) = viewModelFactory {
             initializer { CacheManageViewModel(cacheTaskStarter) }
         }

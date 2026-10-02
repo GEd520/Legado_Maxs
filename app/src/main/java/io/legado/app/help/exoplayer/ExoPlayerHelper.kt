@@ -433,6 +433,26 @@ object ExoPlayerHelper {
     }
 
     /**
+     * 从该书已缓存的一组地址里挑出能当"章节播放地址"用的那个
+     *
+     * HLS 下载会留下播放列表 + 大量切片两类 key：切片地址不能当章节地址（播放与再缓存都要从列表
+     * 开始），所以多个都完整时优先挑内容是播放列表（`#EXTM3U`）的；普通文件一章通常就一个 key。
+     * 都完整却挑不出播放列表（如一章多段 mp4）时宁可返回 null，也别拿半截地址当作章节地址。
+     * 供"整份缓存都属于某一章"的反推场景用（见 CacheManifestHelper.recoverLegacyMediaUrl）。
+     */
+    fun pickPlayableCachedUrl(urls: Collection<String>, book: Book): String? {
+        val useVideoCache = book.isVideo
+        val cacheDir = mediaBookCacheDir(book, useVideoCache)
+        if (!cacheDir.exists()) return null
+        val cache = simpleCache(cacheDir, cacheMaxBytes(cacheDir))
+        val playable = urls.filter { isMediaUrlCached(cache, it, cacheDir) }
+        if (playable.size <= 1) return playable.firstOrNull()
+        return playable.firstOrNull { url ->
+            readCachedText(cache, url)?.trimStart()?.startsWith("#EXTM3U") == true
+        }
+    }
+
+    /**
      * 下载索引里的记录：(请求 id -> 媒体地址)
      *
      * DownloadRequest 的 id 是 url 的 md5，但 media3 的下载器并不拿它当缓存 key（key 还是地址），

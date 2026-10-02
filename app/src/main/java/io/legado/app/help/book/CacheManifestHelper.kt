@@ -318,11 +318,12 @@ object CacheManifestHelper {
      *
      * 那时缓存按当时的地址存，章节表里的地址之后被新解析结果覆盖了：缓存 key 虽然还是那个地址，
      * 但"哪个 key 属于哪一章"没有任何记录可查（完成标记的文件名也只是 url 的 md5）。
-     * 唯一可靠的推断是：该书只有一章、缓存里也只有一个内容时，这个内容就是这一章。
+     * 该书只有一章时这份缓存必然全属于它——缓存里不管几个 key（HLS 会带一堆切片）都从里面
+     * 挑能当章节地址用的那个（[ExoPlayerHelper.pickPlayableCachedUrl]，播放列表优先）。
      *
-     * 推断出来后把地址写回章节表，播放、判定、章节弹窗就都能正常用上这份缓存。
+     * 推断出来后把地址写回章节表并刷新清单，播放、判定、章节弹窗与缓存管理页的计数就都正常了。
      *
-     * 注意这里有副作用：会写章节表（调用方在并行批次里也会调到，写库本身线程安全，
+     * 注意这里有副作用：会写章节表并触发清单刷新（调用方在并行批次里也会调到，写库本身线程安全，
      * 但同一章节可能被并发写同一个值）。若该章地址已被目录刷新换掉，更新可能命中 0 行，
      * 此时仍返回地址——调用方直接用它读缓存，显示不会错，只是章节表要等下次播放或
      * 打开章节弹窗时再对齐。
@@ -334,16 +335,19 @@ object CacheManifestHelper {
         // 先做最便宜的判断：整库绝大多数书没有媒体缓存，不必为它们查章节表与缓存内容
         if (!ExoPlayerHelper.hasDownloadedMedia(book)) return null
         val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl).filterNot { it.isVolume }
+            .ifEmpty {
+                // 书已不在书架、只剩缓存：章节按清单里的来
+                read(book)?.let { toChapters(it).filterNot { c -> c.isVolume } }.orEmpty()
+            }
         if (chapters.size != 1) return null
         val chapter = chapters.first()
         val entries = ExoPlayerHelper.cachedMediaEntries(book)
-        if (entries.size != 1) return null
-        val (key, url) = entries.first()
-        if (url.isBlank()) return null
-        if (!isMediaCached(key, book) && !isMediaCached(url, book)) return null
+        val url = ExoPlayerHelper.pickPlayableCachedUrl(entries.map { it.second }, book) ?: return null
         if (chapter.resourceUrl != url) {
             appDb.bookChapterDao.upResourceUrl(book.bookUrl, chapter.url, url)
             AppLog.put("按缓存找回媒体地址 ${book.name}\n$url")
+            // 把地址与"已缓存"记进清单：之后缓存管理页计数、使用缓存、播放都不用再反推一遍
+            refreshAsync(book)
         }
         return url
     }
@@ -429,8 +433,19 @@ object CacheManifestHelper {
     ): Boolean {
         if (!book.isAudio && !book.isVideo) return false
         var changed = false
+        // 清单与缓存正文都对不上时的兜底：清单功能之前的老缓存只能按缓存内容反推（仅一章的书能确定），
+        // 一本只反推一次
+        var legacyUrl: String? = null
+        var legacyTried = false
+        fun legacyFallback(): String? {
+            if (!legacyTried) {
+                legacyTried = true
+                legacyUrl = recoverLegacyMediaUrl(book)
+            }
+            return legacyUrl
+        }
         chapters.forEach { chapter ->
-            val cachedUrl = cachedMediaUrl(book, chapter, manifest) ?: return@forEach
+            val cachedUrl = cachedMediaUrl(book, chapter, manifest) ?: legacyFallback() ?: return@forEach
             if (chapter.resourceUrl == cachedUrl) return@forEach
             chapter.resourceUrl = cachedUrl
             changed = true
