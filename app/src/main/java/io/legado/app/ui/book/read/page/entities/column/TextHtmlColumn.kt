@@ -128,8 +128,8 @@ data class TextHtmlColumn(
                 start
             }
             canvas.drawText(charData, x, y, textPaint)
-            // 第三方字体字重<400：用背景色描边擦掉字心边缘（html 列固定用正文字重）
-            ChapterProvider.drawThinStroke(canvas, textPaint, false, charData, 0, charData.length, x, y)
+            // 变细：用"字后面实际的颜色"擦掉字心边缘（html 列固定用正文字重）
+            ChapterProvider.drawThinStroke(canvas, textPaint, false, charData, 0, charData.length, x, y, eraseBgColor())
         }
         if (selected && !isSearchResult) {
             canvas.drawRect(start, 0f, end, textLine.height, view.selectedPaint)

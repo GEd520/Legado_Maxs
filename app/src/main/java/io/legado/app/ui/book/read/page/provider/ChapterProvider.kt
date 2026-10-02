@@ -1,6 +1,7 @@
 package io.legado.app.ui.book.read.page.provider
 
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Paint.FontMetrics
 import android.graphics.RectF
@@ -18,6 +19,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.entities.TextChapter
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.RealPathUtil
 
 import io.legado.app.utils.dpToPx
@@ -326,9 +328,13 @@ object ChapterProvider {
     }
 
     /**
-     * 变细：用背景色把刚画过的字再描一遍，擦掉字心边缘（目标字重比字体能渲染的字面更轻时生效）。
-     * 描边宽度为 0（不需要变细）、或取不到背景色（[ReadBookConfig.bgMeanColor] 为 0）时静默跳过。
+     * 变细：用"字后面实际的颜色"把刚画过的字再描一遍，擦掉字心边缘
+     * （目标字重比字体能渲染的字面更轻时生效）。
+     * 描边宽度为 0（不需要变细）、或推不出擦除色时静默跳过。
      * 会临时改 paint 的 style/color/strokeWidth，返回前还原，因此可以安全作用于共享画笔。
+     *
+     * @param localBg 字后面实际的颜色，来自 [io.legado.app.ui.book.read.page.entities.column.TextBaseColumn.eraseBgColor]；
+     *   null 表示字后面就是页面背景，用背景均色
      */
     @JvmStatic
     fun drawThinStroke(
@@ -339,19 +345,29 @@ object ChapterProvider {
         start: Int,
         end: Int,
         x: Float,
-        y: Float
+        y: Float,
+        localBg: Int? = null
     ) {
         val thinStrokeWidth = if (isTitle) titleThinStrokeWidth else contentThinStrokeWidth
-        if (thinStrokeWidth <= 0f || ReadBookConfig.bgMeanColor == 0) return
+        if (thinStrokeWidth <= 0f) return
         // 系统字体的擦除量是按汉字回退阶梯估算的，而拉丁字形本来就有真实字面（Roboto 有 100~900 六级），
         // 按汉字基准擦会在极细档把纯拉丁文本擦没，所以系统字体只对含汉字的文本生效；
         // 第三方字体是单字面，拉丁字形同样只能靠擦除变细，不做这个限制
         if (ReadBookConfig.textFont.isEmpty() && !hasHan(text, start, end)) return
+        // 擦除色必须等于字后面实际的颜色，否则会在字形周围留一圈错色的包边：
+        // 色块不透明直接用；半透明块色先和页面背景均色合成；没有块色用页面背景均色
+        val eraseColor = when {
+            localBg == null || Color.alpha(localBg) == 0 -> ReadBookConfig.bgMeanColor
+            Color.alpha(localBg) == 0xFF -> localBg
+            ReadBookConfig.bgMeanColor == 0 -> return
+            else -> ColorUtils.blendColors(ReadBookConfig.bgMeanColor, localBg, Color.alpha(localBg) / 255f)
+        }
+        if (eraseColor == 0) return
         val oldStyle = paint.style
         val oldColor = paint.color
         val oldStrokeWidth = paint.strokeWidth
         paint.style = Paint.Style.STROKE
-        paint.color = ReadBookConfig.bgMeanColor
+        paint.color = eraseColor
         paint.strokeWidth = thinStrokeWidth
         canvas.drawText(text, start, end, x, y, paint)
         paint.style = oldStyle

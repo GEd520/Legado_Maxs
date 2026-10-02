@@ -60,6 +60,13 @@ object ReadBookConfig {
     var bgMeanColor: Int = 0
     val textColor: Int get() = durConfig.curTextColor()
     val textAccentColor: Int get() = durConfig.curTextAccentColor()
+
+    /**
+     * 当前搜索命中块的底色：低透明度强调色叠在页面背景上。
+     * TextLine 画块与变细擦除共用同一来源，避免两处各写一份颜色公式。
+     */
+    val currentSearchHitBgColor: Int
+        get() = (0x33 shl 24) or (textAccentColor and 0x00FFFFFF)
     var isNineBgImg = false
 
     init {

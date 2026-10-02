@@ -1,5 +1,7 @@
 package io.legado.app.ui.book.read.page.entities.column
 
+import io.legado.app.help.config.ReadBookConfig
+
 /**
  * 文字基列
  */
@@ -44,4 +46,16 @@ interface TextBaseColumn : BaseColumn {
     var selected: Boolean
     var isSearchResult: Boolean
     var isCurrentSearchResult: Boolean
+
+    /**
+     * 变细擦除时"字后面实际的颜色"：高亮色块与当前搜索命中块都画在文字之前，有块色就用块色
+     * （可能带透明度，由擦除方先与页面背景合成）。
+     * 背景图片的均色不可知，其余场景（纯色页/背景图页/朗读着色）字后面就是页面背景，返回 null。
+     */
+    fun eraseBgColor(): Int? = when {
+        bgImage.isNotEmpty() -> null
+        bgColor != null -> bgColor
+        isCurrentSearchResult -> ReadBookConfig.currentSearchHitBgColor
+        else -> null
+    }
 }

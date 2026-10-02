@@ -264,7 +264,8 @@ data class TextLine(
         val textX = startX + offsetX
         val baseline = lineBase - lineTop
         canvas.drawText(text, indentSize, text.length, textX, baseline, paint)
-        // 第三方字体字重<400：用背景色描边擦掉字心边缘，画出比常规字面更细的字
+        // 变细：用背景均色擦掉字心边缘。快画路径只服务"纯文本行"（checkFastDraw 已排除
+        // 带色块/图片/搜索命中的行），字后面就是页面背景，所以不需要列级的局部背景色
         ChapterProvider.drawThinStroke(canvas, paint, isTitle, text, indentSize, text.length, textX, baseline)
         PaintPool.recycle(paint)
         for (i in columns.indices) {
@@ -637,7 +638,7 @@ data class TextLine(
     private fun drawCurrentSearchRange(canvas: Canvas, startX: Float, endX: Float) {
         val paint = PaintPool.obtain()
         paint.set(ChapterProvider.contentPaint)
-        paint.color = (0x33 shl 24) or (ReadBookConfig.textAccentColor and 0x00FFFFFF)
+        paint.color = ReadBookConfig.currentSearchHitBgColor
         paint.style = android.graphics.Paint.Style.FILL
         canvas.drawRoundRect(
             startX,

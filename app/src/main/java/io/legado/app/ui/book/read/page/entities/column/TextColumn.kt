@@ -99,14 +99,14 @@ data class TextColumn(
         if (underlineMode == 7) {
             textPaint.textSkewX = -0.25f
         }
-        drawTextInternal(canvas, textPaint, y)
+        drawTextInternal(canvas, textPaint, y, eraseBgColor())
         PaintPool.recycle(textPaint)
         if (selected && !isSearchResult) {
             canvas.drawRect(start, 0f, end, textLine.height, view.selectedPaint)
         }
     }
 
-    private fun drawTextInternal(canvas: Canvas, textPaint: android.graphics.Paint, y: Float) {
+    private fun drawTextInternal(canvas: Canvas, textPaint: android.graphics.Paint, y: Float, eraseBg: Int?) {
         val x = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             val letterSpacing = textPaint.letterSpacing * textPaint.textSize
             start + letterSpacing * 0.5f
@@ -114,7 +114,7 @@ data class TextColumn(
             start
         }
         canvas.drawText(charData, x, y, textPaint)
-        // 第三方字体字重<400：用背景色描边擦掉字心边缘；drawThinStroke 内部会还原共享画笔
-        ChapterProvider.drawThinStroke(canvas, textPaint, textLine.isTitle, charData, 0, charData.length, x, y)
+        // 变细：用"字后面实际的颜色"擦掉字心边缘；drawThinStroke 内部会还原画笔
+        ChapterProvider.drawThinStroke(canvas, textPaint, textLine.isTitle, charData, 0, charData.length, x, y, eraseBg)
     }
 }
