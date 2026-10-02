@@ -2029,9 +2029,9 @@
     <string name="switch_layout">切换布局</string>
     <string name="switch_layout_current">切换布局(当前:%1$s)</string>
     <string name="switch_to_new_explore">切换到新版发现</string>
-    <string name="switch_to_old_explore">切换到旧版发现</string>
+    <string name="switch_to_old_explore">切换到经典发现</string>
     <string name="switch_to_new_rss">切换到新版订阅</string>
-    <string name="switch_to_old_rss">切换到旧版订阅</string>
+    <string name="switch_to_old_rss">切换到经典订阅</string>
     <string name="source_not_exist">源不存在</string>
     <string name="select">选择</string>
     <string name="expand">展开</string>

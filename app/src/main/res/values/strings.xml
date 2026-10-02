@@ -2094,9 +2094,9 @@
     <string name="switch_layout">Switch Layout</string>
     <string name="switch_layout_current">Switch Layout (Current: %1$s)</string>
     <string name="switch_to_new_explore">Switch to New Explore</string>
-    <string name="switch_to_old_explore">Switch to Legacy Explore</string>
+    <string name="switch_to_old_explore">Switch to Classic Explore</string>
     <string name="switch_to_new_rss">Switch to New RSS</string>
-    <string name="switch_to_old_rss">Switch to Legacy RSS</string>
+    <string name="switch_to_old_rss">Switch to Classic RSS</string>
     <string name="source_not_exist">Source does not exist</string>
     <string name="select">Select</string>
     <string name="expand">Expand</string>

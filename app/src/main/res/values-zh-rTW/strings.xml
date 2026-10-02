@@ -1698,9 +1698,9 @@
     <string name="switch_layout">切換佈局</string>
     <string name="switch_layout_current">切換佈局(目前:%1$s)</string>
     <string name="switch_to_new_explore">切換到新版發現</string>
-    <string name="switch_to_old_explore">切換到舊版發現</string>
+    <string name="switch_to_old_explore">切換到經典發現</string>
     <string name="switch_to_new_rss">切換到新版訂閱</string>
-    <string name="switch_to_old_rss">切換到舊版訂閱</string>
+    <string name="switch_to_old_rss">切換到經典訂閱</string>
     <string name="source_not_exist">源不存在</string>
     <string name="select">選擇</string>
     <string name="expand">展開</string>
