@@ -52,10 +52,11 @@ import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssSource
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.widget.components.AppImage
-import io.legado.app.ui.widget.components.dialog.AppRadioChoiceDialog
+import io.legado.app.ui.widget.components.dialog.AppSearchableChoiceDialog
+import io.legado.app.ui.widget.components.dialog.AppTagGridDialog
 import io.legado.app.ui.widget.components.BlockProgressChip
-import io.legado.app.ui.widget.components.CategoryTabs
 import io.legado.app.ui.widget.components.LoadMoreFooter
+import io.legado.app.ui.widget.components.ModernTagBar
 import io.legado.app.ui.widget.components.navigationBarBottomInset
 
 /**
@@ -81,6 +82,9 @@ data class RssMoreMenuItem(
     val visible: Boolean = true,
 )
 
+/** 分类/分组展开弹窗的数量阈值（对齐参考分支与发现页的 EXPAND_THRESHOLD） */
+private const val TAG_EXPAND_THRESHOLD = 12
+
 @Composable
 fun ModernRssContent(
     controller: ModernRssController,
@@ -94,6 +98,9 @@ fun ModernRssContent(
     modifier: Modifier = Modifier,
 ) {
     var showSourcePicker by remember { mutableStateOf(false) }
+    var showSortPicker by remember { mutableStateOf(false) }
+    // 分类条里的展开按钮阈值：与发现页同款（≥12 项时出现 ▾）
+    val sortTitles = controller.sorts.map { it.first }
 
     Column(modifier.fillMaxSize()) {
         ModernRssSourceRow(
@@ -104,11 +111,14 @@ fun ModernRssContent(
             onMenuItem = onMenuItem,
             modifier = Modifier.fillMaxWidth()
         )
-        if (controller.sorts.size > 1) {
-            CategoryTabs(
-                titles = controller.sorts.map { it.first },
+        if (sortTitles.size > 1) {
+            // 与新版发现同款的横滚胶囊标签条（选中描边，多分类时 ▾ 展开）
+            ModernTagBar(
+                items = sortTitles,
                 selectedIndex = controller.selectedSortIndex,
-                onSelect = { controller.selectSort(it) }
+                onSelect = { controller.selectSort(it) },
+                showExpand = sortTitles.size >= TAG_EXPAND_THRESHOLD,
+                onExpand = { showSortPicker = true }
             )
         }
         Box(
@@ -140,7 +150,7 @@ fun ModernRssContent(
     }
 
     if (showSourcePicker) {
-        AppRadioChoiceDialog(
+        AppSearchableChoiceDialog(
             title = stringResource(R.string.rss),
             options = sources.map { it.sourceName },
             selectedIndex = sources.indexOfFirst { it.sourceUrl == controller.source?.sourceUrl },
@@ -149,6 +159,19 @@ fun ModernRssContent(
                 sources.getOrNull(index)?.let(onSelectSource)
             },
             onDismissRequest = { showSourcePicker = false }
+        )
+    }
+
+    if (showSortPicker) {
+        AppTagGridDialog(
+            title = stringResource(R.string.select),
+            options = sortTitles,
+            selectedIndex = controller.selectedSortIndex,
+            onSelect = { index ->
+                showSortPicker = false
+                controller.selectSort(index)
+            },
+            onDismissRequest = { showSortPicker = false }
         )
     }
 }

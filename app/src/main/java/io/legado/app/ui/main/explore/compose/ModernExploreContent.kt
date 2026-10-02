@@ -52,7 +52,9 @@ import io.legado.app.ui.book.explore.compose.ExploreShowActions
 import io.legado.app.ui.book.explore.compose.ExploreShowController
 import io.legado.app.ui.book.explore.compose.ExploreShowListContent
 import io.legado.app.ui.theme.AppDimens
-import io.legado.app.ui.widget.components.dialog.AppRadioChoiceDialog
+import io.legado.app.ui.widget.components.ModernTagBar
+import io.legado.app.ui.widget.components.dialog.AppSearchableChoiceDialog
+import io.legado.app.ui.widget.components.dialog.AppTagGridDialog
 import io.legado.app.ui.widget.components.BlockProgressChip
 import io.legado.app.ui.widget.components.BookBottomSheet
 
@@ -210,7 +212,7 @@ fun ModernExploreContent(
     }
 
     if (showSourcePicker) {
-        AppRadioChoiceDialog(
+        AppSearchableChoiceDialog(
             title = stringResource(R.string.discovery),
             options = sources.map { it.bookSourceName },
             selectedIndex = sources.indexOfFirst { it.bookSourceUrl == selectedSourceUrl },
@@ -223,7 +225,7 @@ fun ModernExploreContent(
     }
 
     if (showTagPicker) {
-        AppRadioChoiceDialog(
+        AppTagGridDialog(
             title = stringResource(R.string.select),
             options = tagItems.map { it.text },
             selectedIndex = tagItems.indexOfFirst { it.url == selectedTagUrl },
@@ -241,7 +243,7 @@ fun ModernExploreContent(
     }
 
     if (showGroupPicker) {
-        AppRadioChoiceDialog(
+        AppTagGridDialog(
             title = stringResource(R.string.select),
             options = groups,
             selectedIndex = groups.indexOf(currentGroupValue),
@@ -405,79 +407,6 @@ private fun ModernExploreHeader(
                         showMoreMenu = false
                         onSwitchLegacy()
                     }
-                )
-            }
-        }
-    }
-}
-
-/**
- * 横滚胶囊标签条（对齐参考分支 RoundedTagBarView 的观感）：
- * 选中项描边，末尾可带展开按钮。
- */
-@Composable
-private fun ModernTagBar(
-    items: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-    onExpand: () -> Unit,
-    showExpand: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    if (items.isEmpty()) return
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = AppDimens.exploreShowTabsHorizontalPadding),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        LazyRow(
-            modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(AppDimens.exploreShowTabSpacing)
-        ) {
-            itemsIndexed(items) { index, title ->
-                val selected = index == selectedIndex
-                Surface(
-                    shape = RoundedCornerShape(AppDimens.exploreShowTabCornerRadius),
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
-                    border = if (selected) {
-                        BorderStroke(
-                            AppDimens.exploreShowTabBorderWidth,
-                            MaterialTheme.colorScheme.primary
-                        )
-                    } else {
-                        null
-                    },
-                    onClick = { onSelect(index) }
-                ) {
-                    Text(
-                        text = title,
-                        modifier = Modifier.padding(
-                            horizontal = AppDimens.exploreShowTabHorizontalPadding,
-                            vertical = AppDimens.exploreShowTabVerticalPadding
-                        ),
-                        color = if (selected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        fontSize = 14.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-        if (showExpand) {
-            IconButton(onClick = onExpand, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_arrow_drop_down),
-                    contentDescription = stringResource(R.string.expand),
-                    tint = MaterialTheme.colorScheme.onBackground
                 )
             }
         }

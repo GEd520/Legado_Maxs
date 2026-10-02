@@ -354,6 +354,10 @@ object AppDimens {
     val exploreShowBlockChipCornerRadius: Dp = 16.dp
     val exploreShowBlockChipShadowElevation: Dp = 4.dp
 
+    /** 分类网格选择弹窗：每行列数与容器透明度（对齐参考分支 tag picker 的 3 列磨砂观感） */
+    const val TAG_DIALOG_COLUMNS = 3
+    const val TAG_DIALOG_CONTAINER_ALPHA = 0.92f
+
     /** 书架状态小绿点尺寸（列表 8dp、网格/瀑布流 6dp，对齐 CircleImageView） */
     val exploreShowShelfDotSizeList: Dp = 8.dp
     val exploreShowShelfDotSizeSmall: Dp = 6.dp
