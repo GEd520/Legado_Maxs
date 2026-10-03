@@ -223,6 +223,7 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
                         showBlockProgress = modernShowBlockProgress,
                         onReadArticle = ::readModernArticle,
                         onSelectSource = ::selectModernRssSource,
+                        onOpenInWeb = ::openModernRssInWeb,
                         onShowBlockRule = { showModernBlockRuleConfig() },
                         moreMenuItems = ::buildModernRssMenuItems,
                         onMenuItem = ::handleModernRssMenu
@@ -573,6 +574,21 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
             ?: return
         modernRssInited = true
         selectModernRssSource(source)
+    }
+
+    /**
+     * 新版订阅的"网页打开态"：单 URL 源 / 无文章列表规则的源解析不出分类，
+     * 点按钮时按旧版流程打开（singleUrl 走网页，其余走 startHtml 或分类页）。
+     */
+    private fun openModernRssInWeb(source: RssSource) {
+        openRss(
+            RssSourceItem(
+                sourceUrl = source.sourceUrl,
+                sourceName = source.sourceName,
+                sourceIcon = source.sourceIcon,
+                hasLoginUrl = !source.loginUrl.isNullOrBlank(),
+            )
+        )
     }
 
     /** 切换新版订阅的订阅源：持久化后由控制器重建分类与文章列表 */

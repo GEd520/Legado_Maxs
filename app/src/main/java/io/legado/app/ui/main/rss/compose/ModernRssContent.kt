@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -76,6 +77,7 @@ import io.legado.app.ui.widget.components.navigationBarBottomInset
  * @param showBlockProgress 是否显示屏蔽进度芯片
  * @param onReadArticle 点击文章
  * @param onSelectSource 选中源回调（宿主负责持久化与触发重新加载）
+ * @param onOpenInWeb 网页打开态下点击"打开源"（单 URL / 无文章规则的源）
  * @param onSwitchLegacy 切换回旧版订阅
  */
 /** 新版订阅头部三点菜单的一项（id 与 Fragment 的处理逻辑对应） */
@@ -95,6 +97,7 @@ fun ModernRssContent(
     showBlockProgress: Boolean,
     onReadArticle: (RssArticle) -> Unit,
     onSelectSource: (RssSource) -> Unit,
+    onOpenInWeb: (RssSource) -> Unit,
     onShowBlockRule: () -> Unit,
     moreMenuItems: () -> List<RssMoreMenuItem>,
     onMenuItem: (Int) -> Unit,
@@ -114,7 +117,8 @@ fun ModernRssContent(
             onMenuItem = onMenuItem,
             modifier = Modifier.fillMaxWidth()
         )
-        if (sortTitles.size > 1) {
+        val webOpenSource = controller.openInWebSource
+        if (webOpenSource == null && sortTitles.size > 1) {
             // 与新版发现同款的横滚胶囊标签条（选中描边，多分类时 ▾ 展开）
             ModernTagBar(
                 items = sortTitles,
@@ -129,7 +133,9 @@ fun ModernRssContent(
                 .fillMaxWidth()
                 .weight(1f)
         ) {
-            when (controller.articleStyle) {
+            if (webOpenSource != null) {
+                ModernRssWebOpenPanel(webOpenSource, onOpenInWeb)
+            } else when (controller.articleStyle) {
                 1 -> ModernRssLargeCardList(controller, onReadArticle)
                 2 -> ModernRssGrid(controller, onReadArticle)
                 3 -> ModernRssStaggered(controller, onReadArticle)
@@ -176,6 +182,33 @@ fun ModernRssContent(
             },
             onDismissRequest = { showSortPicker = false }
         )
+    }
+}
+
+/**
+ * 网页打开态面板。
+ *
+ * 单 URL 源（`singleUrl`）或没有文章列表规则（`ruleArticles`）的源解析不出分类与文章，
+ * 此时不给分类条也不发解析请求，只留一个"打开 X"按钮：点击由宿主按旧版流程打开
+ * （singleUrl 走网页，其余走 startHtml 或分类页），对齐参考分支 renderModernRssWebOpen。
+ */
+@Composable
+private fun ModernRssWebOpenPanel(
+    source: RssSource,
+    onOpenInWeb: (RssSource) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Button(
+            onClick = { onOpenInWeb(source) },
+            modifier = Modifier.padding(horizontal = AppDimens.rssGridItemPadding)
+        ) {
+            Text(
+                text = stringResource(R.string.open_rss_source, source.sourceName),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

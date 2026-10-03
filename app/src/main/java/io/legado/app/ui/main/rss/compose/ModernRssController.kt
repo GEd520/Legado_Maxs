@@ -8,6 +8,7 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssSource
+import io.legado.app.help.source.opensInWebPopup
 import io.legado.app.help.source.removeSortCache
 import io.legado.app.help.source.sortUrls
 import io.legado.app.model.blockrule.BlockRuleStore
@@ -58,6 +59,13 @@ class ModernRssController(
     /** 文章布局：0=列表 1=单列大图 2=双列网格 3=瀑布流 4=三列网格（对齐 View 版 articleStyle） */
     var articleStyle by mutableIntStateOf(0)
         private set
+
+    /**
+     * 网页打开态的源：`singleUrl` 或没有文章列表规则的源解析不出分类与文章，
+     * 内容区只给一个"打开源"入口，由宿主按旧版流程打开（网页或分类页）。
+     */
+    var openInWebSource by mutableStateOf<RssSource?>(null)
+        private set
     var footer by mutableStateOf(RssLoadMoreState(isLoading = true))
         private set
 
@@ -80,10 +88,23 @@ class ModernRssController(
     fun selectSource(source: RssSource) {
         this.source = source
         articleStyle = source.articleStyle.coerceIn(0, 4)
-        footer = RssLoadMoreState(isLoading = true)
         // 供"清除文章缓存"等源级操作使用
         sortViewModel.initData(source.sourceUrl) {}
         selectJob?.cancel()
+        // 单 URL / 无文章规则的源不下发任何解析，直接切成网页打开态
+        if (source.opensInWebPopup()) {
+            openInWebSource = source
+            sorts = emptyList()
+            selectedSortIndex = 0
+            articles = emptyList()
+            rawArticles = emptyList()
+            blockedCount = 0
+            footer = RssLoadMoreState(isLoading = false, hasMore = false)
+            dbFlowJob?.cancel()
+            return
+        }
+        openInWebSource = null
+        footer = RssLoadMoreState(isLoading = true)
         selectJob = scope.launch {
             val loaded = runCatching {
                 withContext(Dispatchers.IO) { source.sortUrls() }
