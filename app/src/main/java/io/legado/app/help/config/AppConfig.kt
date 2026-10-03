@@ -96,20 +96,6 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefString(PreferKey.rssModernSourceUrl)
         set(value) = appCtx.putPrefString(PreferKey.rssModernSourceUrl, value)
 
-    /** 新版发现布局模式 0=列表 1=网格 2=瀑布流（全局，不按书源区分） */
-    var exploreModernLayout: Int
-        get() = appCtx.getPrefInt(PreferKey.exploreModernLayout, 0)
-        set(value) = appCtx.putPrefInt(PreferKey.exploreModernLayout, value)
-
-    /** 新版发现网格列数 */
-    var exploreModernColumnGrid: Int
-        get() = appCtx.getPrefInt(PreferKey.exploreModernColumnGrid, 2)
-        set(value) = appCtx.putPrefInt(PreferKey.exploreModernColumnGrid, value)
-
-    /** 新版发现瀑布流列数 */
-    var exploreModernColumnWaterfall: Int
-        get() = appCtx.getPrefInt(PreferKey.exploreModernColumnWaterfall, 2)
-        set(value) = appCtx.putPrefInt(PreferKey.exploreModernColumnWaterfall, value)
     var optimizeRender = CanvasRecorderFactory.isSupport &&
         appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)

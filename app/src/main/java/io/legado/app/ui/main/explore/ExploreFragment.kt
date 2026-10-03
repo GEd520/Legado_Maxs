@@ -63,7 +63,9 @@ import io.legado.app.utils.applyTint
 import io.legado.app.utils.cnCompare
 import io.legado.app.utils.flowWithLifecycleAndDatabaseChange
 import io.legado.app.utils.getPrefBoolean
+import io.legado.app.utils.getPrefInt
 import io.legado.app.utils.putPrefBoolean
+import io.legado.app.utils.putPrefInt
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.toastOnUi
@@ -159,9 +161,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             initialArgs = ExploreShowInitArgs(
                 exploreName = getString(R.string.discovery),
                 exploreUrl = "",
-                layoutMode = AppConfig.exploreModernLayout,
-                columnGrid = AppConfig.exploreModernColumnGrid,
-                columnWaterfall = AppConfig.exploreModernColumnWaterfall,
+                // 布局与列数按书源记忆，与旧版发现列表页共用同一组 key
+                layoutMode = getPrefInt("${PreferKey.exploreGridMode}_$modernExploreSourceUrl", 0),
+                columnGrid = getPrefInt("${PreferKey.exploreShowColumn}_$modernExploreSourceUrl", 2),
+                columnWaterfall = getPrefInt("${PreferKey.exploreShowColumnWaterfall}_$modernExploreSourceUrl", 2),
                 showCategoryTab = true,
                 preloadMode = 0,
                 showBlockProgress = modernShowBlockProgress
@@ -204,9 +207,11 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             addToShelf = { exploreShowViewModel.addToShelf(it) },
             onShowError = { message -> showDialogFragment(TextDialog("ERROR", message)) },
             onShowPhoto = { url, sourceUrl -> showDialogFragment(PhotoDialog(url, sourceUrl)) },
-            persistLayoutMode = { AppConfig.exploreModernLayout = it },
-            persistColumnGrid = { AppConfig.exploreModernColumnGrid = it },
-            persistColumnWaterfall = { AppConfig.exploreModernColumnWaterfall = it },
+            persistLayoutMode = { putPrefInt("${PreferKey.exploreGridMode}_$modernExploreSourceUrl", it) },
+            persistColumnGrid = { putPrefInt("${PreferKey.exploreShowColumn}_$modernExploreSourceUrl", it) },
+            persistColumnWaterfall = {
+                putPrefInt("${PreferKey.exploreShowColumnWaterfall}_$modernExploreSourceUrl", it)
+            },
             persistShowCategoryTab = {},
             persistPreloadMode = {},
             persistShowBlockProgress = {
@@ -487,6 +492,14 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
     override fun onResume() {
         super.onResume()
         kindsController.resumeWebViews()
+        // 旧版列表页可能改过当前源的布局/列数（同一组按源 key），回来时同步进控制器
+        if (modernExplore) {
+            modernController.applyPerSourceLayout(
+                layoutMode = getPrefInt("${PreferKey.exploreGridMode}_$modernExploreSourceUrl", 0),
+                columnGrid = getPrefInt("${PreferKey.exploreShowColumn}_$modernExploreSourceUrl", 2),
+                columnWaterfall = getPrefInt("${PreferKey.exploreShowColumnWaterfall}_$modernExploreSourceUrl", 2)
+            )
+        }
     }
 
     override fun onPause() {
@@ -644,6 +657,12 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         modernExploreSourceUrl = source.bookSourceUrl
         AppConfig.modernExploreSourceUrl = source.bookSourceUrl
         modernController.resetForNewSource()
+        // 布局与列数按源记忆：切源后同步为新源的值
+        modernController.applyPerSourceLayout(
+            layoutMode = getPrefInt("${PreferKey.exploreGridMode}_${source.bookSourceUrl}", 0),
+            columnGrid = getPrefInt("${PreferKey.exploreShowColumn}_${source.bookSourceUrl}", 2),
+            columnWaterfall = getPrefInt("${PreferKey.exploreShowColumnWaterfall}_${source.bookSourceUrl}", 2)
+        )
         exploreShowViewModel.initData(source.bookSourceUrl, null)
     }
 
@@ -703,9 +722,17 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
         modernExplore = value
         AppConfig.exploreModernPage = value
         upModernVisibility()
-        if (value && !modernExploreInited) {
-            // 数据流处于 RESUMED 不会重发，就地初始化
-            initModernExploreData()
+        if (value) {
+            // 切回新版时按当前源重读布局记忆：旧版列表页期间的修改要同步进来
+            modernController.applyPerSourceLayout(
+                layoutMode = getPrefInt("${PreferKey.exploreGridMode}_$modernExploreSourceUrl", 0),
+                columnGrid = getPrefInt("${PreferKey.exploreShowColumn}_$modernExploreSourceUrl", 2),
+                columnWaterfall = getPrefInt("${PreferKey.exploreShowColumnWaterfall}_$modernExploreSourceUrl", 2)
+            )
+            if (!modernExploreInited) {
+                // 数据流处于 RESUMED 不会重发，就地初始化
+                initModernExploreData()
+            }
         }
     }
 

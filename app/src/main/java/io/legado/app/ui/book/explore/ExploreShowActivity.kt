@@ -77,6 +77,7 @@ class ExploreShowActivity : BaseComposeActivity(), GroupSelectDialog.CallBack {
     private fun buildInitArgs(): ExploreShowInitArgs = ExploreShowInitArgs(
         exploreName = intent.getStringExtra("exploreName") ?: getString(R.string.discovery),
         exploreUrl = intent.getStringExtra("exploreUrl") ?: "",
+        // 布局与列数按书源记忆，与主界面新版发现共用同一组 key（新旧版切换互相同步）
         layoutMode = getPrefInt("${PreferKey.exploreGridMode}_$sourceUrl", 0),
         columnGrid = getPrefInt("${PreferKey.exploreShowColumn}_$sourceUrl", 2),
         columnWaterfall = getPrefInt("${PreferKey.exploreShowColumnWaterfall}_$sourceUrl", 2),

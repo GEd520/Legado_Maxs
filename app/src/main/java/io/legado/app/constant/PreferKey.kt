@@ -333,15 +333,6 @@ object PreferKey {
     /** 新版订阅上次选中的订阅源 */
     const val rssModernSourceUrl = "rssModernSourceUrl"
 
-    /** 新版发现布局模式（列表/网格/瀑布流），全局（不按书源区分） */
-    const val exploreModernLayout = "exploreModernLayout"
-
-    /** 新版发现网格列数，全局 */
-    const val exploreModernColumnGrid = "exploreModernColumnGrid"
-
-    /** 新版发现瀑布流列数，全局 */
-    const val exploreModernColumnWaterfall = "exploreModernColumnWaterfall"
-
     /** 跳转确认记忆，存储 JSON: {"sourceUrl":"allow|deny", ...} */
     const val openUrlConfirmMemory = "openUrlConfirmMemory"
 

@@ -317,6 +317,17 @@ class ExploreShowController(
         topFooter = topFooter.copy(isLoading = false, hasMore = false, isError = true, message = message)
     }
 
+    /**
+     * 切换书源 / 从旧版列表页返回后，按该源的布局记忆更新内存态。
+     * 布局与列数按书源持久化（exploreGridMode_$sourceUrl 等），新旧版发现共用同一组 key；
+     * 持久化写入由 actions.persistXxx 按"当前源"完成，这里只同步内存。
+     */
+    fun applyPerSourceLayout(layoutMode: Int, columnGrid: Int, columnWaterfall: Int) {
+        this.layoutMode = layoutMode.coerceIn(0, 2)
+        this.columnGrid = columnGrid.coerceAtLeast(1)
+        this.columnWaterfall = columnWaterfall.coerceAtLeast(1)
+    }
+
     // ── 翻页 ──
 
     /**
