@@ -93,53 +93,66 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
      * exploreUrl 传 null 时取源的第一个分类作为初始分类。
      */
     fun initData(sourceUrl: String?, newExploreUrl: String?) {
-        execute {
-            loadGeneration++
-            currentSourceUrl = sourceUrl ?: ""
-            // 新版发现复用常驻 VM 按源切换：先清上一源的数据，避免新旧源串流
-            books.clear()
-            allBooks.clear()
-            preloadCache.clear()
-            if (bookSource == null && sourceUrl != null) {
-                bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
-            } else if (sourceUrl != null && bookSource?.bookSourceUrl != sourceUrl) {
-                bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
-            }
-            if (newExploreUrl != null) {
-                exploreUrl = newExploreUrl
-                // 记住分类的基准 URL：explore() 会把 exploreUrl 原地改写成带页码的请求地址，
-                // 刷新必须回到未改写的基准，否则字面 ?page=N 的源会从第 N 页起载
-                currentKindBaseUrl = newExploreUrl
-                page = parsePageFromUrl(newExploreUrl)
-                pageLiveData.postValue(page)
-                // 加载所有发现分类（用于Tab显示）
-                loadExploreKinds()
-                explore()
-            } else {
-                val kinds = runCatching {
-                    withContext(IO) {
-                        bookSource?.exploreKinds().orEmpty().filter { !it.url.isNullOrBlank() }
-                    }
-                }.getOrDefault(emptyList())
-                exploreKindsData.postValue(kinds)
-                // 初始分类必须是可直接访问的 url 类：select/button 类的 url 是模板/脚本，
-                // 依赖 infoMap 求值，不能直接当 exploreUrl 加载
-                val firstUrl = kinds.firstOrNull { it.type == ExploreKind.Type.url }?.url
-                exploreUrl = firstUrl
-                currentKindBaseUrl = firstUrl
-                page = parsePageFromUrl(firstUrl)
-                pageLiveData.postValue(page)
-                explore()
-            }
-        }
+        execute { loadSourceData(sourceUrl, newExploreUrl) }
     }
 
     /**
-     * 重新解析当前书源的分类并重载当前分类（新版发现三点菜单的"刷新"用）：
-     * 书源内容更新后从源头重拉 exploreInfo 与列表。
+     * 重新解析当前书源的分类并重载当前分类（新版发现三点菜单的"刷新"用）。
+     *
+     * 刷新必须按"书源可能已被编辑过"处理：重读库里的书源对象，
+     * 否则旧对象里的 exploreUrl 与规则会让重算结果和刷新前一样。
+     * 分类缓存（`exploreKinds()` 的进程内 + ACache 两层）由调用方先清
+     * （见 `ExploreKindsController.clearKindsCache`）：那份缓存与分类区共用，
+     * 在这里清会让分类区拿到清空后的重新求值结果、与内容区错位。
      */
     fun refreshCurrent() {
-        initData(currentSourceUrl, currentKindBaseUrl)
+        val sourceUrl = currentSourceUrl
+        if (sourceUrl.isBlank()) return
+        execute {
+            bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
+            loadSourceData(sourceUrl, currentKindBaseUrl)
+        }
+    }
+
+    /** 按源装载分类与首屏数据（[initData] 与 [refreshCurrent] 共用） */
+    private suspend fun loadSourceData(sourceUrl: String?, newExploreUrl: String?) {
+        loadGeneration++
+        currentSourceUrl = sourceUrl ?: ""
+        // 新版发现复用常驻 VM 按源切换：先清上一源的数据，避免新旧源串流
+        books.clear()
+        allBooks.clear()
+        preloadCache.clear()
+        if (bookSource == null && sourceUrl != null) {
+            bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
+        } else if (sourceUrl != null && bookSource?.bookSourceUrl != sourceUrl) {
+            bookSource = appDb.bookSourceDao.getBookSource(sourceUrl)
+        }
+        if (newExploreUrl != null) {
+            exploreUrl = newExploreUrl
+            // 记住分类的基准 URL：explore() 会把 exploreUrl 原地改写成带页码的请求地址，
+            // 刷新必须回到未改写的基准，否则字面 ?page=N 的源会从第 N 页起载
+            currentKindBaseUrl = newExploreUrl
+            page = parsePageFromUrl(newExploreUrl)
+            pageLiveData.postValue(page)
+            // 加载所有发现分类（用于Tab显示）
+            loadExploreKinds()
+            explore()
+        } else {
+            val kinds = runCatching {
+                withContext(IO) {
+                    bookSource?.exploreKinds().orEmpty().filter { !it.url.isNullOrBlank() }
+                }
+            }.getOrDefault(emptyList())
+            exploreKindsData.postValue(kinds)
+            // 初始分类必须是可直接访问的 url 类：select/button 类的 url 是模板/脚本，
+            // 依赖 infoMap 求值，不能直接当 exploreUrl 加载
+            val firstUrl = kinds.firstOrNull { it.type == ExploreKind.Type.url }?.url
+            exploreUrl = firstUrl
+            currentKindBaseUrl = firstUrl
+            page = parsePageFromUrl(firstUrl)
+            pageLiveData.postValue(page)
+            explore()
+        }
     }
 
     /** 作废在途的 explore 响应：清空内容区（无可选分类的分组）也必须调，否则旧数据到达会把空态回填 */

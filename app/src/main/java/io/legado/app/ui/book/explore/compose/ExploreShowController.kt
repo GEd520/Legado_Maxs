@@ -201,8 +201,21 @@ class ExploreShowController(
     fun cachedScrollSnapshot(url: String?): ExploreScrollSnapshot? =
         url?.let { scrollPositionCache[it] }
 
-    /** 重新解析当前书源的分类并重载当前分类（新版发现三点菜单的"刷新"用） */
-    fun refreshCurrent() = viewModel.refreshCurrent()
+    /**
+     * 重新解析当前书源的分类并重载当前分类（新版发现三点菜单的"刷新"用）。
+     *
+     * 必须先按"换分类"的复位口径清空内容区：刷新回填的是**新的一页数据**，
+     * 而 [upData] 是按增量语义合并的——条数与旧列表相同（刷新常见情况）会被判成
+     * "书源没有返回新增数据"直接丢弃，于是刷新看起来毫无效果、列表还停在旧内容上。
+     */
+    fun refreshCurrent() {
+        updateBooks(emptyList())
+        footer = ExploreLoadMoreState(isLoading = true)
+        topFooter = ExploreLoadMoreState(visible = false)
+        oldPage = -1
+        clearAllPending = false
+        viewModel.refreshCurrent()
+    }
 
     /** Activity onDestroy 时清理缓存，避免内存泄漏（对齐 View 版） */
     fun clearCaches() {

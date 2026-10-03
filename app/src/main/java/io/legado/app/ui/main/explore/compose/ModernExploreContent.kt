@@ -98,6 +98,12 @@ fun ModernExploreContent(
     onSwitchLegacy: () -> Unit,
     showBlockProgress: Boolean,
     modifier: Modifier = Modifier,
+    /** 主界面底栏占用的高度（px），补进列表底部内边距，避免滑到底的内容被底栏遮挡 */
+    bottomPaddingPx: Int = 0,
+    /** 三点菜单「刷新」：清掉分类缓存后重建分类区并重拉当前分类（宿主负责顺序） */
+    onRefreshSource: () -> Unit = {},
+    /** 三点菜单「登录」：仅当前书源声明了登录地址时显示 */
+    onLogin: () -> Unit = {},
 ) {
     var showSourcePicker by remember { mutableStateOf(false) }
     var showBookSheet by remember { mutableStateOf(false) }
@@ -198,6 +204,8 @@ fun ModernExploreContent(
             hasSettings = settingItems.isNotEmpty(),
             onPickSource = { showSourcePicker = true },
             onOpenSettings = { showSettingsSheet = true },
+            onRefreshSource = onRefreshSource,
+            onLogin = onLogin,
             modifier = Modifier.fillMaxWidth()
         )
         // 大分组条：仅当书源声明了整行分组项时显示
@@ -236,7 +244,8 @@ fun ModernExploreContent(
                     sheetBook = book
                     sheetShelfState = controller.getBookShelfState(book)
                     showBookSheet = true
-                }
+                },
+                bottomPaddingPx = bottomPaddingPx
             )
             if (showBlockProgress && controller.blockedCount > 0) {
                 BlockProgressChip(
@@ -339,13 +348,16 @@ private fun ModernExploreHeader(
     hasSettings: Boolean,
     onPickSource: () -> Unit,
     onOpenSettings: () -> Unit,
+    onRefreshSource: () -> Unit,
+    onLogin: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val currentName = sources
-        .firstOrNull { it.bookSourceUrl == selectedSourceUrl }
-        ?.bookSourceName
+    val currentSource = sources.firstOrNull { it.bookSourceUrl == selectedSourceUrl }
+    val currentName = currentSource?.bookSourceName
         ?: sources.firstOrNull()?.bookSourceName
         ?: stringResource(R.string.discovery)
+    // 对齐旧版书源条目的长按菜单：没有登录地址的书源不显示「登录」
+    val hasLoginUrl = currentSource?.hasLoginUrl == true
     var showMoreMenu by remember { mutableStateOf(false) }
     // 头部行顶替旧版 TitleBar，配色必须继续走 TopBarConfig 统一体系
     val topBarColors = pageTopBarColors()
@@ -414,9 +426,18 @@ private fun ModernExploreHeader(
                     text = { Text(text = stringResource(R.string.refresh)) },
                     onClick = {
                         showMoreMenu = false
-                        controller.refreshCurrent()
+                        onRefreshSource()
                     }
                 )
+                if (hasLoginUrl) {
+                    DropdownMenuItem(
+                        text = { Text(text = stringResource(R.string.login)) },
+                        onClick = {
+                            showMoreMenu = false
+                            onLogin()
+                        }
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(text = stringResource(R.string.add_all_to_shelf)) },
                     onClick = {
@@ -519,8 +540,10 @@ private fun ModernExploreSettingsSheet(
                         fillLine = style.layout_flexBasisPercent < 0f && style.layout_flexGrow <= 0f
                     )
                 },
-                horizontalSpacing = AppDimens.exploreKindSpacing,
-                verticalSpacing = AppDimens.exploreKindSpacing,
+                // 表单读的是字，不是分类区的胶囊流：项间距按参考分支 RowUiForm 的 margin
+                // （4dp/6dp → 8dp/12dp）收紧，而不是分类区那套 14dp
+                horizontalSpacing = AppDimens.exploreFormItemSpacingHorizontal,
+                verticalSpacing = AppDimens.exploreFormItemSpacingVertical,
             ) { index ->
                 val item = items[index]
                 ExploreKindItem(

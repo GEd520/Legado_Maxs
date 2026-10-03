@@ -300,7 +300,10 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         selectedSourceUrl = modernExploreSourceUrl,
                         onSelectSource = ::selectModernExploreSource,
                         onSwitchLegacy = { applyModernExplore(false) },
-                        showBlockProgress = modernShowBlockProgress
+                        showBlockProgress = modernShowBlockProgress,
+                        bottomPaddingPx = bottomPaddingPx,
+                        onRefreshSource = ::refreshModernExploreSource,
+                        onLogin = ::loginModernExploreSource
                     )
                 } else {
                     ExploreSourceList(
@@ -664,6 +667,35 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             columnWaterfall = getPrefInt("${PreferKey.exploreShowColumnWaterfall}_${source.bookSourceUrl}", 2)
         )
         exploreShowViewModel.initData(source.bookSourceUrl, null)
+    }
+
+    /**
+     * 新版发现三点菜单的「刷新」：清掉书源的发现分类缓存 → 分类区按新分类重建 → 复位并重拉当前分类。
+     *
+     * 顺序不能调换：`exploreKinds()` 有进程内 + ACache 两级缓存，且 ViewModel 与分类区
+     * 共用同一份；先发重建信号（分类区会立刻求值）再清缓存，分类区拿到的仍是旧分类。
+     * 内容区的复位重拉交给 [ExploreShowController.refreshCurrent]：
+     * 只调 ViewModel 重拉而不复位，回填的数据会被 upData 的增量合并当成"无新增"丢掉。
+     */
+    private fun refreshModernExploreSource() {
+        val sourceUrl = modernExploreSourceUrl
+        viewLifecycleOwner.lifecycleScope.launch {
+            if (!sourceUrl.isNullOrBlank()) {
+                kindsController.clearKindsCache(sourceUrl)
+                kindsController.requestRefresh(sourceUrl)
+            }
+            modernController.refreshCurrent()
+        }
+    }
+
+    /** 新版发现三点菜单的「登录」：打开当前书源的登录页（与书源条目的长按菜单同一入口） */
+    private fun loginModernExploreSource() {
+        val sourceUrl = modernExploreSourceUrl
+        if (sourceUrl.isNullOrBlank()) return
+        startActivity<SourceLoginActivity> {
+            putExtra("type", "bookSource")
+            putExtra("key", sourceUrl)
+        }
     }
 
     /** 三点菜单：旧版只有切换入口；新版带发现列表页的全部菜单项 */

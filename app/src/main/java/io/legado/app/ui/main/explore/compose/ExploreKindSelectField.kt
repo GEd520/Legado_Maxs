@@ -89,7 +89,7 @@ internal fun ExploreKindSelectField(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = AppDimens.exploreKindSpacing)
+                    .padding(start = AppDimens.exploreSelectValueSpacing)
             ) {
                 Column {
                     Text(

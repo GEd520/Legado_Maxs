@@ -109,6 +109,16 @@ class ExploreKindsController(
     }
 
     /**
+     * 只清掉书源的发现分类缓存（进程内 + ACache），不在这里求值。
+     *
+     * 新版发现三点菜单的"刷新"用它：ViewModel 与分类区共用同一份 `exploreKinds()` 缓存，
+     * 清掉后分类区按重建信号重新求值即可拿到新分类（此处再求值一次纯属浪费）。
+     */
+    suspend fun clearKindsCache(sourceUrl: String) {
+        withContext(IO) { bookSource(sourceUrl)?.clearExploreKindsCache() }
+    }
+
+    /**
      * 求值分类的 `viewName` 脚本，得到动态展示文案。
      *
      * 返回 `Result` 而不是可空值：调用方要区分"求值失败（显示 err）"与"求值为空（显示 null）"，

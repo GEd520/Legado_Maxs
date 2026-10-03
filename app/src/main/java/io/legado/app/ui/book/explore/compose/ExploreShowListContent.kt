@@ -54,6 +54,9 @@ private data class ExploreViewport(
 /**
  * 发现列表内容区：按布局模式切换 列表 / 网格 / 瀑布流 三种懒加载布局，
  * 并挂接双向翻页、滚动位置缓存与左右滑动切换分类手势。
+ *
+ * @param bottomPaddingPx 宿主底栏占用的高度（px）：独立发现列表页没有底栏传 0，
+ *   主界面内嵌的新版发现由 MainActivity 下发，取它和系统导航栏 inset 的较大者做底部内边距
  */
 @Composable
 fun ExploreShowListContent(
@@ -61,19 +64,21 @@ fun ExploreShowListContent(
     onShowBookInfo: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
     modifier: Modifier = Modifier,
+    bottomPaddingPx: Int = 0,
 ) {
+    val extraBottomPadding = with(LocalDensity.current) { bottomPaddingPx.toDp() }
     Box(modifier.fillMaxSize()) {
         when (controller.layoutMode) {
             EXPLORE_LAYOUT_WATERFALL -> ExploreShowStaggeredContent(
-                controller, onShowBookInfo, onBookLongClick
+                controller, onShowBookInfo, onBookLongClick, extraBottomPadding
             )
 
             EXPLORE_LAYOUT_GRID -> ExploreShowLazyGrid(
-                controller, onShowBookInfo, onBookLongClick
+                controller, onShowBookInfo, onBookLongClick, extraBottomPadding
             )
 
             else -> ExploreShowLazyList(
-                controller, onShowBookInfo, onBookLongClick
+                controller, onShowBookInfo, onBookLongClick, extraBottomPadding
             )
         }
     }
@@ -117,9 +122,11 @@ private fun ExploreShowLazyList(
     controller: ExploreShowController,
     onShowBookInfo: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val listState = rememberLazyListState()
-    val bottomInset = navigationBarBottomInset
+    // 主界面内嵌时底栏浮在内容之上：取底栏高度与系统导航栏 inset 的较大者，末项才完整露出
+    val bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding)
 
     LazyColumn(
         state = listState,
@@ -208,12 +215,13 @@ private fun ExploreShowLazyGrid(
     controller: ExploreShowController,
     onShowBookInfo: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val columnCount = controller.columnGrid
     val gridState = rememberLazyGridState()
     val spacing = columnSpacingDp(columnCount)
     val halfSpacing = spacing / 2
-    val bottomInset = navigationBarBottomInset
+    val bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding)
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(columnCount),
@@ -298,12 +306,13 @@ private fun ExploreShowStaggeredContent(
     controller: ExploreShowController,
     onShowBookInfo: (SearchBook) -> Unit,
     onBookLongClick: (SearchBook) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val columnCount = controller.columnWaterfall
     val staggeredState = rememberLazyStaggeredGridState()
     val spacing = columnSpacingDp(columnCount)
     val halfSpacing = spacing / 2
-    val bottomInset = navigationBarBottomInset
+    val bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding)
 
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Fixed(columnCount),

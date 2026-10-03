@@ -282,14 +282,36 @@ object AppDimens {
      *
      * 对齐原 FlexboxLayout 的实际间隙：子项 margin 3dp×2 + divider 占位 8dp = 14dp。
      * 这个值直接决定断行组成（同一行能放下几个胶囊），不能凭观感取小值。
+     *
+     * 只用于分类区；「发现页管理」表单的项间距是另一套值，见
+     * [exploreFormItemSpacingHorizontal]（参考分支 RowUiForm 的子项 margin 不同）。
      */
     val exploreKindSpacing: Dp = 14.dp
 
-    /** 分类项左右内边距（对齐 item_fillet_* 的 12dp） */
-    val exploreKindHorizontalPadding: Dp = 12.dp
+    /** 分类项左右内边距（原 item_fillet_* 的 12dp，收紧到 8dp 让胶囊内能显示更多文字） */
+    val exploreKindHorizontalPadding: Dp = 8.dp
 
     /** 分类项上下内边距（对齐 item_fillet_* 的 4dp） */
     val exploreKindVerticalPadding: Dp = 4.dp
+
+    /**
+     * 下拉选择项里名称与当前值之间的间距。
+     *
+     * 参考实现是 Spinner（名称与值之间没有显式间距），这里收紧到 8dp：
+     * 胶囊宽度由书源的 flexBasisPercent 决定且往往只有 1/3 行宽，间距越小值能显示的字越多。
+     */
+    val exploreSelectValueSpacing: Dp = 8.dp
+
+    /**
+     * 「发现页管理」表单的项间距（横向）。
+     *
+     * 对齐参考分支 RowUiForm.createRowLayoutParams 的子项 margin：4dp×2 = 8dp。
+     * 与分类区的 [exploreKindSpacing]（14dp）不同源，不能混用。
+     */
+    val exploreFormItemSpacingHorizontal: Dp = 8.dp
+
+    /** 「发现页管理」表单的项间距（纵向）：参考分支子项 margin 6dp×2 = 12dp */
+    val exploreFormItemSpacingVertical: Dp = 12.dp
 
     /** usehtml 文本内容的内边距（对齐原 ScrollTextView 的 8dp） */
     val exploreHtmlContentPadding: Dp = 8.dp
