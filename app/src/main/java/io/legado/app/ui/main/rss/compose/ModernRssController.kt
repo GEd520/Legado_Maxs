@@ -89,7 +89,7 @@ class ModernRssController(
         this.source = source
         articleStyle = source.articleStyle.coerceIn(0, 4)
         // 供"清除文章缓存"等源级操作使用
-        sortViewModel.initData(source.sourceUrl) {}
+        sortViewModel.initData(source.sourceUrl, {})
         selectJob?.cancel()
         // 单 URL / 无文章规则的源不下发任何解析，直接切成网页打开态
         if (source.opensInWebPopup()) {

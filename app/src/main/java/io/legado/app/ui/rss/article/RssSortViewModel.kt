@@ -32,17 +32,26 @@ class RssSortViewModel(
     var sourceName: String? = null
 
     fun initData(intent: Intent, onFinally: () -> Unit) {
-        initData(intent.getStringExtra("sourceUrl"), onFinally)
-        // Intent 入口可能携带指定分类与搜索词
-        sortUrl = intent.getStringExtra("sortUrl") ?: sortUrl
-        searchKey = intent.getStringExtra("key")
+        initData(
+            sourceUrl = intent.getStringExtra("sourceUrl"),
+            onFinally = onFinally,
+            sortUrl = intent.getStringExtra("sortUrl"),
+            searchKey = intent.getStringExtra("key")
+        )
     }
 
     /**
-     * 无 Intent 入口（新版订阅主界面按源切换时使用）：
-     * 只重置源相关状态，不携带指定分类与搜索词。
+     * 初始化分类页数据。
+     * 带 Intent 入口（java.open("sort") 等指定分类/搜索词）与无 Intent 入口
+     * （新版订阅主界面按源切换，sortUrl/searchKey 留空）共用同一协程：
+     * 分类与搜索词在协程内统一赋值，避免异步初始化把外部同步写入的值覆盖掉。
      */
-    fun initData(sourceUrl: String?, onFinally: () -> Unit) {
+    fun initData(
+        sourceUrl: String?,
+        onFinally: () -> Unit,
+        sortUrl: String? = null,
+        searchKey: String? = null
+    ) {
         viewModelScope.launch(ioDispatcher) {
             try {
                 url = sourceUrl
@@ -54,8 +63,8 @@ class RssSortViewModel(
                         rssSource = RssSource(sourceUrl = key)
                     }
                 }
-                sortUrl = null
-                searchKey = null
+                this@RssSortViewModel.sortUrl = sortUrl
+                this@RssSortViewModel.searchKey = searchKey
             } finally {
                 withContext(Dispatchers.Main) { onFinally() }
             }
