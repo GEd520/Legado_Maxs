@@ -320,12 +320,16 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
             if (AppConfig.isTocPartialLoad) {
                 tocLoading.postValue(true)
                 AppLog.putReaderDebug("[TOC] 部分加载开始, bookUrl=${book.bookUrl}")
+                var oldChapters: List<BookChapter> = emptyList()
+                var latestChapters: List<BookChapter> = emptyList()
                 execute(scope) {
+                    oldChapters = appDb.bookChapterDao.getChapterList(oldBook.bookUrl)
                     var firstEmitChapterSize: Int? = null
                     var hasShownNextTocLazyLoadToast = false
                     WebBook.getChapterListFlow(bookSource, book, runPreUpdateJs, isFromBookInfo = isFromBookInfo)
                         .collect { partial ->
                             val chapters = partial.chapters
+                            latestChapters = chapters.toList()
                             AppLog.putReaderDebug("[TOC] Flow emit: count=${chapters.size}, isComplete=${partial.isComplete}, bookUrl=${book.bookUrl}")
                             if (chapters.isEmpty()) return@collect
                             val firstSize = firstEmitChapterSize
@@ -364,10 +368,17 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                             }
                             postEvent(EventBus.TOC_PARTIAL_LOADED, book.bookUrl)
                         }
-                }.onError {
-                    chapterListData.postValue(emptyList())
-                    AppLog.put("获取目录失败\n${it.localizedMessage}", it)
-                    context.toastOnUi(R.string.error_get_chapter_list)
+                }.onError(IO) {
+                    if (oldChapters.isNotEmpty()) {
+                        restoreCachedChapterList(oldBook, book, oldChapters, latestChapters)
+                        chapterListData.postValue(oldChapters)
+                        AppLog.put("${context.getString(R.string.toc_load_failed_using_cache)}\n${it.localizedMessage}", it)
+                        context.toastOnUi(R.string.toc_load_failed_using_cache)
+                    } else {
+                        chapterListData.postValue(emptyList())
+                        AppLog.put("${context.getString(R.string.error_get_chapter_list)}\n${it.localizedMessage}", it)
+                        context.toastOnUi(R.string.error_get_chapter_list)
+                    }
                 }.onFinally {
                     tocLoading.postValue(false)
                     postEvent(EventBus.TOC_LOAD_COMPLETE, book.bookUrl)
@@ -382,9 +393,17 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
                         }
                         chapterListData.postValue(it)
                     }.onError {
-                        chapterListData.postValue(emptyList())
-                        AppLog.put("获取目录失败\n${it.localizedMessage}", it)
-                        context.toastOnUi(R.string.error_get_chapter_list)
+                        val oldChapters = appDb.bookChapterDao.getChapterList(oldBook.bookUrl)
+                        if (oldChapters.isNotEmpty()) {
+                            bookData.postValue(oldBook)
+                            chapterListData.postValue(oldChapters)
+                            AppLog.put("${context.getString(R.string.toc_load_failed_using_cache)}\n${it.localizedMessage}", it)
+                            context.toastOnUi(R.string.toc_load_failed_using_cache)
+                        } else {
+                            chapterListData.postValue(emptyList())
+                            AppLog.put("${context.getString(R.string.error_get_chapter_list)}\n${it.localizedMessage}", it)
+                            context.toastOnUi(R.string.error_get_chapter_list)
+                        }
                     }
             }
         }
@@ -443,6 +462,30 @@ class BookInfoViewModel(application: Application) : BaseViewModel(application) {
 
     private fun savePartialBookChapters(chapters: List<BookChapter>) {
         appDb.bookChapterDao.insert(*chapters.toTypedArray())
+    }
+
+    /** 目录刷新失败时恢复旧目录、书籍信息和因标题/排序变化而改名的缓存文件。 */
+    private fun restoreCachedChapterList(
+        oldBook: Book,
+        currentBook: Book,
+        oldChapters: List<BookChapter>,
+        latestChapters: List<BookChapter>
+    ) {
+        if (latestChapters.isNotEmpty()) {
+            BookHelp.createChapterCacheMigrator(currentBook, latestChapters).migrate(oldChapters)
+        }
+        if (currentBook.bookUrl != oldBook.bookUrl) {
+            appDb.bookChapterDao.delByBook(currentBook.bookUrl)
+        }
+        appDb.bookChapterDao.delByBook(oldBook.bookUrl)
+        appDb.bookChapterDao.insert(*oldChapters.toTypedArray())
+        if (appDb.bookDao.has(oldBook.bookUrl)) {
+            appDb.bookDao.update(oldBook)
+        }
+        if (inBookshelf) {
+            ReadBook.onChapterListUpdated(oldBook, loadContent = false)
+        }
+        bookData.postValue(oldBook)
     }
 
     fun loadGroup(groupId: Long, success: ((groupNames: String?) -> Unit)) {
