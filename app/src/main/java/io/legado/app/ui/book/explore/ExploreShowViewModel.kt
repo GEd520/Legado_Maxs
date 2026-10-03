@@ -18,6 +18,7 @@ import io.legado.app.model.blockrule.BlockRuleStore
 import io.legado.app.model.webBook.WebBook
 import io.legado.app.utils.printOnDebug
 import io.legado.app.utils.stackTraceStr
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -106,6 +107,9 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
             }
             if (newExploreUrl != null) {
                 exploreUrl = newExploreUrl
+                // 记住分类的基准 URL：explore() 会把 exploreUrl 原地改写成带页码的请求地址，
+                // 刷新必须回到未改写的基准，否则字面 ?page=N 的源会从第 N 页起载
+                currentKindBaseUrl = newExploreUrl
                 page = parsePageFromUrl(newExploreUrl)
                 pageLiveData.postValue(page)
                 // 加载所有发现分类（用于Tab显示）
@@ -122,6 +126,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 // 依赖 infoMap 求值，不能直接当 exploreUrl 加载
                 val firstUrl = kinds.firstOrNull { it.type == ExploreKind.Type.url }?.url
                 exploreUrl = firstUrl
+                currentKindBaseUrl = firstUrl
                 page = parsePageFromUrl(firstUrl)
                 pageLiveData.postValue(page)
                 explore()
@@ -134,13 +139,16 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
      * 书源内容更新后从源头重拉 exploreInfo 与列表。
      */
     fun refreshCurrent() {
-        initData(currentSourceUrl, exploreUrl)
+        initData(currentSourceUrl, currentKindBaseUrl)
     }
 
     /** 作废在途的 explore 响应：清空内容区（无可选分类的分组）也必须调，否则旧数据到达会把空态回填 */
     fun invalidateInFlightLoads() {
         loadGeneration++
     }
+
+    /** 当前分类的基准 URL（未经页码改写）：刷新用它，避免页码漂移 */
+    private var currentKindBaseUrl: String? = null
 
     /**
      * 加载书源的所有发现分类
@@ -180,10 +188,16 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 newBooks.addAll(filtered)
                 newBooks.addAll(books)
                 books = newBooks
-                addBooksData.postValue(filtered)
-                blockedCountData.postValue(allBooks.size - books.size)
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
-                pageLiveData.postValue(page)
+                val blockedCount = allBooks.size - books.size
+                viewModelScope.launch(Dispatchers.Main) {
+                    // 回填前在主线程做最终代际校验：与切分类/清空等主线程复位原子化，
+                    // 消除"IO 回调检查后、postValue 前发生切换"的窄窗口
+                    if (generation != loadGeneration) return@launch
+                    addBooksData.value = filtered
+                    blockedCountData.value = blockedCount
+                    pageLiveData.value = page
+                }
             }.onError {
                 if (generation != loadGeneration) return@onError
                 it.printOnDebug()
@@ -219,11 +233,17 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                 allBooks.addAll(searchBooks)
                 val filtered = BlockRuleStore.filterBooks(getApplication(), searchBooks, currentSourceUrl)
                 books.addAll(filtered)
-                booksData.postValue(books.toList())
-                blockedCountData.postValue(allBooks.size - books.size)
                 appDb.searchBookDao.insert(*searchBooks.toTypedArray())
-                pageLiveData.postValue(requestPage)
-                page = requestPage + 1
+                val blockedCount = allBooks.size - books.size
+                viewModelScope.launch(Dispatchers.Main) {
+                    // 回填前在主线程做最终代际校验：与切分类/清空等主线程复位原子化，
+                    // 消除"IO 回调检查后、postValue 前发生切换"的窄窗口
+                    if (generation != loadGeneration) return@launch
+                    booksData.value = books.toList()
+                    blockedCountData.value = blockedCount
+                    pageLiveData.value = requestPage
+                    page = requestPage + 1
+                }
             }.onError {
                 if (generation != loadGeneration) return@onError
                 it.printOnDebug()
@@ -398,6 +418,7 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
 
         // 异步预加载
         viewModelScope.launch(IO) {
+            val generation = loadGeneration
             indicesToPreload.forEach { index ->
                 val kind = allKinds[index]
                 val url = kind.url ?: return@forEach
@@ -413,7 +434,8 @@ class ExploreShowViewModel(application: Application) : BaseViewModel(application
                         null
                     }
                 }.onSuccess { searchBooks ->
-                    if (searchBooks != null) {
+                    // 切源后 initData 会清 preloadCache：旧源的在途预载不能再写回来
+                    if (searchBooks != null && generation == loadGeneration) {
                         val filtered = BlockRuleStore.filterBooks(
                             getApplication(),
                             searchBooks,

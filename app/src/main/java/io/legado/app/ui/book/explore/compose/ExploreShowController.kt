@@ -314,6 +314,9 @@ class ExploreShowController(
     }
 
     fun onTopFooterError(message: String) {
+        // 上滑加载的页失败：把 requestLoadPrev 发起前递减的 oldPage 回滚，
+        // 否则下次上滑会跳过失败页继续往前
+        oldPage++
         topFooter = topFooter.copy(isLoading = false, hasMore = false, isError = true, message = message)
     }
 

@@ -55,7 +55,7 @@ fun ModernTagBar(
             modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(AppDimens.exploreShowTabSpacing)
         ) {
-            itemsIndexed(items) { index, title ->
+            itemsIndexed(items, key = { index, title -> "${index}_$title" }) { index, title ->
                 val selected = index == selectedIndex
                 Surface(
                     shape = RoundedCornerShape(AppDimens.exploreShowTabCornerRadius),

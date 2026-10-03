@@ -126,9 +126,11 @@ fun ModernExploreContent(
         kindsState.load(kindsController, sourceUrl, refreshTick)
         if (force) {
             // 筛选变化后分类已被书源重建：恢复原选中分类，失效则落到第一个 url 类
+            // （只认 type==url：select/button/text/toggle 的 url 是模板/脚本，不能当分类加载）
             val items = buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
-            val target = items.firstOrNull { it.url == selectedTagUrl && it.url != null }
-                ?: items.firstOrNull { it.url != null }
+            val target = items.firstOrNull {
+                it.url == selectedTagUrl && it.url != null && it.kind.type == ExploreKind.Type.url
+            } ?: items.firstOrNull { it.url != null && it.kind.type == ExploreKind.Type.url }
             target?.let {
                 selectedTagUrl = it.url
                 controller.loadExploreUrl(it.url.orEmpty(), it.text)
@@ -145,22 +147,34 @@ fun ModernExploreContent(
         }
     }
 
-    val allItems = buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
-    val groups = allItems.mapNotNull { it.group }.distinct()
-    val currentGroupValue = groups.firstOrNull { it == currentGroup } ?: groups.firstOrNull()
-    val tagItems = if (currentGroupValue == null) {
-        allItems.filter { it.url != null }
-    } else {
-        allItems.filter { it.group == currentGroupValue && it.url != null }
+    // 标签条只放可直接加载的 url 类分类：select/button/text/toggle 的 url 是模板/脚本，
+    // 进表单（发现页管理）而非标签条（对齐参考分支 tagItems = filter { type != select && !isButton }）
+    val allItems = remember(kindsState.kinds, allLabel, otherLabel) {
+        buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
     }
-    val settingItems = buildModernSettingItems(allItems, groups.isNotEmpty())
+    val groups = remember(allItems) { allItems.mapNotNull { it.group }.distinct() }
+    val currentGroupValue = groups.firstOrNull { it == currentGroup } ?: groups.firstOrNull()
+    val tagItems = remember(allItems, currentGroupValue) {
+        if (currentGroupValue == null) {
+            allItems.filter { it.url != null && it.kind.type == ExploreKind.Type.url }
+        } else {
+            allItems.filter {
+                it.group == currentGroupValue && it.url != null && it.kind.type == ExploreKind.Type.url
+            }
+        }
+    }
+    val settingItems = remember(allItems, groups) {
+        buildModernSettingItems(allItems, groups.isNotEmpty())
+    }
 
     // 切换大分组（对齐参考分支 rvDiscoverSelects 点击 → applyDiscoverTagFilterAndSelect）：
     // 当前选中标签不属于新分组时，自动选中并加载新分组的第一个 url 类标签，
     // 否则只切分组条、内容区还停在旧分组（起点按钮筛选这类多分组源上必现）
     fun selectGroup(group: String?) {
         currentGroup = group
-        val groupTags = allItems.filter { it.group == group && it.url != null }
+        val groupTags = allItems.filter {
+            it.group == group && it.url != null && it.kind.type == ExploreKind.Type.url
+        }
         if (groupTags.none { it.url == selectedTagUrl }) {
             val target = groupTags.firstOrNull()
             selectedTagUrl = target?.url
@@ -480,16 +494,18 @@ private fun ModernExploreSettingsSheet(
             onShowPhoto = { _, _ -> },
         )
     }
-    var selectChanged by remember { mutableStateOf(false) }
+    // 表单任一项（select/toggle/text）改值后分类可能已被书源重建：
+    // 统一在弹窗关闭路径上触发刷新信号，不能靠各组件自行回调（会漏）
+    var formChanged by remember { mutableStateOf(false) }
+    fun dismissWithRefresh() {
+        if (formChanged) {
+            kindsController.requestRefresh(sourceUrl)
+        }
+        onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = {
-            if (selectChanged) {
-                // select 改值后分类可能已被书源重建：走刷新信号重建分类区
-                kindsController.requestRefresh(sourceUrl)
-            }
-            onDismiss()
-        },
+        onDismissRequest = { dismissWithRefresh() },
         title = { Text(text = stringResource(R.string.setting)) },
         text = {
             ExploreFlexLayout(
@@ -514,22 +530,20 @@ private fun ModernExploreSettingsSheet(
                     actions = kindsActions,
                     onSelected = if (item.kind.type == ExploreKind.Type.select) {
                         {
-                            selectChanged = true
-                            onDismiss()
+                            // select 选中即关闭（对齐参考分支 dismissOnSelect），
+                            // 关闭前必须标记变更，否则刷新信号在关闭路径上丢失
+                            formChanged = true
+                            dismissWithRefresh()
                         }
                     } else {
                         null
-                    }
+                    },
+                    onFormChanged = { formChanged = true },
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = {
-                if (selectChanged) {
-                    kindsController.requestRefresh(sourceUrl)
-                }
-                onDismiss()
-            }) {
+            TextButton(onClick = { dismissWithRefresh() }) {
                 Text(text = stringResource(R.string.confirm))
             }
         },

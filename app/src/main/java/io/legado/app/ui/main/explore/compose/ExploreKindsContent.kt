@@ -60,6 +60,7 @@ internal fun ExploreKindItem(
     controller: ExploreKindsController,
     actions: ExploreSourceActions,
     onSelected: ((String) -> Unit)? = null,
+    onFormChanged: (() -> Unit)? = null,
 ) {
     when (kind.type) {
         ExploreKind.Type.url -> ExploreKindActionChip(
@@ -91,12 +92,14 @@ internal fun ExploreKindItem(
             kind = kind,
             sourceUrl = sourceUrl,
             controller = controller,
+            onFormChanged = onFormChanged,
         )
 
         ExploreKind.Type.text -> ExploreKindTextField(
             kind = kind,
             sourceUrl = sourceUrl,
             controller = controller,
+            onFormChanged = onFormChanged,
         )
 
         ExploreKind.Type.select -> ExploreKindSelectField(

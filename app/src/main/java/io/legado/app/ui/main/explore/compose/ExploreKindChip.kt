@@ -87,6 +87,7 @@ internal fun ExploreKindToggleChip(
     kind: ExploreKind,
     sourceUrl: String,
     controller: ExploreKindsController,
+    onFormChanged: (() -> Unit)? = null,
 ) {
     val style = kind.style()
     val name by rememberKindName(sourceUrl, kind, controller)
@@ -114,6 +115,7 @@ internal fun ExploreKindToggleChip(
             val nextIndex = (chars.indexOf(char) + 1).mod(chars.size)
             char = chars.getOrNull(nextIndex).orEmpty()
             infoMap[kind.title] = char
+            onFormChanged?.invoke()
             kind.action?.takeIf { it.isNotBlank() }?.let {
                 controller.evalAction(sourceUrl, it, kind.title)
             }

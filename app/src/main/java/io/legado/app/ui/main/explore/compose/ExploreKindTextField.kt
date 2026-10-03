@@ -34,6 +34,7 @@ internal fun ExploreKindTextField(
     kind: ExploreKind,
     sourceUrl: String,
     controller: ExploreKindsController,
+    onFormChanged: (() -> Unit)? = null,
 ) {
     val style = kind.style()
     val alignment = style.horizontalAlignment(Alignment.Start)
@@ -49,6 +50,7 @@ internal fun ExploreKindTextField(
             ready = true
             return@LaunchedEffect
         }
+        onFormChanged?.invoke()
         val action = kind.action?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
         delay(EXPLORE_KIND_TEXT_DEBOUNCE_MS)
         controller.evalAction(sourceUrl, action, kind.title)
