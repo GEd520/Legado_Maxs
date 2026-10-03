@@ -62,25 +62,37 @@ class ExploreKindsController(
     }
 
     /**
-     * 书源表**真的被写入**后作废已缓存的书源对象与 JS 桥。
+     * 书源表**真的被写入**后作废已缓存的书源对象与 JS 桥，并只让**内容确实变化**的书源重新求值。
      *
      * 分类缓存的 key 含 `exploreUrl`（见 `BookSource.getExploreKindsKey`），本意是"改了配置
      * key 自然变、不用手动刷"；但缓存里存的是 `BookSource` **对象本身**，书源被编辑后旧对象
      * 仍在，重算出的还是旧 key，于是永远命中旧分类——表现为改了发现配置后要重启 App 才生效，
      * 长按菜单的"刷新"也因为读的是旧对象而无效。这里在表失效时把用过的书源对象丢掉，
-     * 并递增重建信号让已展开的行重新求值。
+     * 让下一次求值读到的一定是新对象。
+     *
+     * **重建信号（[requestRefresh]）只补发给内容确实变化的书源**：失效追踪器只能报"表变了"，
+     * 无法告知具体哪一行，之前的实现于是对所有缓存源一视同仁地重刷——结果就是改动任意一个无关
+     * 书源 B，也会把当前展开 / 选中的书源 A 的分类脚本重跑一遍，误刷出"🎆起点中文网(按钮筛选)
+     * 正在刷新"。这里把缓存对象与库里的新对象按发现配置（`exploreUrl`）比对，只有变化了的才重刷。
      *
      * 调用方必须是"库表失效事件"（见 `ExploreFragment.initBookSourceInvalidation`），
      * 不能是发现列表的数据流：那条流每次回到本页都会重发数据，在这里作废会让已展开的书源
      * 与服务端来回无关地重跑分类脚本（`@js:` 书源会重复弹提示、重复发请求）。
      */
-    fun invalidateBookSources() {
+    suspend fun invalidateBookSources() {
         if (sources.isEmpty()) return
-        val urls = sources.keys.toList()
+        // 先把用过的书源对象摘下来：下一轮求值会重新读库，拿到的是最新对象
+        val cached = sources.entries.map { (url, source) -> url to source }
         sources.clear()
         jsExtensions.clear()
         jsExtensionCallbacks.clear()
-        urls.forEach(::requestRefresh)
+        cached.forEach { (url, oldSource) ->
+            val newSource = withContext(IO) { appDb.bookSourceDao.getBookSource(url) }
+            // 只认发现配置变化：无关书源改了其它字段不会误刷当前展示源
+            if (oldSource?.exploreUrl != newSource?.exploreUrl) {
+                requestRefresh(url)
+            }
+        }
     }
 
     /** 读取书源的发现分类；[exploreKinds] 自带进程内缓存，这里不再叠一层缓存。 */
