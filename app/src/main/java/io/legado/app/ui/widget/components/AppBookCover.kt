@@ -45,10 +45,33 @@ import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.theme.LegadoTheme
 import io.legado.app.utils.textHeight
 import io.legado.app.utils.toStringArray
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.math.max
+
+/**
+ * 封面请求失败后的重试次数。
+ *
+ * View 版列表每次条目绑定都会重新发起请求（RecyclerView 复用即重试），Compose 条目只在
+ * 首次组合时请求一次：一次失败就永久停在默认封面上，只有滚出屏幕再回来才会重来。
+ * 用户反馈的"列表不显示封面、长按弹窗却能看到"正是这个差异（弹窗每次都新发请求）。
+ */
+private const val COVER_LOAD_ATTEMPTS = 2
+
+/** 两次尝试之间的间隔：给瞬时失败（并发被限速、连接被掐断）留出恢复时间 */
+private const val COVER_LOAD_RETRY_DELAY_MS = 1500L
+
+/**
+ * 单次封面请求的上限。
+ *
+ * `OkHttpStreamFetcher` 的读流/解密跑在自己的协程里，抛出的异常会被协程包装吞掉、
+ * 不回调 Glide，请求于是永远停在 pending：挂起的加载既不成功也不失败，条目就一直
+ * 保持占位封面。超时把这个"静默挂起"转成失败，交给上面的重试。
+ */
+private const val COVER_LOAD_TIMEOUT_MS = 12_000L
 
 /**
  * 书籍 / 分组封面的 Compose 实现。
@@ -83,7 +106,11 @@ fun AppBookCover(
     loadOnlyWifi: Boolean = false,
 ) {
     val context = LocalContext.current
-    val galleryCover = BookCover.getGalleryDefaultCover(galleryIdentity, coverPath)
+    // 图集取图是"库查询 + 文件读取"（顺序模式还要回写缓存）：必须按取图身份记忆。
+    // 放在组合里裸调会在每次重组时都查一次库，列表滚动时把主线程压满，封面迟迟画不出来
+    val galleryCover = remember(galleryIdentity, coverPath) {
+        BookCover.getGalleryDefaultCover(galleryIdentity, coverPath)
+    }
     val realPath = galleryCover ?: coverPath?.takeIf { it.isNotBlank() }
     // 图集默认封面优先于"强制默认封面"：命中图集时仍显示图集封面
     val useDefaultCover = AppConfig.useDefaultCover && galleryCover == null
@@ -245,8 +272,7 @@ internal fun BookCoverTextOverlay(
  * 动画信息在目标类型处就丢了。Drawable 链路与旧 View 版 `CoverImageView`、首页 `GlideImage`
  * 一致，动图能正常播放，静态图（含透明 PNG）行为也不变。
  *
- * 取消时清掉 target，避免列表滑走后 Glide 继续解码；`onResourceReady` 与 `onLoadFailed`
- * 可能被先后调用（后台恢复时 Glide 会重新调度资源），用 [AtomicBoolean] 保证只 resume 一次。
+ * 单次请求带超时、失败后有界重试，原因见 [COVER_LOAD_TIMEOUT_MS]、[COVER_LOAD_ATTEMPTS]。
  *
  * @param centerCrop 请求是否 centerCrop；瀑布流等自由比例场景传 false，
  *   保持图片原始宽高比（对齐 View 版 CoverLoader 的 fixedRatio = false）
@@ -258,6 +284,25 @@ internal suspend fun loadCoverDrawable(
     loadOnlyWifi: Boolean,
     requestSize: IntSize,
     centerCrop: Boolean = true,
+): Drawable? {
+    repeat(COVER_LOAD_ATTEMPTS) { attempt ->
+        val loaded = withTimeoutOrNull(COVER_LOAD_TIMEOUT_MS) {
+            loadCoverDrawableOnce(context, path, sourceOrigin, loadOnlyWifi, requestSize, centerCrop)
+        }
+        if (loaded != null) return loaded
+        if (attempt < COVER_LOAD_ATTEMPTS - 1) delay(COVER_LOAD_RETRY_DELAY_MS)
+    }
+    return null
+}
+
+/** [loadCoverDrawable] 的单次请求实现 */
+private suspend fun loadCoverDrawableOnce(
+    context: Context,
+    path: String,
+    sourceOrigin: String?,
+    loadOnlyWifi: Boolean,
+    requestSize: IntSize,
+    centerCrop: Boolean,
 ): Drawable? = suspendCancellableCoroutine { cont ->
     // 先在协程存活时取到 RequestManager：取消回调里 Activity 可能已 destroy，
     // 那时再 Glide.with(context) 会抛 "You cannot start a load for a destroyed activity"
