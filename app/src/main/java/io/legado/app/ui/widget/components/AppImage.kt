@@ -183,11 +183,25 @@ internal class AppDrawablePainter(private val drawable: Drawable) : Painter() {
         drawable.callback = callback
     }
 
+    /**
+     * Drawable 的固有尺寸；拿不到有效值（0 / -1）时上报 [Size.Unspecified]。
+     *
+     * 这一条是 View 版没有的依赖：ImageView 用控件尺寸 + scaleType 绘制，从不看 Drawable 的固有尺寸；
+     * 而 Compose 侧 `Image(painter, contentScale = Crop/Fit)` 会拿这个尺寸算缩放比例——固有尺寸为 0 时
+     * 比例会算成 NaN / 0，结果是"图取到了但整块封面画不出来"。上报 Unspecified 后 Compose 直接按
+     * 控件尺寸铺满绘制，不会再有这个失败面。
+     */
     override val intrinsicSize: Size
         @Suppress("UNUSED_EXPRESSION")
         get() {
             frameTick
-            return Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
+            val width = drawable.intrinsicWidth
+            val height = drawable.intrinsicHeight
+            return if (width > 0 && height > 0) {
+                Size(width.toFloat(), height.toFloat())
+            } else {
+                Size.Unspecified
+            }
         }
 
     override fun DrawScope.onDraw() {

@@ -124,6 +124,8 @@ fun AppBookCover(
     var bounds by remember { mutableStateOf(IntSize.Zero) }
     val requestKey = listOf(realPath, sourceOrigin, htmlCover, useDefaultCover, name, author)
         .joinToString("|")
+    // 图集命中时 realPath 是图集里的图，失败后要退回的"真实封面"就是用户书源的封面地址
+    val fallbackPath = coverPath?.takeIf { it.isNotBlank() && it != realPath }
     // 初值就是默认封面：与 View 版 placeholder(defaultDrawable) 一致，避免加载期间露出壁纸
     var drawable by remember(requestKey) { mutableStateOf(defaultCoverDrawable()) }
     var loadFailed by remember(requestKey) { mutableStateOf(false) }
@@ -140,7 +142,17 @@ fun AppBookCover(
                 sourceOrigin = sourceOrigin,
                 loadOnlyWifi = loadOnlyWifi,
                 requestSize = bounds,
-            )
+            ) ?: fallbackPath?.let {
+                // 取图优先级是"图集 → 真实图片 → HTML → 默认封面"，图集那张取不到时必须继续往下走，
+                // 否则图集文件缺失/损坏会表现为"整屏封面都退化成默认封面"
+                loadCoverDrawable(
+                    context = context,
+                    path = it,
+                    sourceOrigin = sourceOrigin,
+                    loadOnlyWifi = loadOnlyWifi,
+                    requestSize = bounds,
+                )
+            }
 
             else -> defaultCoverDrawable()
         }

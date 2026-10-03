@@ -494,14 +494,27 @@ fun ExploreWaterfallCover(
             useDefaultCover -> drawable = defaultCoverDrawable()
 
             realPath != null -> {
+                val requestSize = IntSize(bounds.width, bounds.width * 4 / 3)
                 val loaded = loadCoverDrawable(
                     context = context,
                     path = realPath,
                     sourceOrigin = book.origin,
                     loadOnlyWifi = loadOnlyWifi,
-                    requestSize = IntSize(bounds.width, bounds.width * 4 / 3),
+                    requestSize = requestSize,
                     centerCrop = false
-                )
+                ) ?: book.coverUrl
+                    // 图集那张取不到时继续按"图集 → 真实图片 → 默认封面"往下走
+                    ?.takeIf { it.isNotBlank() && it != realPath }
+                    ?.let {
+                        loadCoverDrawable(
+                            context = context,
+                            path = it,
+                            sourceOrigin = book.origin,
+                            loadOnlyWifi = loadOnlyWifi,
+                            requestSize = requestSize,
+                            centerCrop = false
+                        )
+                    }
                 if (loaded != null) {
                     drawable = loaded
                     startIfAnimatable(loaded)
