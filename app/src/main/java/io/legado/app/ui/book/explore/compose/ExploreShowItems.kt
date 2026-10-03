@@ -62,6 +62,18 @@ import io.legado.app.ui.widget.components.BookCoverTextOverlay
 import io.legado.app.ui.widget.components.loadCoverDrawable
 import io.legado.app.ui.widget.components.startIfAnimatable
 
+/**
+ * 各档文字的行高（sp）。
+ *
+ * Compose 的 `Text` 只传 `fontSize` 时会继承 `MaterialTheme` 默认 `bodyLarge` 的 24sp 行高：
+ * 12sp 的作者、标签、最新章节与简介每行都会多出约 8dp 的上下空白（标签胶囊也从原
+ * TextView 的 16dp 涨到 24dp），一屏能看到的条目因此明显变少。这里逐档压到字号 + 3~4sp，
+ * 行盒高度对齐原 `item_search.xml` 与 `item_explore_show_waterfall.xml` 里的 TextView。
+ */
+private const val EXPLORE_LIST_NAME_LINE_HEIGHT = 20
+private const val EXPLORE_META_LINE_HEIGHT = 16
+private const val EXPLORE_SMALL_META_LINE_HEIGHT = 14
+
 /** 书架状态小绿点：固定色来自 res 的 md_green_600，与主题无关的既定品牌色 */
 private val SHELF_DOT_GREEN = Color(0xFF43A047)
 
@@ -134,6 +146,7 @@ fun ExploreKindLabels(
                     .padding(horizontal = AppDimens.exploreShowLabelPaddingHorizontal),
                 color = MaterialTheme.colorScheme.onPrimary,
                 fontSize = 12.sp,
+                lineHeight = EXPLORE_META_LINE_HEIGHT.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -201,6 +214,7 @@ fun ExploreShowListItem(
                     modifier = Modifier.weight(1f),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 16.sp,
+                    lineHeight = EXPLORE_LIST_NAME_LINE_HEIGHT.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -210,6 +224,7 @@ fun ExploreShowListItem(
                 text = context.getString(R.string.author_show, book.author),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 12.sp,
+                lineHeight = EXPLORE_META_LINE_HEIGHT.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -219,6 +234,7 @@ fun ExploreShowListItem(
                     text = context.getString(R.string.lasted_show, book.latestChapterTitle),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 12.sp,
+                    lineHeight = EXPLORE_META_LINE_HEIGHT.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -228,6 +244,7 @@ fun ExploreShowListItem(
                 modifier = Modifier.weight(1f, fill = true),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 12.sp,
+                lineHeight = EXPLORE_META_LINE_HEIGHT.sp,
                 maxLines = 10,
                 overflow = TextOverflow.Ellipsis
             )
@@ -290,6 +307,7 @@ fun ExploreShowGridItem(
                 text = book.name,
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 12.sp,
+                lineHeight = EXPLORE_META_LINE_HEIGHT.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -354,6 +372,7 @@ fun ExploreShowWaterfallItem(
                     text = book.name,
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 13.sp,
+                    lineHeight = EXPLORE_META_LINE_HEIGHT.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -364,6 +383,7 @@ fun ExploreShowWaterfallItem(
                 modifier = Modifier.padding(top = AppDimens.exploreShowRowSpacing),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 11.sp,
+                lineHeight = EXPLORE_SMALL_META_LINE_HEIGHT.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -377,6 +397,7 @@ fun ExploreShowWaterfallItem(
                     modifier = Modifier.padding(top = AppDimens.exploreShowRowSpacing),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 11.sp,
+                    lineHeight = EXPLORE_SMALL_META_LINE_HEIGHT.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -386,6 +407,7 @@ fun ExploreShowWaterfallItem(
                 modifier = Modifier.padding(top = AppDimens.exploreShowRowSpacing),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 11.sp,
+                lineHeight = EXPLORE_SMALL_META_LINE_HEIGHT.sp,
                 maxLines = waterfallIntroMaxLines(columnCount),
                 overflow = TextOverflow.Ellipsis
             )
