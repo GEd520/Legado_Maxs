@@ -3,11 +3,8 @@ package io.legado.app.ui.main.explore.compose
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -90,7 +87,6 @@ private const val TAG_EXPAND_THRESHOLD = 12
  * @param kindsController 分类控制器（JS 求值 / infoMap / 内联 WebView，宿主 Fragment 持有）
  * @param onSwitchLegacy 切换回旧版发现
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ModernExploreContent(
     controller: ExploreShowController,
@@ -462,8 +458,11 @@ private fun ModernExploreHeader(
 /**
  * 「发现页管理」表单弹窗（对齐参考分支 RowUiDialog）：
  * select/text/button 类分类项以流式表单呈现，select 选中即关闭并重建分类。
+ *
+ * 每项宽度对齐参考分支 RowUiForm.createRowLayoutParams：
+ * 声明 flexBasisPercent 的按整行宽百分比、声明 flexGrow 的按内容宽再分剩余空间、
+ * 两者都没声明的独占整行（View 版 MATCH_PARENT）——与分类区共用 ExploreFlexLayout。
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ModernExploreSettingsSheet(
     sourceUrl: String,
@@ -493,29 +492,35 @@ private fun ModernExploreSettingsSheet(
         },
         title = { Text(text = stringResource(R.string.setting)) },
         text = {
-            FlowRow(
+            ExploreFlexLayout(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(AppDimens.exploreKindSpacing),
-                verticalArrangement = Arrangement.spacedBy(AppDimens.exploreKindSpacing)
-            ) {
-                items.forEach { item ->
-                    ExploreKindItem(
-                        kind = item.kind,
-                        sourceUrl = sourceUrl,
-                        controller = kindsController,
-                        actions = kindsActions,
-                        onSelected = if (item.kind.type == ExploreKind.Type.select) {
-                            {
-                                selectChanged = true
-                                onDismiss()
-                            }
-                        } else {
-                            null
-                        }
+                items = items.map { item ->
+                    val style = item.kind.style()
+                    ExploreFlexItemSpec(
+                        style = style,
+                        fillLine = style.layout_flexBasisPercent < 0f && style.layout_flexGrow <= 0f
                     )
-                }
+                },
+                horizontalSpacing = AppDimens.exploreKindSpacing,
+                verticalSpacing = AppDimens.exploreKindSpacing,
+            ) { index ->
+                val item = items[index]
+                ExploreKindItem(
+                    kind = item.kind,
+                    sourceUrl = sourceUrl,
+                    controller = kindsController,
+                    actions = kindsActions,
+                    onSelected = if (item.kind.type == ExploreKind.Type.select) {
+                        {
+                            selectChanged = true
+                            onDismiss()
+                        }
+                    } else {
+                        null
+                    }
+                )
             }
         },
         confirmButton = {
