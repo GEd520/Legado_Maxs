@@ -226,7 +226,8 @@ class RssFragment() : VMBaseFragment<RssViewModel>(R.layout.fragment_rss),
                         onOpenInWeb = ::openModernRssInWeb,
                         onShowBlockRule = { showModernBlockRuleConfig() },
                         moreMenuItems = ::buildModernRssMenuItems,
-                        onMenuItem = ::handleModernRssMenu
+                        onMenuItem = ::handleModernRssMenu,
+                        bottomPaddingPx = bottomPaddingPx
                     )
                 } else {
                     RssSourceGrid(

@@ -43,12 +43,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.first
 import io.legado.app.R
 import io.legado.app.data.entities.RssArticle
 import io.legado.app.data.entities.RssSource
@@ -102,7 +105,10 @@ fun ModernRssContent(
     moreMenuItems: () -> List<RssMoreMenuItem>,
     onMenuItem: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    /** 主界面底栏占用的高度（px），补进列表底部内边距，避免滑到底的文章被底栏遮挡 */
+    bottomPaddingPx: Int = 0,
 ) {
+    val extraBottomPadding = with(LocalDensity.current) { bottomPaddingPx.toDp() }
     var showSourcePicker by remember { mutableStateOf(false) }
     var showSortPicker by remember { mutableStateOf(false) }
     // 分类条里的展开按钮阈值：与发现页同款（≥12 项时出现 ▾）
@@ -136,11 +142,11 @@ fun ModernRssContent(
             if (webOpenSource != null) {
                 ModernRssWebOpenPanel(webOpenSource, onOpenInWeb)
             } else when (controller.articleStyle) {
-                1 -> ModernRssLargeCardList(controller, onReadArticle)
-                2 -> ModernRssGrid(controller, onReadArticle)
-                3 -> ModernRssStaggered(controller, onReadArticle)
-                4 -> ModernRssCompactGrid(controller, onReadArticle)
-                else -> ModernRssList(controller, onReadArticle)
+                1 -> ModernRssLargeCardList(controller, onReadArticle, extraBottomPadding)
+                2 -> ModernRssGrid(controller, onReadArticle, extraBottomPadding)
+                3 -> ModernRssStaggered(controller, onReadArticle, extraBottomPadding)
+                4 -> ModernRssCompactGrid(controller, onReadArticle, extraBottomPadding)
+                else -> ModernRssList(controller, onReadArticle, extraBottomPadding)
             }
             if (showBlockProgress && controller.blockedCount > 0) {
                 BlockProgressChip(
@@ -298,12 +304,16 @@ private fun ModernRssSourceRow(
 private fun ModernRssList(
     controller: ModernRssController,
     onReadArticle: (RssArticle) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val listState = rememberLazyListState()
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = navigationBarBottomInset)
+        // 主界面内嵌时底栏浮在内容之上：取底栏高度与系统导航栏 inset 的较大者
+        contentPadding = PaddingValues(
+            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+        )
     ) {
         items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
             Column {
@@ -339,12 +349,15 @@ private fun ModernRssList(
 private fun ModernRssLargeCardList(
     controller: ModernRssController,
     onReadArticle: (RssArticle) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val listState = rememberLazyListState()
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = navigationBarBottomInset)
+        contentPadding = PaddingValues(
+            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+        )
     ) {
         items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
             ModernRssLargeCardItem(
@@ -376,6 +389,7 @@ private fun ModernRssLargeCardList(
 private fun ModernRssGrid(
     controller: ModernRssController,
     onReadArticle: (RssArticle) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val gridState = rememberLazyGridState()
     LazyVerticalGrid(
@@ -385,7 +399,7 @@ private fun ModernRssGrid(
         contentPadding = PaddingValues(
             start = AppDimens.rssGridItemPadding / 2,
             end = AppDimens.rssGridItemPadding / 2,
-            bottom = navigationBarBottomInset
+            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
         ),
         horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
         verticalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2)
@@ -421,6 +435,7 @@ private fun ModernRssGrid(
 private fun ModernRssCompactGrid(
     controller: ModernRssController,
     onReadArticle: (RssArticle) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val gridState = rememberLazyGridState()
     LazyVerticalGrid(
@@ -430,7 +445,7 @@ private fun ModernRssCompactGrid(
         contentPadding = PaddingValues(
             start = AppDimens.rssGridItemPadding / 2,
             end = AppDimens.rssGridItemPadding / 2,
-            bottom = navigationBarBottomInset
+            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
         ),
         horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
         verticalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2)
@@ -466,6 +481,7 @@ private fun ModernRssCompactGrid(
 private fun ModernRssStaggered(
     controller: ModernRssController,
     onReadArticle: (RssArticle) -> Unit,
+    extraBottomPadding: Dp = 0.dp,
 ) {
     val staggeredState = rememberLazyStaggeredGridState()
     LazyVerticalStaggeredGrid(
@@ -475,7 +491,7 @@ private fun ModernRssStaggered(
         contentPadding = PaddingValues(
             start = AppDimens.rssGridItemPadding / 2,
             end = AppDimens.rssGridItemPadding / 2,
-            bottom = navigationBarBottomInset
+            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
         ),
         horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
         verticalItemSpacing = AppDimens.rssGridItemPadding / 2
@@ -525,14 +541,24 @@ private fun ModernRssPagingEffect(
     }
 }
 
-/** 跳页/换分类后的滚动复位 */
+/**
+ * 跳页/换分类后的滚动复位。
+ *
+ * 必须等新文章到达（列表不再只有 footer）再滚回顶部：
+ * 复位信号与 `articles` 清空是同一帧发生的，此刻列表里只剩底部 footer 这一项，
+ * 对它执行 `scrollToItem(0)` 会把「首个可见项」锚定在 footer 的 key 上；新数据到达后
+ * footer 移到列表末尾，LazyList 按 key 维持可见项，于是视口被拖到**页末**——
+ * 表现为"加载分类直接到第一页的末端"。跳页不清空 `articles`，仍按原时序立即复位。
+ */
 @Composable
 private fun ModernRssScrollResetEffect(
     controller: ModernRssController,
     reset: suspend () -> Unit,
 ) {
     LaunchedEffect(controller.scrollToTopTick) {
-        if (controller.scrollToTopTick > 0) reset()
+        if (controller.scrollToTopTick <= 0) return@LaunchedEffect
+        snapshotFlow { controller.articles.isNotEmpty() }.first { it }
+        reset()
     }
 }
 
