@@ -575,7 +575,9 @@ private fun buildModernTagItems(
             return@forEach
         }
 
-        if (isSelect || isButton || kind.type == ExploreKind.Type.text || !action.isNullOrBlank()) {
+        if (isSelect || isButton || kind.type == ExploreKind.Type.text ||
+            kind.type == ExploreKind.Type.toggle || !action.isNullOrBlank()
+        ) {
             result += ModernTagItem(
                 text = kind.title,
                 url = url,
@@ -611,6 +613,7 @@ private fun buildModernSettingItems(
     return items.filter {
         it.kind.type == ExploreKind.Type.select ||
             it.kind.type == ExploreKind.Type.text ||
+            it.kind.type == ExploreKind.Type.toggle ||
             (it.kind.type == ExploreKind.Type.button && !it.kind.action.isNullOrBlank()) ||
             (hasGroups && it.group == null && it.url != null)
     }
