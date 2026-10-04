@@ -1,4 +1,4 @@
-package io.legado.app.ui.main.explore.compose
+package io.legado.app.ui.widget.components
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
@@ -10,12 +10,12 @@ import io.legado.app.data.entities.rule.FlexChildStyle
 import kotlin.math.roundToInt
 
 /**
- * 参与弹性布局的一个分类项。
+ * 参与弹性布局的一项。
  *
  * @param style 书源里声明的子项样式
  * @param fillLine 该项独占整行（html 类：View 版里它本身是 match_parent）
  */
-internal class ExploreFlexItemSpec(
+class FlexWrapItemSpec(
     val style: FlexChildStyle,
     val fillLine: Boolean = false,
 )
@@ -24,8 +24,13 @@ internal class ExploreFlexItemSpec(
 private class FlexEntry(val index: Int, val basisPx: Int, val grow: Float)
 
 /**
- * 发现分类区的弹性布局，复刻 FlexboxLayout 在 `flexDirection=row + flexWrap=wrap` 下的行为：
- * 1. **基准宽度**：`flexBasisPercent > 0` 取整行宽度的百分比，[ExploreFlexItemSpec.fillRectline]
+ * 按书源 `style` 声明复刻 FlexboxLayout `flexDirection=row + flexWrap=wrap` 的换行弹性布局。
+ *
+ * 用在三处吃同一套书源声明的界面：发现分类区、新版发现的「发现页管理」表单、
+ * 新版发现分组/分类的展开弹窗（三处的项宽口径必须一致，否则同一书源在两个界面里排得不一样）。
+ *
+ * 规则：
+ * 1. **基准宽度**：`flexBasisPercent > 0` 取整行宽度的百分比，[FlexWrapItemSpec.fillLine]
  *    取整行，否则取内容自身宽度；
  * 2. **断行**：当前行放不下、或该项声明 `layout_wrapBefore` 时换到下一行；
  * 3. **分配**：行内剩余宽度按 `flexGrow` 的比例分给各项，`flexGrow = 0` 的项保持基准宽度。
@@ -34,9 +39,9 @@ private class FlexEntry(val index: Int, val basisPx: Int, val grow: Float)
  * 与 flexbox 的"整行宽度"基准不一致——同一行越往后越窄，0.25 + 0.15×3 这类声明会被挤成一串省略号。
  */
 @Composable
-internal fun ExploreFlexLayout(
+fun FlexWrapLayout(
     modifier: Modifier = Modifier,
-    items: List<ExploreFlexItemSpec>,
+    items: List<FlexWrapItemSpec>,
     horizontalSpacing: Dp,
     verticalSpacing: Dp,
     itemContent: @Composable (Int) -> Unit,
@@ -53,7 +58,7 @@ internal fun ExploreFlexLayout(
         },
         modifier = modifier,
     ) { measurables, constraints ->
-        check(constraints.hasBoundedWidth) { "ExploreFlexLayout 需要有界宽度（外层需 fillMaxWidth）" }
+        check(constraints.hasBoundedWidth) { "FlexWrapLayout 需要有界宽度（外层需 fillMaxWidth）" }
         val lineWidth = constraints.maxWidth
         val hSpace = horizontalSpacing.roundToPx()
         val vSpace = verticalSpacing.roundToPx()

@@ -44,6 +44,7 @@ import io.legado.app.R
 import io.legado.app.data.entities.BookSourcePart
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.data.entities.rule.ExploreKind
+import io.legado.app.data.entities.rule.FlexChildStyle
 import io.legado.app.domain.model.BookShelfState
 import io.legado.app.ui.book.explore.compose.EXPLORE_LAYOUT_GRID
 import io.legado.app.ui.book.explore.compose.EXPLORE_LAYOUT_LIST
@@ -59,6 +60,8 @@ import io.legado.app.ui.widget.components.dialog.AppSearchableChoiceDialog
 import io.legado.app.ui.widget.components.dialog.AppTagGridDialog
 import io.legado.app.ui.widget.components.BlockProgressChip
 import io.legado.app.ui.widget.components.BookBottomSheet
+import io.legado.app.ui.widget.components.FlexWrapItemSpec
+import io.legado.app.ui.widget.components.FlexWrapLayout
 
 /** 标签条里的一个分类项（参考分支 DiscoverTagItem 的精简版） */
 private data class ModernTagItem(
@@ -66,6 +69,13 @@ private data class ModernTagItem(
     val url: String?,
     val group: String?,
     val kind: ExploreKind,
+)
+
+/** 分类项解析结果：标签项 + 大分组表头（表头的 style 供分组展开弹窗按书源声明排布宽度） */
+private class ModernTagModel(
+    val items: List<ModernTagItem>,
+    /** 大分组表头项：`text` / `group` 为分组名、`kind` 为原表头项；隐式「其它」分组没有表头 */
+    val groupHeaders: List<ModernTagItem>,
 )
 
 /** 标签/分组展开弹窗的数量阈值（对齐参考分支 ExpandableTagSelector.EXPAND_THRESHOLD） */
@@ -80,6 +90,8 @@ private const val TAG_EXPAND_THRESHOLD = 12
  *   右侧是"发现页管理"（齿轮）与功能菜单（三点）两个圆钮；
  * - 分类按整行项拆成大分组：分组条（可切换分组）+ 当前分组的 url 类标签条
  *   （每分组自动带「全部」项），标签条末尾 ▾ 展开全部标签；
+ *   第一个分组标题之前的分类（如番茄小说的「猜你喜欢…热搜榜单」）归「其它」分组，不丢进表单；
+ *   两个展开弹窗与分类区共用 FlexWrapLayout，同样吃书源 style 的 flex 声明；
  * - select/text/button 类不进标签条，收进「发现页管理」表单弹窗：
  *   select 值写入书源 infoMap 并触发分类重建，与旧版展开分类区同一套机制。
  *
@@ -133,7 +145,7 @@ fun ModernExploreContent(
         if (force) {
             // 筛选变化后分类已被书源重建：恢复原选中分类，失效则落到第一个 url 类
             // （只认 type==url：select/button/text/toggle 的 url 是模板/脚本，不能当分类加载）
-            val items = buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
+            val items = buildModernTagItems(kindsState.kinds, allLabel, otherLabel).items
             val target = items.firstOrNull {
                 it.url == selectedTagUrl && it.url != null && it.kind.type == ExploreKind.Type.url
             } ?: items.firstOrNull { it.url != null && it.kind.type == ExploreKind.Type.url }
@@ -155,9 +167,10 @@ fun ModernExploreContent(
 
     // 标签条只放可直接加载的 url 类分类：select/button/text/toggle 的 url 是模板/脚本，
     // 进表单（发现页管理）而非标签条（对齐参考分支 tagItems = filter { type != select && !isButton }）
-    val allItems = remember(kindsState.kinds, allLabel, otherLabel) {
+    val tagModel = remember(kindsState.kinds, allLabel, otherLabel) {
         buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
     }
+    val allItems = tagModel.items
     val groups = remember(allItems) { allItems.mapNotNull { it.group }.distinct() }
     val currentGroupValue = groups.firstOrNull { it == currentGroup } ?: groups.firstOrNull()
     val tagItems = remember(allItems, currentGroupValue) {
@@ -169,8 +182,13 @@ fun ModernExploreContent(
             }
         }
     }
-    val settingItems = remember(allItems, groups) {
-        buildModernSettingItems(allItems, groups.isNotEmpty())
+    val settingItems = remember(allItems) { buildModernSettingItems(allItems) }
+    // 展开弹窗按书源 style 的 flex 声明排布（与分类区、发现页管理表单同一套口径）
+    val groupSpecs = remember(groups, tagModel) {
+        buildModernGroupSpecs(groups, tagModel.groupHeaders)
+    }
+    val tagSpecs = remember(tagItems) {
+        tagItems.map { FlexWrapItemSpec(style = it.kind.style()) }
     }
 
     // 切换大分组（对齐参考分支 rvDiscoverSelects 点击 → applyDiscoverTagFilterAndSelect）：
@@ -290,7 +308,8 @@ fun ModernExploreContent(
                     }
                 }
             },
-            onDismissRequest = { showTagPicker = false }
+            onDismissRequest = { showTagPicker = false },
+            itemSpecs = tagSpecs
         )
     }
 
@@ -303,7 +322,8 @@ fun ModernExploreContent(
                 showGroupPicker = false
                 selectGroup(groups.getOrNull(index))
             },
-            onDismissRequest = { showGroupPicker = false }
+            onDismissRequest = { showGroupPicker = false },
+            itemSpecs = groupSpecs
         )
     }
 
@@ -496,7 +516,7 @@ private fun ModernExploreHeader(
  *
  * 每项宽度对齐参考分支 RowUiForm.createRowLayoutParams：
  * 声明 flexBasisPercent 的按整行宽百分比、声明 flexGrow 的按内容宽再分剩余空间、
- * 两者都没声明的独占整行（View 版 MATCH_PARENT）——与分类区共用 ExploreFlexLayout。
+ * 两者都没声明的独占整行（View 版 MATCH_PARENT）——与分类区共用 FlexWrapLayout。
  */
 @Composable
 private fun ModernExploreSettingsSheet(
@@ -529,13 +549,13 @@ private fun ModernExploreSettingsSheet(
         onDismissRequest = { dismissWithRefresh() },
         title = { Text(text = stringResource(R.string.setting)) },
         text = {
-            ExploreFlexLayout(
+            FlexWrapLayout(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
                 items = items.map { item ->
                     val style = item.kind.style()
-                    ExploreFlexItemSpec(
+                    FlexWrapItemSpec(
                         style = style,
                         fillLine = style.layout_flexBasisPercent < 0f && style.layout_flexGrow <= 0f
                     )
@@ -579,14 +599,15 @@ private fun ModernExploreSettingsSheet(
  * - 整行类（flexBasisPercent>=0.95 或 flexGrow>=1）且无 action 的项作为分组标题，
  *   其后的项归入该分组；分组标题自带 url 时补一个「全部」项；
  * - url 类（非 button/select）进标签条；select/button/text 进设置表单；
- * - 无分组时全部归「其它」。
+ * - 第一个分组标题之前（整源都没有分组标题时则是全部）的项归「其它」分组。
  */
 private fun buildModernTagItems(
     kinds: List<ExploreKind>,
     allLabel: String,
     otherLabel: String,
-): List<ModernTagItem> {
+): ModernTagModel {
     var currentGroup: String? = null
+    val groupHeaders = mutableListOf<ModernTagItem>()
     val result = mutableListOf<ModernTagItem>()
     kinds.forEach { kind ->
         val action = kind.action?.takeIf { it.isNotBlank() }
@@ -595,12 +616,21 @@ private fun buildModernTagItems(
         val isButton = kind.type == ExploreKind.Type.button && !action.isNullOrBlank()
 
         if (isModernMajorGroupKind(kind, currentGroup != null)) {
-            currentGroup = kind.title.trim().ifBlank { null }
+            val group = kind.title.trim().ifBlank { null }
+            currentGroup = group
+            if (group != null) {
+                groupHeaders += ModernTagItem(
+                    text = group,
+                    url = null,
+                    group = group,
+                    kind = kind
+                )
+            }
             if (!url.isNullOrBlank()) {
                 result += ModernTagItem(
                     text = allLabel,
                     url = url,
-                    group = currentGroup,
+                    group = group,
                     kind = kind
                 )
             }
@@ -628,12 +658,34 @@ private fun buildModernTagItems(
             )
         }
     }
-    val hasGroup = result.any { it.group != null }
-    return if (hasGroup) {
-        result
-    } else {
-        result.map { it.copy(group = otherLabel) }
-    }.distinctBy { "${it.group}|${it.kind.type}|${it.kind.title}|${it.kind.url}|${it.kind.action}" }
+    // 落在第一个分组标题之前的项（番茄小说这类"前导分类"源必现）原本 group 为 null：
+    // 有分组时它们既进不了任何分组的标签条，又会被「发现页管理」表单捞走（那表单是给
+    // 筛选/开关用的，摆不下可加载的分类）。统一并进「其它」分组后，它们能像正常分组一样切出来
+    return ModernTagModel(
+        items = result
+            .map { if (it.group == null) it.copy(group = otherLabel) else it }
+            .distinctBy { "${it.group}|${it.kind.type}|${it.kind.title}|${it.kind.url}|${it.kind.action}" },
+        groupHeaders = groupHeaders
+    )
+}
+
+/**
+ * 分组展开弹窗的项宽：分组表头本身就是整行项（书源声明 flexBasisPercent>=0.95 或 flexGrow>=1），
+ * 按声明排布即各占一行；隐式「其它」分组没有表头，与同级表头保持一致的整行口径。
+ */
+private fun buildModernGroupSpecs(
+    groups: List<String>,
+    groupHeaders: List<ModernTagItem>,
+): List<FlexWrapItemSpec> {
+    val headerStyles = groupHeaders.associate { it.text to it.kind.style() }
+    return groups.map { group ->
+        val style = headerStyles[group]
+        if (style == null) {
+            FlexWrapItemSpec(style = FlexChildStyle.defaultStyle, fillLine = true)
+        } else {
+            FlexWrapItemSpec(style = style)
+        }
+    }
 }
 
 /** 整行项判定（对齐参考分支 isDiscoverMajorGroupKind / isDiscoverFullLineKind） */
@@ -647,16 +699,12 @@ private fun isModernMajorGroupKind(kind: ExploreKind, hasStartedGroup: Boolean):
     return false
 }
 
-/** 设置表单内容：select / text / button（含 action）类 */
-private fun buildModernSettingItems(
-    items: List<ModernTagItem>,
-    hasGroups: Boolean,
-): List<ModernTagItem> {
+/** 设置表单内容：select / text / toggle / button（含 action）类 */
+private fun buildModernSettingItems(items: List<ModernTagItem>): List<ModernTagItem> {
     return items.filter {
         it.kind.type == ExploreKind.Type.select ||
             it.kind.type == ExploreKind.Type.text ||
             it.kind.type == ExploreKind.Type.toggle ||
-            (it.kind.type == ExploreKind.Type.button && !it.kind.action.isNullOrBlank()) ||
-            (hasGroups && it.group == null && it.url != null)
+            (it.kind.type == ExploreKind.Type.button && !it.kind.action.isNullOrBlank())
     }
 }

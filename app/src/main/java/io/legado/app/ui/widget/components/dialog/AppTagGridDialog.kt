@@ -13,7 +13,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -30,22 +32,28 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.legado.app.R
 import io.legado.app.ui.theme.AppDimens
+import io.legado.app.ui.widget.components.FlexWrapItemSpec
+import io.legado.app.ui.widget.components.FlexWrapLayout
 import io.legado.app.ui.widget.components.VerticalScrollbar
 
 /**
- * 分类网格选择弹窗：每行 3 个胶囊项、选中态主色高亮、内容可滚动带拖拽滚动块。
+ * 分类选择弹窗：胶囊项网格、选中态主色高亮、内容可滚动带拖拽滚动块。
  *
  * 用于新版发现/订阅的分类与分组展开选择（替代单列 radio 弹窗）：
  * - 弹窗背景取 surfaceContainerHigh 叠一层透明度，透出底层内容形成半透明观感，
  *   深浅色主题自动跟随（颜色全部来自 MaterialTheme，无硬编码）；
  * - 选中项：主色填充 + onPrimary 文字；未选中项：surface 底 + 描边；
- * - 选项多时限高滚动，右侧 [VerticalScrollbar] 提供拖拽滚动块。
+ * - 选项多时限高滚动，右侧 [VerticalScrollbar] 提供拖拽滚动块；
+ * - 排布由 [itemSpecs] 决定：给了宽度声明就吃声明（发现页的分组/分类弹窗，
+ *   与分类区、发现页管理表单同一套 flex 口径），没给就退回固定列数网格（订阅等无声明场景）。
  *
  * @param title 弹窗标题
  * @param options 选项文案，顺序与业务枚举一致
  * @param selectedIndex 当前选中项下标；越界时视作无选中项
  * @param onSelect 选中项回调，参数为下标（选中即回调，由调用点关闭弹窗）
  * @param onDismissRequest 取消或点击弹窗外部时的回调
+ * @param itemSpecs 选项宽度声明（书源 style 的 flex 声明），与 [options] 等长时按声明流式排布，
+ *   为空或长度不符时退回固定 [AppDimens.TAG_DIALOG_COLUMNS] 列网格
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,6 +64,7 @@ fun AppTagGridDialog(
     onSelect: (Int) -> Unit,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    itemSpecs: List<FlexWrapItemSpec>? = null,
 ) {
     BasicAlertDialog(onDismissRequest = onDismissRequest) {
         Surface(
@@ -85,36 +94,67 @@ fun AppTagGridDialog(
                     Box(
                         Modifier.fillMaxWidth().heightIn(max = AppDimens.dialogOptionsMaxHeight)
                     ) {
-                        val gridState = rememberLazyGridState()
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(AppDimens.TAG_DIALOG_COLUMNS),
-                            state = gridState,
-                            // 有滚动块时给右侧留出轨道位置，胶囊不被拖柄压住
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(end = AppDimens.scrollbarRailWidth / 2),
-                            horizontalArrangement =
-                                Arrangement.spacedBy(AppDimens.exploreShowTabSpacing),
-                            verticalArrangement =
-                                Arrangement.spacedBy(AppDimens.exploreShowTabSpacing),
-                            contentPadding = PaddingValues(
-                                start = AppDimens.panelRowHorizontalPadding,
-                                end = AppDimens.panelRowHorizontalPadding,
-                                bottom = AppDimens.panelRowTitleSpacing
-                            )
-                        ) {
-                            itemsIndexed(options) { index, label ->
+                        // 带宽度声明时（新版发现的分组/分类弹窗）按书源 style 换行排布：
+                        // 声明整行的分组标题独占一行、声明 0.4 的分类一行 2-3 个，
+                        // 口径与发现分类区、「发现页管理」表单完全一致
+                        if (itemSpecs != null && itemSpecs.size == options.size) {
+                            val scrollState = rememberScrollState()
+                            FlexWrapLayout(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = AppDimens.panelRowHorizontalPadding,
+                                        end = AppDimens.panelRowHorizontalPadding +
+                                            AppDimens.scrollbarRailWidth / 2,
+                                        bottom = AppDimens.panelRowTitleSpacing
+                                    )
+                                    .verticalScroll(scrollState),
+                                items = itemSpecs,
+                                horizontalSpacing = AppDimens.exploreShowTabSpacing,
+                                verticalSpacing = AppDimens.exploreShowTabSpacing
+                            ) { index ->
                                 TagGridOptionChip(
-                                    label = label,
+                                    label = options[index],
                                     selected = index == selectedIndex,
                                     onClick = { onSelect(index) }
                                 )
                             }
+                            VerticalScrollbar(
+                                state = scrollState,
+                                modifier = Modifier.align(Alignment.CenterEnd)
+                            )
+                        } else {
+                            val gridState = rememberLazyGridState()
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(AppDimens.TAG_DIALOG_COLUMNS),
+                                state = gridState,
+                                // 有滚动块时给右侧留出轨道位置，胶囊不被拖柄压住
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(end = AppDimens.scrollbarRailWidth / 2),
+                                horizontalArrangement =
+                                    Arrangement.spacedBy(AppDimens.exploreShowTabSpacing),
+                                verticalArrangement =
+                                    Arrangement.spacedBy(AppDimens.exploreShowTabSpacing),
+                                contentPadding = PaddingValues(
+                                    start = AppDimens.panelRowHorizontalPadding,
+                                    end = AppDimens.panelRowHorizontalPadding,
+                                    bottom = AppDimens.panelRowTitleSpacing
+                                )
+                            ) {
+                                itemsIndexed(options) { index, label ->
+                                    TagGridOptionChip(
+                                        label = label,
+                                        selected = index == selectedIndex,
+                                        onClick = { onSelect(index) }
+                                    )
+                                }
+                            }
+                            VerticalScrollbar(
+                                state = gridState,
+                                modifier = Modifier.align(Alignment.CenterEnd)
+                            )
                         }
-                        VerticalScrollbar(
-                            state = gridState,
-                            modifier = Modifier.align(Alignment.CenterEnd)
-                        )
                     }
                 }
                 Row(

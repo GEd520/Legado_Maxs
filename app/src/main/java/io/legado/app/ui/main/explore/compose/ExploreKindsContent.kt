@@ -6,11 +6,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import io.legado.app.data.entities.rule.ExploreKind
 import io.legado.app.ui.theme.AppDimens
+import io.legado.app.ui.widget.components.FlexWrapItemSpec
+import io.legado.app.ui.widget.components.FlexWrapLayout
 
 /**
  * 展开书源的分类区。
  *
- * 布局对齐原 `flexbox`（`flexWrap=wrap` + `flexDirection=row`），由 [ExploreFlexLayout] 复刻：
+ * 布局对齐原 `flexbox`（`flexWrap=wrap` + `flexDirection=row`），由 [FlexWrapLayout] 复刻：
  * 基准宽度、断行与 `flexGrow` 行内分配都按书源声明的 `FlexChildStyle` 计算；
  * html / select 两类在 View 版里本身是 match_parent，这里声明为整行。
  */
@@ -24,7 +26,7 @@ internal fun ExploreKindsContent(
 ) {
     val kinds = kindsState.kinds
     if (kinds.isEmpty()) return
-    ExploreFlexLayout(
+    FlexWrapLayout(
         modifier = modifier
             .fillMaxWidth()
             .padding(
@@ -33,7 +35,7 @@ internal fun ExploreKindsContent(
                 top = AppDimens.exploreKindsTopSpacing,
             ),
         items = kinds.map { kind ->
-            ExploreFlexItemSpec(
+            FlexWrapItemSpec(
                 style = kind.style(),
                 // 只有 html 在 View 版里本身是 match_parent；select 跟随书源声明的基准宽度，
                 // 强制独占整行会破坏 createFilter 这类"一行放 2-3 个筛选"的布局
