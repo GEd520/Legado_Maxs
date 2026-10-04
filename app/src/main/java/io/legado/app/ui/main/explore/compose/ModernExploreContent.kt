@@ -88,8 +88,9 @@ private const val TAG_EXPAND_THRESHOLD = 12
  * 结构对齐参考分支：
  * - 头部行在 TitleBar 正下方左上角：源名（20sp 粗体）+ ▾ 下拉切换源；
  *   右侧是"发现页管理"（齿轮）与功能菜单（三点）两个圆钮；
- * - 分类按整行项拆成大分组：分组条（可切换分组）+ 当前分组的 url 类标签条
- *   （每分组自动带「全部」项），标签条末尾 ▾ 展开全部标签；
+ * - 分类按整行项（`flexBasisPercent>=0.95`，或不带 url 的 `flexGrow>=1`）拆成大分组：
+ *   分组条（可切换分组）+ 当前分组的 url 类标签条（每分组自动带「全部」项），
+ *   标签条末尾 ▾ 展开全部标签；
  *   第一个分组标题之前的分类（如番茄小说的「猜你喜欢…热搜榜单」）归「其它」分组，不丢进表单；
  *   两个展开弹窗与分类区共用 FlexWrapLayout，同样吃书源 style 的 flex 声明；
  * - select/text/button 类不进标签条，收进「发现页管理」表单弹窗：
@@ -670,8 +671,9 @@ private fun buildModernTagItems(
 }
 
 /**
- * 分组展开弹窗的项宽：分组表头本身就是整行项（书源声明 flexBasisPercent>=0.95 或 flexGrow>=1），
- * 按声明排布即各占一行；隐式「其它」分组没有表头，与同级表头保持一致的整行口径。
+ * 分组展开弹窗的项宽：分组表头本身就是整行项（书源声明 flexBasisPercent>=0.95，
+ * 或是带标题性质的 flexGrow>=1 无 url 项），按声明排布即各占一行；
+ * 隐式「其它」分组没有表头，与同级表头保持一致的整行口径。
  */
 private fun buildModernGroupSpecs(
     groups: List<String>,
@@ -688,14 +690,26 @@ private fun buildModernGroupSpecs(
     }
 }
 
-/** 整行项判定（对齐参考分支 isDiscoverMajorGroupKind / isDiscoverFullLineKind） */
+/**
+ * 整行项判定（对齐参考分支 isDiscoverMajorGroupKind / isDiscoverFullLineKind）。
+ *
+ * 只声明 `layout_flexGrow` 的项**不算整行**：flexbox 里它是"内容宽做基准、再分走本行剩余宽度"，
+ * 同行有别的项时并不独占整行——番茄小说「热门标签」下的 纯爱/悬疑/… 就是这么排一行多个的。
+ * 这类项里只有**不带 url** 的才是书源当标题用的装饰项。若把带 url 的也算整行，第一个分组标题
+ * 之后每个成员都会被提升成分组标题，真正的标题（热门标签/主题/角色/情节）反而名下无项、从分组条上消失。
+ */
 private fun isModernMajorGroupKind(kind: ExploreKind, hasStartedGroup: Boolean): Boolean {
     if (!kind.action.isNullOrBlank()) return false
     if (kind.type == ExploreKind.Type.button || kind.type == ExploreKind.Type.select) return false
     if (!kind.url.isNullOrBlank() && !hasStartedGroup) return false
     val style = kind.style()
     if (style.layout_flexBasisPercent >= 0.95f) return true
-    if (style.layout_flexGrow >= 1f && style.layout_flexBasisPercent < 0f) return true
+    if (style.layout_flexGrow >= 1f &&
+        style.layout_flexBasisPercent < 0f &&
+        kind.url.isNullOrBlank()
+    ) {
+        return true
+    }
     return false
 }
 
