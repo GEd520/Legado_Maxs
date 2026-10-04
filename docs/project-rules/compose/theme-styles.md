@@ -176,6 +176,7 @@ TopAppBar(
   参考实现：`ui/main/MainActivity`（`recreate()` 接管 + `RECREATE_IGNORE_MS = 2000L` + `isLateRecreateEcho()` 状态比对）。
   例外（待补状态比对）：`ui/config/theme/manage/ThemeManageActivity` 有同样的接管与纯时间宽限，二次应用落在窗内时日夜切换仍由 AppCompat relaunch 生效，纯色变化会被延后重绘。
 - **必须**：接管 `recreate()` 的主界面**必须**在 manifest 上挂 `AppTheme.Main`（`windowDisablePreview = true`）。重启期间系统按**系统日夜模式**给启动窗口（预览窗口 / Android 12+ splash）铺底，而应用自身的日夜模式是用户单独设置、可与系统不一致（如系统亮色 + 应用暗色），启动窗口会闪一屏与当前主题无关的底色；关掉预览窗口后保留旧界面内容直到新实例画出第一帧。**禁止**当成"冗余属性"删掉（冷启动入口是 `WelcomeActivity`，不受此主题影响）。
+- **必须**：除 `recreate()` 之外，系统还会以「原地 relaunch」路径重建页面——未被 manifest `configChanges` 覆盖的配置变化（字体大小 `fontScale`、显示大小 `density` 等）与低内存回收后的恢复，都会**带着 `savedInstanceState`** 送一个新实例进来。这类恢复态（FragmentManager 一并恢复的 Tab Fragment + ViewPager 恢复的 adapter state）会与页面新建的 adapter 打架：ViewPager 容器里同时存在恢复的旧页面 view 与新页面 view，而它按 child 顺序布局，靠后的 Tab 被挤出可视区——表现为切到那些 Tab 时**整页空白**（只剩背景与底栏，连 View 顶栏都看不到）。因此接管 `recreate()` 的页面**必须**在 `onCreate` 里识别 `savedInstanceState != null` 的实例，把它也纳进「清任务 + 全新启动」路径（先 `super.onCreate(null)` 丢掉恢复态，再换新实例），并带一个一次性 intent 标记兜底防重入。参考实现：`ui/main/MainActivity`（`onCreate` 拦截 + `EXTRA_FRESH_RESTART` + `restartFresh()`）。
 
 #### 7.8.2 新建代码的优先方向（推荐）
 

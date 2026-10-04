@@ -279,6 +279,26 @@ class MainActivity :
      */
     private fun currentBackgroundSignature(): String? = ThemeConfig.getBackgroundSignature(this)
 
+    /**
+     * 系统原地 relaunch（字体/显示大小等配置变化）或低内存恢复时，系统会带着
+     * savedInstanceState 重建本实例。恢复出来的是上一次的 Tab Fragment 与 ViewPager 状态，
+     * 它们会和本页新建的 adapter 打架：ViewPager 容器里同时存在恢复的旧页面 view 与新创建的
+     * 页面 view，而它按 child 顺序布局，靠后的 Tab 就被挤出可视区——表现为切到那些 Tab 时
+     * 整页空白（只剩背景与底栏，连 View 顶栏都看不到）。
+     *
+     * 主界面重建一律走「清任务 + 全新启动」（见 [recreate]，theme-styles.md §7.8.1）；
+     * 这里把系统送来的恢复态也纳入同一条路径：先以 null 走完基础初始化（不恢复任何状态），
+     * 再换一个全新启动的实例。[EXTRA_FRESH_RESTART] 保证新实例不再重复重启。
+     */
+    override fun onCreate(savedInstanceState: Bundle?) {
+        if (savedInstanceState != null && !intent.getBooleanExtra(EXTRA_FRESH_RESTART, false)) {
+            super.onCreate(null)
+            restartFresh()
+            return
+        }
+        super.onCreate(savedInstanceState)
+    }
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         // 清理已销毁 Fragment 的引用，避免 fragmentMap 持有导致内存泄漏
         supportFragmentManager.registerFragmentLifecycleCallbacks(
@@ -744,7 +764,12 @@ class MainActivity :
      * 本页是 singleTask，实例还在任务栈里时直接 startActivity 只会回调本实例的
      * onNewIntent，必须带 FLAG_ACTIVITY_CLEAR_TASK 才能真正建出新窗口。
      */
-    override fun recreate() {
+    override fun recreate() = restartFresh()
+
+    /**
+     * 以「清任务 + 全新启动」路径换一个本页实例，见 [recreate] 与 [onCreate] 的 relaunch 拦截。
+     */
+    private fun restartFresh() {
         if (recreatePending || isFinishing || isDestroyed) return
         recreatePending = true
         instanceCreateTime = System.currentTimeMillis()
@@ -755,6 +780,7 @@ class MainActivity :
                 // 旧实例已做过自动更新目录，重启后不再重复（等价于原来 recreate 保留的
                 // savedInstanceState 标记，见 onPostCreate）
                 .putExtra("isAutoRefreshedBook", true)
+                .putExtra(EXTRA_FRESH_RESTART, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
                 .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
         )
@@ -1639,6 +1665,14 @@ class MainActivity :
 
         /** 首屏分步放开常驻范围时，相邻两级之间的最小间隔（实际放开时机由主线程空闲驱动） */
         private const val OFFSCREEN_PAGE_STEP_MIN_GAP = 600L
+
+        /**
+         * 标记本次启动是 [MainActivity.restartFresh] 拉起的全新实例，见 [MainActivity.onCreate]。
+         *
+         * 系统原地 relaunch / 低内存恢复送来的 savedInstanceState 会触发一次「全新启动」重启；
+         * 新实例本身是全新启动（不带 savedInstanceState），该标记用于兜底，避免任何情况下重复重启。
+         */
+        private const val EXTRA_FRESH_RESTART = "mainFreshRestart"
 
         /**
          * 触发本次重启时生效的主题状态，见 [isLateRecreateEcho]。
