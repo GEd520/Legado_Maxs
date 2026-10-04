@@ -71,6 +71,15 @@ private data class ModernTagItem(
     val kind: ExploreKind,
 )
 
+/**
+ * 该分类项能不能直接进标签条加载。
+ *
+ * select/button/text/toggle 的 url 是模板/脚本（多数书源干脆留空），只进「发现页管理」表单，
+ * 所以分组条是否显示某个分组，也要按这个口径判断——只有它下面存在这种可加载项才值得列出来。
+ */
+private fun ModernTagItem.isLoadableTag(): Boolean =
+    url != null && kind.type == ExploreKind.Type.url
+
 /** 分类项解析结果：标签项 + 大分组表头（表头的 style 供分组展开弹窗按书源声明排布宽度） */
 private class ModernTagModel(
     val items: List<ModernTagItem>,
@@ -91,7 +100,8 @@ private const val TAG_EXPAND_THRESHOLD = 12
  * - 分类按整行项（`flexBasisPercent>=0.95`，或不带 url 的 `flexGrow>=1`）拆成大分组：
  *   分组条（可切换分组）+ 当前分组的 url 类标签条（每分组自动带「全部」项），
  *   标签条末尾 ▾ 展开全部标签；
- *   第一个分组标题之前的分类（如番茄小说的「猜你喜欢…热搜榜单」）归「其它」分组，不丢进表单；
+ *   第一个分组标题之前的分类（如番茄小说的「猜你喜欢…热搜榜单」）归「其它」分组，不丢进表单
+ *   （该分组下没有可加载分类时不会出现在分组条上）；
  *   两个展开弹窗与分类区共用 FlexWrapLayout，同样吃书源 style 的 flex 声明；
  * - select/text/button 类不进标签条，收进「发现页管理」表单弹窗：
  *   select 值写入书源 infoMap 并触发分类重建，与旧版展开分类区同一套机制。
@@ -147,9 +157,8 @@ fun ModernExploreContent(
             // 筛选变化后分类已被书源重建：恢复原选中分类，失效则落到第一个 url 类
             // （只认 type==url：select/button/text/toggle 的 url 是模板/脚本，不能当分类加载）
             val items = buildModernTagItems(kindsState.kinds, allLabel, otherLabel).items
-            val target = items.firstOrNull {
-                it.url == selectedTagUrl && it.url != null && it.kind.type == ExploreKind.Type.url
-            } ?: items.firstOrNull { it.url != null && it.kind.type == ExploreKind.Type.url }
+            val target = items.firstOrNull { it.isLoadableTag() && it.url == selectedTagUrl }
+                ?: items.firstOrNull { it.isLoadableTag() }
             target?.let {
                 selectedTagUrl = it.url
                 controller.loadExploreUrl(it.url.orEmpty(), it.text)
@@ -166,21 +175,22 @@ fun ModernExploreContent(
         }
     }
 
-    // 标签条只放可直接加载的 url 类分类：select/button/text/toggle 的 url 是模板/脚本，
-    // 进表单（发现页管理）而非标签条（对齐参考分支 tagItems = filter { type != select && !isButton }）
+    // 标签条只放可直接加载的 url 类分类（见 isLoadableTag）：
+    // 对齐参考分支 tagItems = filter { type != select && !isButton }
     val tagModel = remember(kindsState.kinds, allLabel, otherLabel) {
         buildModernTagItems(kindsState.kinds, allLabel, otherLabel)
     }
     val allItems = tagModel.items
-    val groups = remember(allItems) { allItems.mapNotNull { it.group }.distinct() }
+    // 分组条同样只列有可加载分类的分组：select/text/button/toggle 只进「发现页管理」表单，
+    // 它们在第一个分组标题之前也会带上「其它」，但那个「其它」切进去什么都没有（哔哩哔哩源
+    // 前面 4 项就是搜索类型/搜索关键词/搜索按钮），不该因此凭空多出一个空分组
+    val groups = remember(allItems) {
+        allItems.filter { it.isLoadableTag() }.mapNotNull { it.group }.distinct()
+    }
     val currentGroupValue = groups.firstOrNull { it == currentGroup } ?: groups.firstOrNull()
     val tagItems = remember(allItems, currentGroupValue) {
-        if (currentGroupValue == null) {
-            allItems.filter { it.url != null && it.kind.type == ExploreKind.Type.url }
-        } else {
-            allItems.filter {
-                it.group == currentGroupValue && it.url != null && it.kind.type == ExploreKind.Type.url
-            }
+        allItems.filter {
+            it.isLoadableTag() && (currentGroupValue == null || it.group == currentGroupValue)
         }
     }
     val settingItems = remember(allItems) { buildModernSettingItems(allItems) }
@@ -197,9 +207,7 @@ fun ModernExploreContent(
     // 否则只切分组条、内容区还停在旧分组（起点按钮筛选这类多分组源上必现）
     fun selectGroup(group: String?) {
         currentGroup = group
-        val groupTags = allItems.filter {
-            it.group == group && it.url != null && it.kind.type == ExploreKind.Type.url
-        }
+        val groupTags = allItems.filter { it.group == group && it.isLoadableTag() }
         if (groupTags.none { it.url == selectedTagUrl }) {
             val target = groupTags.firstOrNull()
             selectedTagUrl = target?.url
@@ -661,7 +669,8 @@ private fun buildModernTagItems(
     }
     // 落在第一个分组标题之前的项（番茄小说这类"前导分类"源必现）原本 group 为 null：
     // 有分组时它们既进不了任何分组的标签条，又会被「发现页管理」表单捞走（那表单是给
-    // 筛选/开关用的，摆不下可加载的分类）。统一并进「其它」分组后，它们能像正常分组一样切出来
+    // 筛选/开关用的，摆不下可加载的分类）。统一并进「其它」分组后，其中可加载的分类
+    // 能像正常分组一样切出来；若它们全是表单项（哔哩哔哩源），该分组不会出现在分组条上
     return ModernTagModel(
         items = result
             .map { if (it.group == null) it.copy(group = otherLabel) else it }
