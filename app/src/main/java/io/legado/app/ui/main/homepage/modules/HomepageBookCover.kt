@@ -1,13 +1,11 @@
 package io.legado.app.ui.main.homepage.modules
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -17,7 +15,6 @@ import com.bumptech.glide.integration.compose.ExperimentalGlideComposeApi
 import com.bumptech.glide.integration.compose.GlideImage
 import io.legado.app.help.config.AppConfig
 import io.legado.app.model.BookCover
-import io.legado.app.ui.widget.components.AppDrawablePainter
 import io.legado.app.ui.widget.components.BookCoverTextOverlay
 
 /**
@@ -54,16 +51,6 @@ fun HomepageBookCover(
                 else Modifier
             )
     ) {
-        // 兜底：GlideImage 既没有 placeholder 也没有 error，模型取不到图时不画任何东西，
-        // 整块只剩 surfaceVariant 底色——用户看到的就是"空白封面"。
-        // 先在底层铺一张默认封面，取图成功时 GlideImage 自然盖住它，失败时就不会留白
-        val fallbackCover = BookCover.defaultDrawable
-        Image(
-            painter = remember(fallbackCover) { AppDrawablePainter(fallbackCover) },
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize()
-        )
         if (displayCover != null) {
             GlideImage(
                 model = displayCover,
