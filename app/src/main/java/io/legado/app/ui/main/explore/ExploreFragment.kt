@@ -303,7 +303,9 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
                         showBlockProgress = modernShowBlockProgress,
                         bottomPaddingPx = bottomPaddingPx,
                         onRefreshSource = ::refreshModernExploreSource,
-                        onLogin = ::loginModernExploreSource
+                        onLogin = ::loginModernExploreSource,
+                        onEditSource = { currentModernSourceUrl()?.let(::editSource) },
+                        onSearchSource = { currentModernSource()?.let(::searchBook) }
                     )
                 } else {
                     ExploreSourceList(
@@ -697,6 +699,19 @@ class ExploreFragment() : VMBaseFragment<ExploreViewModel>(R.layout.fragment_exp
             putExtra("key", sourceUrl)
         }
     }
+
+    /** 新版发现当前选中源的书源地址；未选中或为空时返回 null */
+    private fun currentModernSourceUrl(): String? =
+        modernExploreSourceUrl?.takeIf { it.isNotBlank() }
+
+    /**
+     * 新版发现当前选中源的完整书源。
+     *
+     * 列表条目模型只带 url，而编辑书源 / 搜索书籍需要完整的 [BookSourcePart]，
+     * 因此从当前源列表里按 url 反查（与旧版长按菜单 `onSourceMenuAction` 的做法一致）。
+     */
+    private fun currentModernSource(): BookSourcePart? =
+        sourceItems.firstOrNull { it.bookSourceUrl == modernExploreSourceUrl }
 
     /** 三点菜单：旧版只有切换入口；新版带发现列表页的全部菜单项 */
     private fun showExploreMoreMenu(anchor: View) {

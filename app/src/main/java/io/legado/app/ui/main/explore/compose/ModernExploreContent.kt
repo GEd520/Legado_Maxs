@@ -127,6 +127,10 @@ fun ModernExploreContent(
     onRefreshSource: () -> Unit = {},
     /** 三点菜单「登录」：仅当前书源声明了登录地址时显示 */
     onLogin: () -> Unit = {},
+    /** 三点菜单「编辑书源」：与旧版长按书源菜单的「编辑」同一动作 */
+    onEditSource: () -> Unit = {},
+    /** 三点菜单「搜索书籍」：与旧版长按书源菜单的「搜索」同一动作 */
+    onSearchSource: () -> Unit = {},
 ) {
     var showSourcePicker by remember { mutableStateOf(false) }
     var showBookSheet by remember { mutableStateOf(false) }
@@ -233,6 +237,8 @@ fun ModernExploreContent(
             onOpenSettings = { showSettingsSheet = true },
             onRefreshSource = onRefreshSource,
             onLogin = onLogin,
+            onEditSource = onEditSource,
+            onSearchSource = onSearchSource,
             modifier = Modifier.fillMaxWidth()
         )
         // 大分组条：仅当书源声明了整行分组项时显示
@@ -379,6 +385,8 @@ private fun ModernExploreHeader(
     onOpenSettings: () -> Unit,
     onRefreshSource: () -> Unit,
     onLogin: () -> Unit,
+    onEditSource: () -> Unit,
+    onSearchSource: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentSource = sources.firstOrNull { it.bookSourceUrl == selectedSourceUrl }
@@ -505,6 +513,21 @@ private fun ModernExploreHeader(
                     onClick = {
                         showMoreMenu = false
                         actions.onShowBlockRuleClick()
+                    }
+                )
+                // 与旧版长按书源菜单里的「编辑 / 搜索」同一动作，作用于当前选中的书源
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.edit)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onEditSource()
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text(text = stringResource(R.string.search)) },
+                    onClick = {
+                        showMoreMenu = false
+                        onSearchSource()
                     }
                 )
                 DropdownMenuItem(
