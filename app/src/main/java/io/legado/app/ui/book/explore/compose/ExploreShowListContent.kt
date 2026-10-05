@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -41,6 +42,7 @@ import io.legado.app.domain.model.BookShelfState
 import io.legado.app.ui.theme.AppDimens
 import io.legado.app.ui.widget.components.EmptyContent
 import io.legado.app.ui.widget.components.LoadMoreFooter
+import io.legado.app.ui.widget.components.VerticalScrollbar
 import io.legado.app.ui.widget.components.navigationBarBottomInset
 import kotlin.math.abs
 
@@ -148,49 +150,56 @@ private fun ExploreShowLazyList(
     // 主界面内嵌时底栏浮在内容之上：取底栏高度与系统导航栏 inset 的较大者，末项才完整露出
     val bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding)
 
-    LazyColumn(
-        state = listState,
-        modifier = Modifier
-            .fillMaxSize()
-            .exploreCategorySwipe(controller),
-        contentPadding = PaddingValues(bottom = bottomInset)
-    ) {
-        if (controller.topFooter.visible) {
-            item(key = "top_footer") {
-                LoadMoreFooter(
-                    isLoading = controller.topFooter.isLoading,
-                    hasMore = controller.topFooter.hasMore,
-                    message = controller.topFooter.message,
-                    isError = controller.topFooter.isError
-                )
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .exploreCategorySwipe(controller),
+            contentPadding = PaddingValues(bottom = bottomInset)
+        ) {
+            if (controller.topFooter.visible) {
+                item(key = "top_footer") {
+                    LoadMoreFooter(
+                        isLoading = controller.topFooter.isLoading,
+                        hasMore = controller.topFooter.hasMore,
+                        message = controller.topFooter.message,
+                        isError = controller.topFooter.isError
+                    )
+                }
             }
-        }
-        itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
-                index, book ->
-            Column {
-                if (index == 0 && controller.topFooter.visible) {
+            itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
+                    index, book ->
+                Column {
+                    if (index == 0 && controller.topFooter.visible) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                    ExploreShowListItem(
+                        book = book,
+                        shelfState = getShelfState(controller, book),
+                        onBookClick = { onShowBookInfo(book) },
+                        onBookLongClick = { onBookLongClick(book) }
+                    )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 }
-                ExploreShowListItem(
-                    book = book,
-                    shelfState = getShelfState(controller, book),
-                    onBookClick = { onShowBookInfo(book) },
-                    onBookLongClick = { onBookLongClick(book) }
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            if (!controller.showsEmptyPlaceholder()) {
+                item(key = "bottom_footer") {
+                    LoadMoreFooter(
+                        isLoading = controller.footer.isLoading,
+                        hasMore = controller.footer.hasMore,
+                        message = controller.footer.message,
+                        isError = controller.footer.isError,
+                        onClick = { controller.requestLoadNext(forceLoad = true) }
+                    )
+                }
             }
         }
-        if (!controller.showsEmptyPlaceholder()) {
-            item(key = "bottom_footer") {
-                LoadMoreFooter(
-                    isLoading = controller.footer.isLoading,
-                    hasMore = controller.footer.hasMore,
-                    message = controller.footer.message,
-                    isError = controller.footer.isError,
-                    onClick = { controller.requestLoadNext(forceLoad = true) }
-                )
-            }
-        }
+        VerticalScrollbar(
+            state = listState,
+            bottomInset = bottomInset,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 
     ExploreViewportEffect(controller) {
@@ -245,51 +254,58 @@ private fun ExploreShowLazyGrid(
     val halfSpacing = spacing / 2
     val bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding)
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(columnCount),
-        state = gridState,
-        modifier = Modifier
-            .fillMaxSize()
-            .exploreCategorySwipe(controller),
-        contentPadding = PaddingValues(
-            start = halfSpacing,
-            end = halfSpacing,
-            top = halfSpacing,
-            bottom = bottomInset
-        ),
-        horizontalArrangement = Arrangement.spacedBy(spacing),
-        verticalArrangement = Arrangement.spacedBy(spacing)
-    ) {
-        if (controller.topFooter.visible) {
-            item(key = "top_footer", span = { GridItemSpan(maxLineSpan) }) {
-                LoadMoreFooter(
-                    isLoading = controller.topFooter.isLoading,
-                    hasMore = controller.topFooter.hasMore,
-                    message = controller.topFooter.message,
-                    isError = controller.topFooter.isError
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columnCount),
+            state = gridState,
+            modifier = Modifier
+                .fillMaxSize()
+                .exploreCategorySwipe(controller),
+            contentPadding = PaddingValues(
+                start = halfSpacing,
+                end = halfSpacing,
+                top = halfSpacing,
+                bottom = bottomInset
+            ),
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalArrangement = Arrangement.spacedBy(spacing)
+        ) {
+            if (controller.topFooter.visible) {
+                item(key = "top_footer", span = { GridItemSpan(maxLineSpan) }) {
+                    LoadMoreFooter(
+                        isLoading = controller.topFooter.isLoading,
+                        hasMore = controller.topFooter.hasMore,
+                        message = controller.topFooter.message,
+                        isError = controller.topFooter.isError
+                    )
+                }
+            }
+            itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
+                    _, book ->
+                ExploreShowGridItem(
+                    book = book,
+                    shelfState = getShelfState(controller, book),
+                    onBookClick = { onShowBookInfo(book) },
+                    onBookLongClick = { onBookLongClick(book) }
                 )
             }
-        }
-        itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
-                _, book ->
-            ExploreShowGridItem(
-                book = book,
-                shelfState = getShelfState(controller, book),
-                onBookClick = { onShowBookInfo(book) },
-                onBookLongClick = { onBookLongClick(book) }
-            )
-        }
-        if (!controller.showsEmptyPlaceholder()) {
-            item(key = "bottom_footer", span = { GridItemSpan(maxLineSpan) }) {
-                LoadMoreFooter(
-                    isLoading = controller.footer.isLoading,
-                    hasMore = controller.footer.hasMore,
-                    message = controller.footer.message,
-                    isError = controller.footer.isError,
-                    onClick = { controller.requestLoadNext(forceLoad = true) }
-                )
+            if (!controller.showsEmptyPlaceholder()) {
+                item(key = "bottom_footer", span = { GridItemSpan(maxLineSpan) }) {
+                    LoadMoreFooter(
+                        isLoading = controller.footer.isLoading,
+                        hasMore = controller.footer.hasMore,
+                        message = controller.footer.message,
+                        isError = controller.footer.isError,
+                        onClick = { controller.requestLoadNext(forceLoad = true) }
+                    )
+                }
             }
         }
+        VerticalScrollbar(
+            state = gridState,
+            bottomInset = bottomInset,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 
     ExploreViewportEffect(controller) {
@@ -337,52 +353,59 @@ private fun ExploreShowStaggeredContent(
     val halfSpacing = spacing / 2
     val bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding)
 
-    LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Fixed(columnCount),
-        state = staggeredState,
-        modifier = Modifier
-            .fillMaxSize()
-            .exploreCategorySwipe(controller),
-        contentPadding = PaddingValues(
-            start = halfSpacing,
-            end = halfSpacing,
-            top = halfSpacing,
-            bottom = bottomInset
-        ),
-        horizontalArrangement = Arrangement.spacedBy(spacing),
-        verticalItemSpacing = spacing
-    ) {
-        if (controller.topFooter.visible) {
-            item(key = "top_footer", span = StaggeredGridItemSpan.FullLine) {
-                LoadMoreFooter(
-                    isLoading = controller.topFooter.isLoading,
-                    hasMore = controller.topFooter.hasMore,
-                    message = controller.topFooter.message,
-                    isError = controller.topFooter.isError
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(columnCount),
+            state = staggeredState,
+            modifier = Modifier
+                .fillMaxSize()
+                .exploreCategorySwipe(controller),
+            contentPadding = PaddingValues(
+                start = halfSpacing,
+                end = halfSpacing,
+                top = halfSpacing,
+                bottom = bottomInset
+            ),
+            horizontalArrangement = Arrangement.spacedBy(spacing),
+            verticalItemSpacing = spacing
+        ) {
+            if (controller.topFooter.visible) {
+                item(key = "top_footer", span = StaggeredGridItemSpan.FullLine) {
+                    LoadMoreFooter(
+                        isLoading = controller.topFooter.isLoading,
+                        hasMore = controller.topFooter.hasMore,
+                        message = controller.topFooter.message,
+                        isError = controller.topFooter.isError
+                    )
+                }
+            }
+            itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
+                    _, book ->
+                ExploreShowWaterfallItem(
+                    book = book,
+                    shelfState = getShelfState(controller, book),
+                    columnCount = columnCount,
+                    onBookClick = { onShowBookInfo(book) },
+                    onBookLongClick = { onBookLongClick(book) }
                 )
             }
-        }
-        itemsIndexed(controller.books, key = { index, _ -> bookItemKey(controller, index) }) {
-                _, book ->
-            ExploreShowWaterfallItem(
-                book = book,
-                shelfState = getShelfState(controller, book),
-                columnCount = columnCount,
-                onBookClick = { onShowBookInfo(book) },
-                onBookLongClick = { onBookLongClick(book) }
-            )
-        }
-        if (!controller.showsEmptyPlaceholder()) {
-            item(key = "bottom_footer", span = StaggeredGridItemSpan.FullLine) {
-                LoadMoreFooter(
-                    isLoading = controller.footer.isLoading,
-                    hasMore = controller.footer.hasMore,
-                    message = controller.footer.message,
-                    isError = controller.footer.isError,
-                    onClick = { controller.requestLoadNext(forceLoad = true) }
-                )
+            if (!controller.showsEmptyPlaceholder()) {
+                item(key = "bottom_footer", span = StaggeredGridItemSpan.FullLine) {
+                    LoadMoreFooter(
+                        isLoading = controller.footer.isLoading,
+                        hasMore = controller.footer.hasMore,
+                        message = controller.footer.message,
+                        isError = controller.footer.isError,
+                        onClick = { controller.requestLoadNext(forceLoad = true) }
+                    )
+                }
             }
         }
+        VerticalScrollbar(
+            state = staggeredState,
+            bottomInset = bottomInset,
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
 
     ExploreViewportEffect(controller) {

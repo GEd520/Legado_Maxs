@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.LazyGridItemInfo
 import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridItemInfo
+import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -206,6 +208,72 @@ private fun columnsInFirstRow(visibleItems: List<LazyGridItemInfo>): Int {
     val first = visibleItems.firstOrNull() ?: return 1
     return visibleItems.count { it.offset.y == first.offset.y }.coerceAtLeast(1)
 }
+
+// ==================== LazyStaggeredGridState ====================
+
+/**
+ * 瀑布流的滚动块重载。
+ *
+ * 瀑布流各列独立堆叠、没有"行"的概念：这里把可见项占用的列数取成「最大 lane + 1」，
+ * 再把「项数 ÷ 列数」当行数、项高平均值当行高，与 [LazyGridState] 重载同一估算口径
+ * （各列高矮不一时按平均值算，拖柄不会因某列进出视口而上下窜）。
+ */
+@Composable
+fun VerticalScrollbar(
+    state: LazyStaggeredGridState,
+    modifier: Modifier = Modifier,
+    bottomInset: Dp = 0.dp
+) {
+    val canScroll = state.canScrollForward || state.canScrollBackward
+    val scrollFraction by remember(state) {
+        derivedStateOf {
+            val info = state.layoutInfo
+            val visible = info.visibleItemsInfo
+            val first = visible.firstOrNull()
+            if (first == null || visible.isEmpty() || info.viewportSize.height <= 0) return@derivedStateOf 0f
+            val lanes = laneCount(visible)
+            val avgItemHeight = visible.sumOf { it.size.height }.toFloat() / visible.size
+            if (avgItemHeight <= 0f) return@derivedStateOf 0f
+            val lineCount = ceil(info.totalItemsCount / lanes.toFloat()).toInt()
+            val maxScroll = avgItemHeight * lineCount - info.viewportSize.height
+            if (maxScroll <= 0f) return@derivedStateOf 0f
+            val lineIndex = first.index / lanes
+            val scrolled = lineIndex * avgItemHeight - first.offset.y - info.beforeContentPadding
+            (scrolled / maxScroll).coerceIn(0f, 1f)
+        }
+    }
+    val scope = rememberCoroutineScope()
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
+    ScrollbarHandle(
+        scrollFraction = scrollFraction,
+        canScroll = canScroll,
+        isScrollInProgress = state.isScrollInProgress,
+        onScrollFractionChange = { fraction ->
+            val info = state.layoutInfo
+            val visible = info.visibleItemsInfo
+            if (visible.isNotEmpty() && info.totalItemsCount > 0) {
+                val lanes = laneCount(visible)
+                val avgItemHeight = visible.sumOf { it.size.height }.toFloat() / visible.size
+                val lineCount = ceil(info.totalItemsCount / lanes.toFloat()).toInt()
+                val maxScroll = avgItemHeight * lineCount - info.viewportSize.height
+                if (avgItemHeight > 0f && maxScroll > 0f) {
+                    val lineIndex = ((fraction * maxScroll + info.beforeContentPadding) / avgItemHeight)
+                        .roundToInt()
+                        .coerceAtLeast(0)
+                    val index = (lineIndex * lanes).coerceIn(0, info.totalItemsCount - 1)
+                    scrollJob?.cancel()
+                    scrollJob = scope.launch { state.scrollToItem(index) }
+                }
+            }
+        },
+        modifier = modifier,
+        bottomInset = bottomInset
+    )
+}
+
+/** 可见项占用的列数：lane 从 0 连续编号，最大 lane + 1 即列数 */
+private fun laneCount(visibleItems: List<LazyStaggeredGridItemInfo>): Int =
+    (visibleItems.maxOfOrNull { it.lane } ?: 0) + 1
 
 // ==================== ScrollState ====================
 

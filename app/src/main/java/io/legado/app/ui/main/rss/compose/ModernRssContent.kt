@@ -64,6 +64,7 @@ import io.legado.app.ui.widget.components.dialog.AppTagGridDialog
 import io.legado.app.ui.widget.components.BlockProgressChip
 import io.legado.app.ui.widget.components.EmptyContent
 import io.legado.app.ui.widget.components.LoadMoreFooter
+import io.legado.app.ui.widget.components.VerticalScrollbar
 import io.legado.app.ui.widget.components.ModernTagBar
 import io.legado.app.ui.widget.components.navigationBarBottomInset
 
@@ -317,32 +318,39 @@ private fun ModernRssList(
     extraBottomPadding: Dp = 0.dp,
 ) {
     val listState = rememberLazyListState()
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        // 主界面内嵌时底栏浮在内容之上：取底栏高度与系统导航栏 inset 的较大者
-        contentPadding = PaddingValues(
-            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
-        )
-    ) {
-        items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
-            Column {
-                ModernRssListItem(
-                    article = article,
-                    onReadArticle = { onReadArticle(article) }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            // 主界面内嵌时底栏浮在内容之上：取底栏高度与系统导航栏 inset 的较大者
+            contentPadding = PaddingValues(
+                bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+            )
+        ) {
+            items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
+                Column {
+                    ModernRssListItem(
+                        article = article,
+                        onReadArticle = { onReadArticle(article) }
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+            }
+            item(key = "footer") {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadMore(forceLoad = true) }
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
-        item(key = "footer") {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadMore(forceLoad = true) }
-            )
-        }
+        VerticalScrollbar(
+            state = listState,
+            bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
     ModernRssScrollResetEffect(controller) { listState.scrollToItem(0) }
     ModernRssPagingEffect(controller) {
@@ -362,28 +370,35 @@ private fun ModernRssLargeCardList(
     extraBottomPadding: Dp = 0.dp,
 ) {
     val listState = rememberLazyListState()
-    LazyColumn(
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+            )
+        ) {
+            items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
+                ModernRssLargeCardItem(
+                    article = article,
+                    onReadArticle = { onReadArticle(article) }
+                )
+            }
+            item(key = "footer") {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadMore(forceLoad = true) }
+                )
+            }
+        }
+        VerticalScrollbar(
+            state = listState,
+            bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding),
+            modifier = Modifier.align(Alignment.CenterEnd)
         )
-    ) {
-        items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
-            ModernRssLargeCardItem(
-                article = article,
-                onReadArticle = { onReadArticle(article) }
-            )
-        }
-        item(key = "footer") {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadMore(forceLoad = true) }
-            )
-        }
     }
     ModernRssScrollResetEffect(controller) { listState.scrollToItem(0) }
     ModernRssPagingEffect(controller) {
@@ -402,33 +417,40 @@ private fun ModernRssGrid(
     extraBottomPadding: Dp = 0.dp,
 ) {
     val gridState = rememberLazyGridState()
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
-        state = gridState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = AppDimens.rssGridItemPadding / 2,
-            end = AppDimens.rssGridItemPadding / 2,
-            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
-        ),
-        horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
-        verticalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2)
-    ) {
-        items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
-            ModernRssGridItem(
-                article = article,
-                onReadArticle = { onReadArticle(article) }
-            )
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            state = gridState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = AppDimens.rssGridItemPadding / 2,
+                end = AppDimens.rssGridItemPadding / 2,
+                bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+            ),
+            horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
+            verticalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2)
+        ) {
+            items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
+                ModernRssGridItem(
+                    article = article,
+                    onReadArticle = { onReadArticle(article) }
+                )
+            }
+            item(key = "footer", span = { GridItemSpan(2) }) {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadMore(forceLoad = true) }
+                )
+            }
         }
-        item(key = "footer", span = { GridItemSpan(2) }) {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadMore(forceLoad = true) }
-            )
-        }
+        VerticalScrollbar(
+            state = gridState,
+            bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
     ModernRssScrollResetEffect(controller) { gridState.scrollToItem(0) }
     ModernRssPagingEffect(controller) {
@@ -448,33 +470,40 @@ private fun ModernRssCompactGrid(
     extraBottomPadding: Dp = 0.dp,
 ) {
     val gridState = rememberLazyGridState()
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        state = gridState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = AppDimens.rssGridItemPadding / 2,
-            end = AppDimens.rssGridItemPadding / 2,
-            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
-        ),
-        horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
-        verticalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2)
-    ) {
-        items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
-            ModernRssCompactItem(
-                article = article,
-                onReadArticle = { onReadArticle(article) }
-            )
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(3),
+            state = gridState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = AppDimens.rssGridItemPadding / 2,
+                end = AppDimens.rssGridItemPadding / 2,
+                bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+            ),
+            horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
+            verticalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2)
+        ) {
+            items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
+                ModernRssCompactItem(
+                    article = article,
+                    onReadArticle = { onReadArticle(article) }
+                )
+            }
+            item(key = "footer", span = { GridItemSpan(3) }) {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadMore(forceLoad = true) }
+                )
+            }
         }
-        item(key = "footer", span = { GridItemSpan(3) }) {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadMore(forceLoad = true) }
-            )
-        }
+        VerticalScrollbar(
+            state = gridState,
+            bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
     ModernRssScrollResetEffect(controller) { gridState.scrollToItem(0) }
     ModernRssPagingEffect(controller) {
@@ -494,33 +523,40 @@ private fun ModernRssStaggered(
     extraBottomPadding: Dp = 0.dp,
 ) {
     val staggeredState = rememberLazyStaggeredGridState()
-    LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Fixed(2),
-        state = staggeredState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            start = AppDimens.rssGridItemPadding / 2,
-            end = AppDimens.rssGridItemPadding / 2,
-            bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
-        ),
-        horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
-        verticalItemSpacing = AppDimens.rssGridItemPadding / 2
-    ) {
-        items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
-            ModernRssStaggeredItem(
-                article = article,
-                onReadArticle = { onReadArticle(article) }
-            )
+    Box(Modifier.fillMaxSize()) {
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Fixed(2),
+            state = staggeredState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = AppDimens.rssGridItemPadding / 2,
+                end = AppDimens.rssGridItemPadding / 2,
+                bottom = maxOf(navigationBarBottomInset, extraBottomPadding)
+            ),
+            horizontalArrangement = Arrangement.spacedBy(AppDimens.rssGridItemPadding / 2),
+            verticalItemSpacing = AppDimens.rssGridItemPadding / 2
+        ) {
+            items(controller.articles, key = { "${it.origin}_${it.link}_${it.sort}" }) { article ->
+                ModernRssStaggeredItem(
+                    article = article,
+                    onReadArticle = { onReadArticle(article) }
+                )
+            }
+            item(key = "footer", span = StaggeredGridItemSpan.FullLine) {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadMore(forceLoad = true) }
+                )
+            }
         }
-        item(key = "footer", span = StaggeredGridItemSpan.FullLine) {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadMore(forceLoad = true) }
-            )
-        }
+        VerticalScrollbar(
+            state = staggeredState,
+            bottomInset = maxOf(navigationBarBottomInset, extraBottomPadding),
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
     }
     ModernRssScrollResetEffect(controller) {
         staggeredState.scrollToItem(0)
