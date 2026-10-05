@@ -9,6 +9,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.FileDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.datasource.cache.Cache
@@ -550,7 +551,7 @@ object ExoPlayerHelper {
         val targetCacheDir = cacheDir ?: legacyCacheDir
         // 不写缓存、缓存目录还不存在（也没缓存可读）且是网络地址时直接走网络，
         // 避免"只是播放"在书籍缓存目录里凭空建出空目录；
-        // 本地文件/内容 URI 不短路，仍走下面的缓存数据源（读侧是 FileDataSource）
+        // 本地文件/内容 URI 不短路，仍走下面的缓存数据源（读侧 FileDataSource、未命中由上游的数据源按 scheme 读）
         if (!writable && !targetCacheDir.exists() && isHttpUrl(url)) {
             return okhttpDataFactory(headers)
         }
@@ -559,6 +560,11 @@ object ExoPlayerHelper {
 
     /**
      * 走缓存目录的数据源，[writable] 为 false 时是只读缓存
+     *
+     * 上游用按 scheme 分发的 [DefaultDataSource]：媒体地址不都是网络地址——书源正文直接返回 mpd 文本时，
+     * 播放的是刚落盘的本地临时文件（file://），OkHttp 只认 http/https，读 file:// 会抛
+     * `HttpDataSourceException: Malformed URL` 导致整段播放失败（DASH 清单读不到就 Source error）。
+     * 默认数据源对 file://、content:// 等本地地址会交给对应的本地数据源，http/https 仍走同一个 OkHttp 工厂。
      *
      * @param ignoreCacheError 播放可以容忍缓存读写出错（缓存只是加速器，出错后退回网络）；
      * 下载不允许，出错要暴露出来以便重试
@@ -572,7 +578,7 @@ object ExoPlayerHelper {
         val dataCache = simpleCache(cacheDir, cacheMaxBytes(cacheDir))
         return CacheDataSource.Factory()
             .setCache(dataCache)
-            .setUpstreamDataSourceFactory(okhttpDataFactory(headers))
+            .setUpstreamDataSourceFactory(DefaultDataSource.Factory(appCtx, okhttpDataFactory(headers)))
             .setCacheReadDataSourceFactory(FileDataSource.Factory())
             .apply {
                 if (ignoreCacheError) {

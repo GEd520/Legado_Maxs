@@ -47,6 +47,7 @@ import io.legado.app.utils.FileUtils
 import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.externalCache
+import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.postEvent
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.CoroutineScope
@@ -455,8 +456,10 @@ object VideoPlay : CoroutineScope by MainScope() {
                     is File -> danmakuFile = danmaku
                 }
                 val playUrl = analyzeUrl.url
-                // 解析出的真实地址写回章节，离线缓存与缓存判定都依赖它
-                if (chapter.resourceUrl != playUrl) {
+                // 解析出的真实地址写回章节，离线缓存与缓存判定都依赖它。
+                // 正文是 mpd 文本时 playUrl 是刚落盘的本地临时文件（file://，退出播放即被清理），
+                // 它既不是媒体地址、也无法再解析出来，写进章节表会污染缓存判定与缓存清单，所以只写网络地址
+                if (playUrl.isAbsUrl() && chapter.resourceUrl != playUrl) {
                     chapter.resourceUrl = playUrl
                     appDb.bookChapterDao.upResourceUrl(chapter.bookUrl, chapter.url, playUrl)
                 }
