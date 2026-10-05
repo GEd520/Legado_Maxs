@@ -22,6 +22,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntSize
 import io.legado.app.data.entities.RssArticle
+import io.legado.app.help.CoverAspectRatioCache
 import io.legado.app.help.config.AppConfig
 import io.legado.app.ui.widget.components.AppDrawablePainter
 import io.legado.app.ui.widget.components.loadCoverDrawable
@@ -45,8 +46,12 @@ internal fun RssStaggeredCover(
     var drawable by remember(model, article.origin) {
         mutableStateOf<Drawable?>(null)
     }
-    // 高度/宽度比：未加载前按 4:3 占位，加载完成取真实比例
-    var heightRatio by remember(model, article.origin) { mutableFloatStateOf(4f / 3f) }
+    // 高度/宽度比：优先取缓存过的真实比例——条目滑出视口被回收后重新滑回来时，
+    // 用默认比例起手会等图片加载完再改高度，整列跟着重排（表现就是"往上滑书籍跳动"）；
+    // 没有缓存才按 4:3 占位，加载完成后再取真实比例
+    var heightRatio by remember(model, article.origin) {
+        mutableFloatStateOf(CoverAspectRatioCache.get(model).takeIf { it > 0f } ?: 4f / 3f)
+    }
     var bounds by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(model, article.origin, bounds) {
@@ -65,7 +70,11 @@ internal fun RssStaggeredCover(
             startIfAnimatable(loaded)
             val iw = loaded.intrinsicWidth
             val ih = loaded.intrinsicHeight
-            if (iw > 0 && ih > 0) heightRatio = ih.toFloat() / iw
+            if (iw > 0 && ih > 0) {
+                val ratio = ih.toFloat() / iw
+                heightRatio = ratio
+                CoverAspectRatioCache.put(model, ratio)
+            }
         }
     }
 

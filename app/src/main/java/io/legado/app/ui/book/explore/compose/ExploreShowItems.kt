@@ -51,6 +51,7 @@ import io.legado.app.R
 import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.domain.model.BookShelfState
+import io.legado.app.help.CoverAspectRatioCache
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.HtmlCoverRenderer
 import io.legado.app.model.BookCover
@@ -461,11 +462,27 @@ fun ExploreWaterfallCover(
         .joinToString("|")
 
     // 占位图：与 View 版 placeholder 一致，加载完成前显示默认封面（绘名封面对除外）
+    // 占位图：与 View 版 placeholder 一致，加载完成前显示默认封面（绘名封面对除外）
     var drawable by remember(requestKey) {
         mutableStateOf<Drawable?>(if (drawNameOverlay) null else defaultCoverDrawable())
     }
-    // 高度/宽度比：默认封面 600x900；绘名封面对齐 CoverLoader 用 4:3
-    var heightRatio by remember(requestKey) { mutableFloatStateOf(1.5f) }
+    // 比例缓存键：HTML 模板封面按渲染入参取键，普通封面按实际图片地址取键
+    val ratioCacheKey = when {
+        htmlCover -> "html|$cleanName|$cleanAuthor"
+        realPath != null -> realPath
+        else -> null
+    }
+    // 高度/宽度比：绘名封面固定 4:3；有缓存过真实比例的（条目被回收后重新滑回来）
+    // 直接用它，避免先按默认比例排版、加载完再改高度导致整列重排（"往上滑书籍跳动"）；
+    // 没有缓存才用默认封面 600x900 占位
+    var heightRatio by remember(requestKey) {
+        mutableFloatStateOf(
+            when {
+                drawNameOverlay -> AppDimens.BOOK_COVER_ASPECT
+                else -> CoverAspectRatioCache.get(ratioCacheKey).takeIf { it > 0f } ?: 1.5f
+            }
+        )
+    }
     var bounds by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(requestKey, bounds) {
@@ -485,7 +502,11 @@ fun ExploreWaterfallCover(
                     drawable = loaded
                     val iw = loaded.intrinsicWidth
                     val ih = loaded.intrinsicHeight
-                    if (iw > 0 && ih > 0) heightRatio = ih.toFloat() / iw
+                    if (iw > 0 && ih > 0) {
+                        val ratio = ih.toFloat() / iw
+                        heightRatio = ratio
+                        CoverAspectRatioCache.put(ratioCacheKey, ratio)
+                    }
                 } else {
                     drawable = defaultCoverDrawable()
                 }
@@ -520,7 +541,11 @@ fun ExploreWaterfallCover(
                     startIfAnimatable(loaded)
                     val iw = loaded.intrinsicWidth
                     val ih = loaded.intrinsicHeight
-                    if (iw > 0 && ih > 0) heightRatio = ih.toFloat() / iw
+                    if (iw > 0 && ih > 0) {
+                        val ratio = ih.toFloat() / iw
+                        heightRatio = ratio
+                        CoverAspectRatioCache.put(ratioCacheKey, ratio)
+                    }
                 } else {
                     drawable = defaultCoverDrawable()
                 }
