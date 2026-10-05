@@ -62,6 +62,7 @@ import io.legado.app.ui.widget.components.AppImage
 import io.legado.app.ui.widget.components.dialog.AppSearchableChoiceDialog
 import io.legado.app.ui.widget.components.dialog.AppTagGridDialog
 import io.legado.app.ui.widget.components.BlockProgressChip
+import io.legado.app.ui.widget.components.EmptyContent
 import io.legado.app.ui.widget.components.LoadMoreFooter
 import io.legado.app.ui.widget.components.ModernTagBar
 import io.legado.app.ui.widget.components.navigationBarBottomInset
@@ -141,6 +142,15 @@ fun ModernRssContent(
         ) {
             if (webOpenSource != null) {
                 ModernRssWebOpenPanel(webOpenSource, onOpenInWeb)
+            } else if (
+                controller.articles.isEmpty() &&
+                !controller.footer.isLoading &&
+                !controller.footer.isError
+            ) {
+                // 加载已结束、一篇文章都没有（空分类、全被屏蔽规则滤掉等）：列表里只剩一个
+                // footer 节点，什么都画不出来，内容区只剩背景。给居中空态兜底。
+                // 订阅列表没有左右滑动手势，空态直接替代列表即可。
+                EmptyContent()
             } else when (controller.articleStyle) {
                 1 -> ModernRssLargeCardList(controller, onReadArticle, extraBottomPadding)
                 2 -> ModernRssGrid(controller, onReadArticle, extraBottomPadding)

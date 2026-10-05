@@ -257,7 +257,9 @@ class ExploreShowController(
     fun upData(loaded: List<SearchBook>) {
         footer = footer.copy(isLoading = false)
         if (loaded.isEmpty() && books.isEmpty()) {
-            footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty))
+            // 空态必须一并置 hasMore=false：否则空列表触底会被视口上报当成"到底了"，
+            // 用残留的 exploreUrl 反复发起空请求（与 clearBooksToEmpty 同一口径）
+            footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty), hasMore = false)
         } else if (books.size == loaded.size) {
             // 书源没有返回新增数据（整页被屏蔽等），显示到底
             footer = ExploreLoadMoreState(hasMore = false)
@@ -299,7 +301,8 @@ class ExploreShowController(
         footer = footer.copy(isLoading = false)
         updateBooks(loaded)
         if (loaded.isEmpty()) {
-            footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty))
+            // 同上：空态要到底，避免空列表继续触发翻页
+            footer = ExploreLoadMoreState(message = appCtx.getString(R.string.empty), hasMore = false)
         }
     }
 

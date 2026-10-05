@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import io.legado.app.data.entities.SearchBook
 import io.legado.app.domain.model.BookShelfState
 import io.legado.app.ui.theme.AppDimens
+import io.legado.app.ui.widget.components.EmptyContent
 import io.legado.app.ui.widget.components.LoadMoreFooter
 import io.legado.app.ui.widget.components.navigationBarBottomInset
 import kotlin.math.abs
@@ -81,8 +82,27 @@ fun ExploreShowListContent(
                 controller, onShowBookInfo, onBookLongClick, extraBottomPadding
             )
         }
+        // 空态叠在列表之上居中显示：列表照常组合，左右滑切分类的手势不丢
+        if (controller.showsEmptyPlaceholder()) {
+            EmptyContent()
+        }
     }
 }
+
+/**
+ * 内容区是否该显示空态占位：列表为空、且既不在加载也没有出错。
+ *
+ * 空列表时底部 footer 会贴在列表顶部、只剩一句同样的文案（看起来像"内容没渲染"），
+ * 因此空态期间不再渲染 footer，改由 [EmptyContent] 居中接管，避免两处提示重复。
+ */
+private fun ExploreShowController.showsEmptyPlaceholder(): Boolean =
+    books.isEmpty() && !footer.isLoading && !footer.isError
+
+/**
+ * 滚动定位用的列表项总数（条目 + 顶部/底部 footer）；空态没有底部 footer。
+ */
+private fun ExploreShowController.scrollItemCount(): Int =
+    books.size + (if (topFooter.visible) 1 else 0) + (if (showsEmptyPlaceholder()) 0 else 1)
 
 /** 网格/瀑布流的列间距：列宽 × 5%，夹在 2..80px（对齐 View 版 calcColumnSpacing） */
 @Composable
@@ -160,14 +180,16 @@ private fun ExploreShowLazyList(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
-        item(key = "bottom_footer") {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadNext(forceLoad = true) }
-            )
+        if (!controller.showsEmptyPlaceholder()) {
+            item(key = "bottom_footer") {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadNext(forceLoad = true) }
+                )
+            }
         }
     }
 
@@ -182,8 +204,8 @@ private fun ExploreShowLazyList(
     ExploreScrollCommandEffect(controller) { command ->
         // 守卫必须用 controller 的数据量：指令消费发生在新数据测量完成之前，
         // layoutInfo.totalItemsCount 此时还是旧值，会导致恢复/跳页定位静默失效
+        val total = controller.scrollItemCount()
         val topFooterCount = if (controller.topFooter.visible) 1 else 0
-        val total = controller.books.size + topFooterCount + 1
         when (command) {
             is ExploreScrollCommand.SkipPageTop ->
                 if (total > 2) listState.scrollToItem(1, 0)
@@ -257,14 +279,16 @@ private fun ExploreShowLazyGrid(
                 onBookLongClick = { onBookLongClick(book) }
             )
         }
-        item(key = "bottom_footer", span = { GridItemSpan(maxLineSpan) }) {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadNext(forceLoad = true) }
-            )
+        if (!controller.showsEmptyPlaceholder()) {
+            item(key = "bottom_footer", span = { GridItemSpan(maxLineSpan) }) {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadNext(forceLoad = true) }
+                )
+            }
         }
     }
 
@@ -277,8 +301,7 @@ private fun ExploreShowLazyGrid(
         )
     }
     ExploreScrollCommandEffect(controller) { command ->
-        val topFooterCount = if (controller.topFooter.visible) 1 else 0
-        val total = controller.books.size + topFooterCount + 1
+        val total = controller.scrollItemCount()
         when (command) {
             is ExploreScrollCommand.SkipPageTop -> Unit
 
@@ -349,14 +372,16 @@ private fun ExploreShowStaggeredContent(
                 onBookLongClick = { onBookLongClick(book) }
             )
         }
-        item(key = "bottom_footer", span = StaggeredGridItemSpan.FullLine) {
-            LoadMoreFooter(
-                isLoading = controller.footer.isLoading,
-                hasMore = controller.footer.hasMore,
-                message = controller.footer.message,
-                isError = controller.footer.isError,
-                onClick = { controller.requestLoadNext(forceLoad = true) }
-            )
+        if (!controller.showsEmptyPlaceholder()) {
+            item(key = "bottom_footer", span = StaggeredGridItemSpan.FullLine) {
+                LoadMoreFooter(
+                    isLoading = controller.footer.isLoading,
+                    hasMore = controller.footer.hasMore,
+                    message = controller.footer.message,
+                    isError = controller.footer.isError,
+                    onClick = { controller.requestLoadNext(forceLoad = true) }
+                )
+            }
         }
     }
 
@@ -369,8 +394,7 @@ private fun ExploreShowStaggeredContent(
         )
     }
     ExploreScrollCommandEffect(controller) { command ->
-        val topFooterCount = if (controller.topFooter.visible) 1 else 0
-        val total = controller.books.size + topFooterCount + 1
+        val total = controller.scrollItemCount()
         when (command) {
             is ExploreScrollCommand.SkipPageTop -> Unit
 
