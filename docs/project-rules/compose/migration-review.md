@@ -80,6 +80,8 @@ private fun ThemeAddBottomBar(...) { ... }
 - [ ] 卡片 / 列表项组件根容器是否 `semantics(mergeDescendants = true)`？（`accessibility.md` §15.2）
 - [ ] 可点击区域是否 ≥ 48×48 dp（小图标是否用 padding / `minimumInteractiveComponentSize` 撑命中区）？（`accessibility.md` §15.3）
 - [ ] 有无硬编码 `.sp`？有无固定高度容器硬裁文字？（`accessibility.md` §15.4）
+- [ ] 字体样式是否走 `MaterialTheme.typography` 语义档位？`fontWeight` 是否只在 Medium / SemiBold / Bold 内取值？（`theme-styles.md` §7.4）
+- [ ] 去 ripple 是否有注释说明设计理由？自定义按压形变是否走 `collectIsPressedAsState` + `graphicsLayer` + 150ms 档？（`theme-styles.md` §7.9）
 - [ ] 新增 ViewModel / 修改状态机的 PR 是否带对应单测？ViewModel 测试是否 `runTest` + Turbine，有无 `runBlocking` / 手写 collect / `Thread.sleep` / `@Ignore`？（`testing.md` §16）
 
 ### 14.3 脚手架判定依据：`AppScaffold` 的适用范围

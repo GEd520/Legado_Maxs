@@ -1,7 +1,7 @@
 # Compose UI 规范 — 主题与样式
 
 > 原 `UI-ARCHITECTURE.md`（2026-08-19）拆分产物：§7，章节编号沿用原编号，跨文件引用按「文件名 §编号」格式书写。生效范围、执行方式、老代码策略等通用约定见 [README.md](./README.md)。
-> **最后更新**：2026-09-27
+> **最后更新**：2026-10-06
 
 ---
 
@@ -60,8 +60,26 @@ Glide.with(context)
 
 ### 7.4 字体与排版
 
-- **必须**通过 `MaterialTheme.typography.xxx` 拿字体。
-- **禁止**在 Composable 内直接调 `FontFamily` 构建。
+> 档位载体：`ui/theme/AppTypography.kt` 的 `rememberAppTypography()`（**已建立**），经 `LegadoTheme` 注入 `MaterialTheme.typography`；字号与权重沿用 Material3 默认档位，本项目不另设字号体系。
+
+- **必须**通过 `MaterialTheme.typography.xxx` 语义档位取字体样式；**禁止**在 Composable 内直接调 `FontFamily` 构建、裸写 `fontSize = X.sp`（动态字号豁免见本节末）。
+- **界面字体**（用户设置的衬线/等宽，`AppConfig.systemTypefaces`）由 `rememberAppTypography()` 织入 body / label 档位，title / headline / display 档位保持系统默认——与 View 侧 `applyUiBodyTypefaceDeep()` 跳过标题角色同语义。所有 Compose 界面必须经 `LegadoTheme` 包裹（当前无绕过点），禁止自行 `MaterialTheme(colorScheme = ...)` 把排版注入甩掉。
+- **字号选档对照**（裸 `13.sp` 这类档位外取值，迁移时按就近原则归档；最小档位到 `labelSmall`）：
+
+  | 档位          | 字号 | 默认权重 | 用途                         |
+  | ------------- | ---- | -------- | ---------------------------- |
+  | `titleLarge`  | 22sp | Normal   | 页面大标题（TopAppBar 默认） |
+  | `titleMedium` | 16sp | Medium   | 卡片/列表项标题              |
+  | `titleSmall`  | 14sp | Medium   | 小标题、强调行               |
+  | `bodyLarge`   | 16sp | Normal   | 正文主文本                   |
+  | `bodyMedium`  | 14sp | Normal   | 正文次要文本                 |
+  | `bodySmall`   | 12sp | Normal   | 辅助说明、时间戳             |
+  | `labelLarge`  | 14sp | Medium   | 按钮文字                     |
+  | `labelMedium` | 12sp | Medium   | 小标签                       |
+  | `labelSmall`  | 11sp | Medium   | 角标、最小档位               |
+
+- **权重**：正文默认 Normal 不写 `fontWeight`；显式设置只允许 `FontWeight.Medium` / `SemiBold` / `Bold` 三档，`Black` 禁用（存量 2 处不追溯）；`titleMedium` / `titleSmall` 档位已带 Medium，调用点不再重复设置。
+- **豁免**：阅读页正文排版等动态字号（用户设置/进度驱动，如 `ChapterProvider`）不适用语义档位。
 
 ### 7.5 字符串资源规范
 
@@ -187,5 +205,15 @@ TopAppBar(
 
 - 发现「主题/顶栏/底栏等配置切换后，某些控件点击无反应、整页不刷新」时，先按三个探针定性：① 输入是否到达（clickable 是否执行）② snapshot 状态是否写入 ③ 重组探针是否触发。若①②通而③不触发，即为重建路径问题，按 §7.8.1 改造，不要改内容、不要堆「手动刷新」修复。
 - 迁移老页面时，现有 `ThemeManageActivity` 已按本节落地；其它 `BaseComposeActivity` 页面如出现同类冻结，参照改造后再提交。
+
+### 7.9 点击反馈（强制）
+
+> `AppSettingsRowDecoration` 的注释沉淀过关键结论：按下态经重组才能画出来，快速点击时按下与抬起在一帧内完成，自绘按压反馈会「轻点没反应、按住一会儿才有」；ripple 在绘制层生效，不依赖重组。
+
+- **默认 ripple**：可点击元素默认用 `clickable` / `combinedClickable` / M3 组件自带的 ripple；**禁止**无设计理由地传 `indication = null` 去 ripple，确要去掉（Tab 切换、加载 footer 等已有独立状态表达的场景）必须注释说明。
+- **自定义按压形变**（缩放/变色）：统一 `interactionSource` + `collectIsPressedAsState()` 读按压态，形变走 `graphicsLayer` / `Modifier.scale`（§7.6.2 通道），时长用 §7.6.1 微交互 150ms 档；**禁止**在 `pointerInput` 里手写按下/抬起检测实现按压效果。
+- 行级列表/设置行的按压反馈**优先 ripple**——轻点场景下经重组的缩放形变可能完全不可见（见本节引言）；缩放形变适合卡片等大面积、值得视觉强调的元素。
+- 触控目标 ≥ 48×48 dp 见 `accessibility.md` §15.3。
+- 基准实现：`AppSettingsRowDecoration`（ripple 取舍与原因）、`CategoryTabs` / `LoadMoreFooter` / `ExploreShowItems`（去 ripple 的既有场景）。
 
 ---

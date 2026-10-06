@@ -18,7 +18,8 @@ import io.legado.app.utils.ColorUtils
  * Legado 自定义 Compose 主题。
  *
  * 根据当前主题配置（日间/夜间、主色、背景色等）构建 Material3 [ColorScheme]，
- * 并通过 [MaterialTheme] 提供给子组件使用。
+ * 并通过 [MaterialTheme] 提供给子组件使用；排版档位经 [rememberAppTypography] 注入，
+ * 正文/标签跟随用户「界面字体」设置。
  *
  * ## 主题响应机制
  * 颜色取自 [ThemeStore] 的普通值，本身没有可观察源，因此这里读取 [ThemeStateStore.version]：
@@ -71,7 +72,7 @@ fun LegadoTheme(
         )
     }
 
-    MaterialTheme(colorScheme = colorScheme) {
+    MaterialTheme(colorScheme = colorScheme, typography = rememberAppTypography()) {
         content()
     }
 }

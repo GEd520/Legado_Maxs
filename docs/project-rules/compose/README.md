@@ -10,13 +10,13 @@
 
 ## 文件清单
 
-| 文件                                             | 原章节       | 主题                                   |
-| ------------------------------------------------ | ------------ | -------------------------------------- |
-| [structure.md](./structure.md)                   | §1/2/3/11/12 | 目录结构、命名、API 契约、组件拆分     |
-| [state-events.md](./state-events.md)             | §4/5/6       | 状态管理、事件、错误处理               |
-| [theme-styles.md](./theme-styles.md)             | §7           | 颜色、dimens、图片、字体、字符串、动画 |
-| [performance.md](./performance.md)               | §8           | Recomposition 防范、列表性能           |
-| [navigation-preview.md](./navigation-preview.md) | §9/10        | 导航约定、Preview 规范                 |
-| [accessibility.md](./accessibility.md)           | §15          | 无障碍                                 |
-| [testing.md](./testing.md)                       | §16          | Compose / ViewModel 测试               |
-| [migration-review.md](./migration-review.md)     | §13/14/17    | 迁移三阶段、Review Checklist、违规示例 |
+| 文件                                             | 原章节       | 主题                                             |
+| ------------------------------------------------ | ------------ | ------------------------------------------------ |
+| [structure.md](./structure.md)                   | §1/2/3/11/12 | 目录结构、命名、API 契约、组件拆分               |
+| [state-events.md](./state-events.md)             | §4/5/6       | 状态管理、事件、错误处理                         |
+| [theme-styles.md](./theme-styles.md)             | §7           | 颜色、dimens、图片、字体、字符串、动画、点击反馈 |
+| [performance.md](./performance.md)               | §8           | Recomposition 防范、列表性能                     |
+| [navigation-preview.md](./navigation-preview.md) | §9/10        | 导航约定、Preview 规范                           |
+| [accessibility.md](./accessibility.md)           | §15          | 无障碍                                           |
+| [testing.md](./testing.md)                       | §16          | Compose / ViewModel 测试                         |
+| [migration-review.md](./migration-review.md)     | §13/14/17    | 迁移三阶段、Review Checklist、违规示例           |
