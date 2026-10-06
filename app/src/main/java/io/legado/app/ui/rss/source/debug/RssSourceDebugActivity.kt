@@ -47,6 +47,7 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
                 adapter.addItem(msg)
                 if (state == -1 || state == 1000) {
                     binding.rotateLoading.gone()
+                    menuStop.isVisible = false
                 }
             }
         }
@@ -59,6 +60,7 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_stop -> stopDebug()
             R.id.menu_list_src -> showDialogFragment(TextDialog("Html", viewModel.listSrc))
             R.id.menu_content_src -> showDialogFragment(TextDialog("Html", viewModel.contentSrc))
             R.id.menu_preview_source_url -> showPreview(R.string.preview_title_source_url, null)
@@ -183,8 +185,22 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
         adapter.clearItems()
         viewModel.startDebug(key, {
             binding.rotateLoading.visible()
+            menuStop.isVisible = true
         }, {
             toastOnUi("未获取到书源")
         })
     }
+
+    /**
+     * 手动停止调试：取消调试任务并收尾界面状态
+     */
+    private fun stopDebug() {
+        viewModel.stopDebug()
+        binding.rotateLoading.gone()
+        menuStop.isVisible = false
+        adapter.addItem("■ 已手动停止调试")
+    }
+
+    private val menuStop: MenuItem
+        get() = binding.titleBar.menu.findItem(R.id.menu_stop)
 }

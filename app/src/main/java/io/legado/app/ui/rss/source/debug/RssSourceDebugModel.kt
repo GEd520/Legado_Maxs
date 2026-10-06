@@ -38,6 +38,13 @@ class RssSourceDebugModel(application: Application) : BaseViewModel(application)
         }
     }
 
+    /**
+     * 手动停止调试，保留 callback 以便停止后仍能收到收尾日志
+     */
+    fun stopDebug() {
+        Debug.cancelDebug(false)
+    }
+
     override fun printLog(state: Int, msg: String) {
         when (state) {
             10 -> listSrc = msg

@@ -517,6 +517,7 @@
 
     <string name="source_http_header">HTTP Header</string>
     <string name="debug_source">Debug source</string>
+    <string name="stop_debug">Stop Debug</string>
     <string name="import_by_qr_code">Import from QR code</string>
     <string name="share_selected_source">Share selected sources</string>
     <string name="scan_qr_code">Scan QR code</string>

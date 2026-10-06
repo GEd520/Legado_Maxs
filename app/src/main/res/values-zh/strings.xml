@@ -516,6 +516,7 @@
 
     <string name="source_http_header">请求头（header）</string>
     <string name="debug_source">调试源</string>
+    <string name="stop_debug">停止调试</string>
     <string name="import_by_qr_code">二维码导入</string>
     <string name="share_selected_source">分享选中源</string>
     <string name="scan_qr_code">扫描二维码</string>

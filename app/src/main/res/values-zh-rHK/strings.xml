@@ -481,6 +481,7 @@
 
     <string name="source_http_header">請求頭 (header)</string>
     <string name="debug_source">調試源</string>
+    <string name="stop_debug">停止調試</string>
     <string name="import_by_qr_code">二維碼導入</string>
     <string name="scan_qr_code">掃描二維碼</string>
     <string name="click_on_selected_show_menu">選中時點擊可彈出菜單</string>

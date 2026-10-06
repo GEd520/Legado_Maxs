@@ -55,6 +55,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
                 adapter.addItem(msg)
                 if (state == -1 || state == 1000) {
                     binding.rotateLoading.gone()
+                    menuStop.isVisible = false
                 }
             }
         }
@@ -177,10 +178,24 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
         adapter.clearItems()
         viewModel.startDebug(key, {
             binding.rotateLoading.visible()
+            menuStop.isVisible = true
         }, {
             toastOnUi("未获取到书源")
         })
     }
+
+    /**
+     * 手动停止调试：取消调试任务并收尾界面状态
+     */
+    private fun stopDebug() {
+        viewModel.stopDebug()
+        binding.rotateLoading.gone()
+        menuStop.isVisible = false
+        adapter.addItem("■ 已手动停止调试")
+    }
+
+    private val menuStop: MenuItem
+        get() = binding.titleBar.menu.findItem(R.id.menu_stop)
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_source_debug, menu)
@@ -189,6 +204,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
+            R.id.menu_stop -> stopDebug()
             R.id.menu_scan -> qrCodeResult.launch()
             R.id.menu_search_src -> showDialogFragment(TextDialog("html", viewModel.searchSrc))
             R.id.menu_book_src -> showDialogFragment(TextDialog("html", viewModel.bookSrc))
