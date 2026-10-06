@@ -2141,4 +2141,6 @@
     <string name="cache_manage_batch_empty">沒有可操作的緩存</string>
     <string name="cache_manage_batch_upload_done">批量上傳完成：成功 %1$d 個，失敗 %2$d 個</string>
     <string name="delete_success">已刪除</string>
+    <string name="storage_cache_internal_name">內部緩存</string>
+    <string name="storage_cache_internal_desc">Cronet 下載臨時檔案、匯出臨時檔案、WebView 網絡緩存等</string>
 </resources>

@@ -2613,6 +2613,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="storage_cache_temp_name">Temporary file cache</string>
     <string name="storage_cache_tts_name">TTS voice cache</string>
     <string name="storage_cache_acache_name">ACache disk cache</string>
+    <string name="storage_cache_internal_name">Internal cache</string>
     <string name="storage_cache_db_name">Database cache</string>
     <string name="storage_cache_log_name">Log files</string>
     <string name="storage_cache_webview_name">WebView cache</string>
@@ -2621,6 +2622,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="storage_cache_temp_desc">Download temporary files, extraction temp directories, etc.</string>
     <string name="storage_cache_tts_desc">Voice files downloaded by online TTS engines</string>
     <string name="storage_cache_acache_desc">Runtime cache such as source variables and user info</string>
+    <string name="storage_cache_internal_desc">Cronet download temp files, export temp files, WebView network cache, etc.</string>
     <string name="storage_cache_db_desc">Temporary data records stored by CacheDao</string>
     <string name="storage_cache_log_desc">App runtime logs, error logs, etc.</string>
     <string name="storage_cache_webview_desc">Persisted WebView page data, local caches, cookies, etc.</string>

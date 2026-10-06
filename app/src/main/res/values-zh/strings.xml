@@ -2597,6 +2597,7 @@
     <string name="storage_cache_temp_name">临时文件缓存</string>
     <string name="storage_cache_tts_name">TTS 语音缓存</string>
     <string name="storage_cache_acache_name">ACache 磁盘缓存</string>
+    <string name="storage_cache_internal_name">内部缓存</string>
     <string name="storage_cache_db_name">数据库缓存</string>
     <string name="storage_cache_log_name">日志文件</string>
     <string name="storage_cache_webview_name">WebView 缓存</string>
@@ -2605,6 +2606,7 @@
     <string name="storage_cache_temp_desc">下载临时文件、解压临时目录等</string>
     <string name="storage_cache_tts_desc">在线朗读引擎下载的语音文件</string>
     <string name="storage_cache_acache_desc">书源变量、用户信息等运行时缓存</string>
+    <string name="storage_cache_internal_desc">Cronet 下载临时文件、导出临时文件、WebView 网络缓存等</string>
     <string name="storage_cache_db_desc">CacheDao 存储的临时数据记录</string>
     <string name="storage_cache_log_desc">应用运行日志、错误日志等</string>
     <string name="storage_cache_webview_desc">WebView 页面数据、本地缓存、Cookie 等持久化内容</string>
