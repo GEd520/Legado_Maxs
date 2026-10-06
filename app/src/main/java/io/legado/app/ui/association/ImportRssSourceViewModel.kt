@@ -20,15 +20,12 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.RuleUpdate
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.inputStream
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
 import io.legado.app.utils.isJsonObject
 import io.legado.app.utils.isUri
-import io.legado.app.utils.jsonPath
-import io.legado.app.utils.readText
 import io.legado.app.utils.splitNotBlank
-import splitties.init.appCtx
 
 class ImportRssSourceViewModel(app: Application) : BaseViewModel(app) {
     var isAddGroup = false
@@ -151,7 +148,15 @@ class ImportRssSourceViewModel(app: Application) : BaseViewModel(app) {
             }
 
             mText.isUri() -> {
-                importSourceAwait(mText.toUri().readText(appCtx))
+                mText.toUri().inputStream(context).getOrThrow().use { inputS ->
+                    GSON.fromJsonArray<RssSource>(inputS).getOrThrow().let {
+                        val source = it.firstOrNull() ?: return@let
+                        if (source.sourceUrl.isEmpty()) {
+                            throw NoStackTraceException("不是订阅源")
+                        }
+                        allSources.addAll(it)
+                    }
+                }
             }
 
             else -> throw NoStackTraceException(context.getString(R.string.wrong_format))
@@ -172,15 +177,12 @@ class ImportRssSourceViewModel(app: Application) : BaseViewModel(app) {
                 url(url)
             }
         }.decompressed().byteStream().use { body ->
-            val items: List<Map<String, Any>> = jsonPath.parse(body).read("$")
-            for (item in items) {
-                if (!item.containsKey("sourceUrl")) {
+            GSON.fromJsonArray<RssSource>(body).getOrThrow().let { list ->
+                val source = list.firstOrNull() ?: return@let
+                if (source.sourceUrl.isEmpty()) {
                     throw NoStackTraceException("不是订阅源")
                 }
-                val jsonItem = jsonPath.parse(item)
-                GSON.fromJsonObject<RssSource>(jsonItem.jsonString()).getOrThrow().let { source ->
-                    allSources.add(source)
-                }
+                allSources.addAll(list)
             }
         }
     }
