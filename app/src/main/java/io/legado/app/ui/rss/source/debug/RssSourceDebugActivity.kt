@@ -187,6 +187,8 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
             binding.rotateLoading.visible()
             menuStop.isVisible = true
         }, {
+            binding.rotateLoading.gone()
+            menuStop.isVisible = false
             toastOnUi("未获取到书源")
         })
     }
