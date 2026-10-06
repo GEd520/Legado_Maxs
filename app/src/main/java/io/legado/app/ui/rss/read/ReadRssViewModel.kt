@@ -255,9 +255,13 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
         }
     }
 
-    fun clHtml(content: String, style: String?): String {
+    fun clHtml(content: String, style: String?, injectBridge: Boolean = false): String {
         val htmlBuilder = StringBuilder(content.length + JS_URL.length + 200)
-        if (hasPreloadJs) {
+        if (hasPreloadJs || injectBridge) {
+            // 注入基础 JS 桥（JS_INJECTION 提供 java/ajaxAwait 等异步函数）。
+            // 默认仅在源配置了 preloadJs 时注入；startHtml 启动页（如工具类网页）即便没有
+            // preloadJs 也依赖这套桥才能工作，故由调用方通过 injectBridge 强制注入，
+            // 对齐 WebViewActivity 对 localHtml 的无条件注入行为。
             val headIndex = content.indexOf("<head>")
             if (headIndex >= 0) {
                 htmlBuilder.append(content, 0, headIndex + 6)
@@ -312,7 +316,8 @@ class ReadRssViewModel(application: Application) : BaseViewModel(application) {
             } else {
                 startHtml
             }
-            processedHtml = clHtml(processedHtml, source.startStyle ?: source.style)
+            // startHtml 启动页即便没有 preloadJs 也要注入基础 JS 桥（对齐浏览器 localHtml）
+            processedHtml = clHtml(processedHtml, source.startStyle ?: source.style, injectBridge = true)
             htmlLiveData.postValue(processedHtml)
         }.onError {
             // 加载启动页失败时，记录错误日志并显示 Toast

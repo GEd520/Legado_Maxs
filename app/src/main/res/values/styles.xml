@@ -18,6 +18,20 @@
         <item name="android:windowBackground">@android:color/transparent</item>
     </style>
 
+    <!--
+      主界面专用主题。
+
+      主界面会被「销毁 + 全新 startActivity」重启（见 MainActivity.recreate），
+      重启期间系统按**系统日夜模式**给启动窗口（预览窗口 / Android 12+ 的 splash）
+      铺底。应用自身的日夜模式由用户单独设置，可能与系统不一致（例如系统亮色 +
+      应用暗色），这时启动窗口会闪一屏与当前主题完全无关的底色。
+      关掉预览窗口后，重启期间保留的仍是旧主界面/欢迎页的内容，
+      直到新实例画出第一帧，不再出现异色闪屏。
+    -->
+    <style name="AppTheme.Main" parent="AppTheme.Light">
+        <item name="android:windowDisablePreview">true</item>
+    </style>
+
     <!-- Welcome主题 -->
     <style name="AppTheme.Welcome" parent="Base.AppTheme">
         <item name="android:windowNoTitle">true</item>

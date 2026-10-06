@@ -35,6 +35,22 @@ class HighlightRuleConfigViewModel(application: Application) : BaseViewModel(app
         HighlightRuleRepository.saveCurrentGroup(context, currentGroup)
     }
 
+    /**
+     * 拖动排序后把列表顺序写回规则表。
+     *
+     * 重排规则见 [HighlightRuleRepository.reorderInGroup]；顺序没变化时返回 false，
+     * 避免无意义地写库与刷新阅读页。
+     */
+    fun reorderRules(ordered: List<HighlightRule>): Boolean {
+        val newRules = HighlightRuleRepository.reorderInGroup(rules, currentGroup, ordered)
+            ?: return false
+        if (newRules.map { it.id } == rules.map { it.id }) return false
+        rules.clear()
+        rules.addAll(newRules)
+        syncRules()
+        return true
+    }
+
     fun resetRules() {
         rules.clear()
         rules.addAll(HighlightRuleRepository.resetRules(context))

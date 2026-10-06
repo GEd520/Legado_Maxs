@@ -471,6 +471,19 @@ interface BookDao {
     )
     val allTagInfos: List<BookTagInfo>
 
+    /**
+     * [allTagInfos] 的可观察版本：books 表任意变化都会重新查询。
+     *
+     * 投影列与 [BookTagInfo] 完全一致，所以调用方可以用 `distinctUntilChanged()` 把
+     * 与标签判定无关的写入（封面、简介、阅读时间等）过滤掉，只对真正影响标签的数据重算。
+     * 书架标签栏靠它跟随数据库（见 `observeBookshelfTagSource`）。
+     */
+    @get:Query(
+        "SELECT bookUrl, name, author, customTag, type, `group`, origin, " +
+            "totalChapterNum, durChapterIndex, durChapterPos, lastCheckCount, canUpdate FROM books",
+    )
+    val flowAllTagInfos: Flow<List<BookTagInfo>>
+
     @get:Query("SELECT COUNT(*) FROM books")
     val allBookCount: Int
 

@@ -143,6 +143,13 @@ class ReadRssActivity :
     // 网页 <input type="file"> 上传统一处理，与内置浏览器 WebViewActivity 共用同一份实现
     // 单 URL 订阅源（singleUrl）是直接把网页加载进本页 WebView，同样需要支持上传
     private val fileChooserHelper = WebFileChooserHelper(this)
+
+    /**
+     * 当前是否加载的是本地 HTML（startHtml 启动页 / 文章详情），用于决定是否注入基础 JS 桥。
+     * 本地 HTML 即便源没有 preloadJs 也要注入（对齐 WebViewActivity 的 localHtml 注入），
+     * 真实网页（单 URL）仅在源配置了 preloadJs 时才注入，避免把 java 桥暴露给第三方站点。
+     */
+    private var localHtmlLoaded = false
     private val rssJsExtensions by lazy { RssJsExtensions(this, viewModel.rssSource) }
 
     private val refreshNameList: MutableList<String> by lazy { mutableListOf() }
@@ -546,6 +553,7 @@ class ReadRssActivity :
         viewModel.contentLiveData.observe(this) { content ->
             viewModel.rssArticle?.let {
                 upWebviewSettings()
+                localHtmlLoaded = viewModel.hasPreloadJs
                 initJavascriptInterface()
                 val rssSource = viewModel.rssSource
                 val html = viewModel.clHtml(content, rssSource?.style)
@@ -567,6 +575,7 @@ class ReadRssActivity :
          */
         viewModel.urlLiveData.observe(this) { urlState ->
             upWebviewSettings(urlState.getUserAgent())
+            localHtmlLoaded = false
             initJavascriptInterface()
             CookieManager.applyToWebView(urlState.url)
             currentWebView.loadUrl(urlState.url, urlState.headerMap)
@@ -579,8 +588,15 @@ class ReadRssActivity :
         viewModel.htmlLiveData.observe(this) { html ->
             viewModel.rssSource?.let {
                 upWebviewSettings()
+                localHtmlLoaded = true
                 initJavascriptInterface()
-                val baseUrl = if (it.loadWithBaseUrl) it.sourceUrl else null
+                // baseUrl 必须是合法 http(s) 地址：sourceUrl 常被用作自定义 key（并非 URL），
+                // 非法 baseUrl 会让 Chromium 按 data: 方式加载，页面 origin 变为 opaque，
+                // localStorage 被禁（SecurityError）导致页面脚本中断——表现为上传文件等交互无反应。
+                // 此时回退到本地占位 origin，保证页面 JS 环境完整。
+                val baseUrl = it.sourceUrl.takeIf { url ->
+                    it.loadWithBaseUrl && (url.startsWith("http://") || url.startsWith("https://"))
+                } ?: "https://localhost/"
                 currentWebView.loadDataWithBaseURL(
                     baseUrl,
                     html,
@@ -607,7 +623,10 @@ class ReadRssActivity :
         viewModel.rssSource?.let {
             if (interfaceInjected != it.sourceUrl) {
                 interfaceInjected = it.sourceUrl
-                if (!viewModel.hasPreloadJs) return
+                // 本地 HTML（startHtml 启动页 / 文章详情）即便源没有 preloadJs 也要注入基础 JS 桥，
+                // 否则页面依赖的 java/ajaxAwait 等缺失（如工具类网页上传后无反应）；
+                // 真实网页（单 URL）仅在源配置了 preloadJs 时才注入，避免把桥暴露给第三方站点。
+                if (!viewModel.hasPreloadJs && !localHtmlLoaded) return
                 val webJsExtensions = WebJsExtensions(it, this, currentWebView)
                 currentWebView.addJavascriptInterface(webJsExtensions, nameJava)
                 currentWebView.addJavascriptInterface(it, nameSource)

@@ -1,7 +1,7 @@
 # Compose UI 规范 — 主题与样式
 
 > 原 `UI-ARCHITECTURE.md`（2026-08-19）拆分产物：§7，章节编号沿用原编号，跨文件引用按「文件名 §编号」格式书写。生效范围、执行方式、老代码策略等通用约定见 [README.md](./README.md)。
-> **最后更新**：2026-09-10
+> **最后更新**：2026-09-27
 
 ---
 
@@ -15,8 +15,8 @@
 
 ### 7.2 魔法数字
 
-- 所有 dimens 必须集中定义在 `ui/theme/Dimensions.kt`（**目标态文件，当前尚未建立**，首次落地时创建并同步 `structure.md` §1 目录树；落地前新代码先把 dimens 就近定义在 `ui/theme/` 下，禁止散落各 Feature）。
-- 所有 shapes 必须集中定义在 `ui/theme/Shapes.kt`（同上）。
+- 所有 dimens 必须集中定义在 `ui/theme/Dimensions.kt` 的 `AppDimens`（**已建立**，目录树见 `structure.md` §1；原就地定义的 `PageDimens` 已并入并删除，禁止再另起平行对象）。
+- 所有 shapes 必须集中定义在 `ui/theme/ComposeShapes.kt`（**已建立**）。圆角值不得在 Compose 侧另设常量，一律经 `composePanelShape()` / `composeActionShape()` 从 `lib/theme/UiCorner` 取，与 XML 侧保持同源。
 - **禁止**在 Composable 体内裸写 `16.dp`、`12.dp`、`0.8f`。
 - 动画参数（时长档位、easing、spring、无限动画）**必须**遵循 §7.6，禁止调用点随手写 `tween(200, ...)`、`tween(600, ...)` 这类无档位时长。
 - **禁止**自定义 `CubicBezier` / `keyframes` 曲线散落多处，新增自定义曲线必须集中定义在 `ui/theme/AnimationSpecs.kt`（**目标态文件，首次落地时创建**）并注释用途。
@@ -42,19 +42,21 @@ val AppShapes = Shapes(
 
 > **技术选型：本项目图片框架统一为 Glide**（存量技术栈，全项目已依赖）。不引入 Coil / Fresco 等第二套框架；如未来要换，属于架构级决策，必须全局迁移，禁止单个 PR 局部混用。
 
-- **必须**走 `ui/widget/components/` 下的统一封装组件（暂名 `AppImage.kt`，**目标态文件，当前尚未建立**，落地时创建并同步 `structure.md` §1 目录树）加载图片，内部用 Glide 的 bitmap 链路。封装组件落地前，新 Compose 代码按下述链路模式实现，禁止用 View 版 API 过渡：
+- **必须**走 `ui/widget/components/` 下的统一封装组件加载图片，内部用 Glide 的 **Drawable 链路**。书籍/分组封面已落地为 `AppBookCover`（**已建立**，取图优先级与 View 版 `CoverImageView` 一致：封面图集 → 真实图片 → HTML 模板封面 → 默认封面，失败叠加书名作者）；一般图片（订阅源 / 书源图标等）已落地为 `AppImage`（**已建立**，按控件实际尺寸 `override` 降采样，加载中与失败各有兜底图）。两者共用同一套 Drawable 链路与 `AppDrawablePainter`；新 Compose 代码一律走这两个组件，按下述链路模式实现，禁止用 View 版 API 过渡：
 
 ```kotlin
 Glide.with(context)
-    .asBitmap()
-    .load(source)
+    .load(source)                                        // RequestBuilder<Drawable>，不要 asBitmap()
     .apply(RequestOptions().override(widthPx, heightPx)) // 显式尺寸，禁止全尺寸解码
-    .into(pendingTarget)
+    .into(pendingTarget)                                 // CustomTarget<Drawable>
 ```
 
-- **必须**用自持的 `PendingTarget<Bitmap>` 承接结果并交给 `Image(bitmap)` 渲染，`DisposableEffect` 的 `onDispose` 里 `clear()` target 取消 in-flight 请求——页面滑走后 Glide 继续解码就是白烧内存和 CPU。
+> **为什么是 Drawable 而不是 Bitmap**：`asBitmap()` 对 GIF / 动画 WebP 只解出第一帧，动图在封面上不动——首页 `GlideImage` 与旧 View 版 `CoverImageView` 走的都是 Drawable，所以只有单独换了链路的页面出问题。静态图（含透明 PNG）两种链路行为一致。
+
+- **必须**用自持的 `CustomTarget<Drawable>` 承接结果，再交给自实现的 Drawable Painter 渲染（`Image(painter = ...)`；参考 `AppBookCover.kt` 里的 `AppDrawablePainter`——依赖里的 glide-compose 只有 `GlideImage`，没有可直接复用的 Drawable→Painter）。取消时 `clear()` target 取消 in-flight 请求——页面滑走后 Glide 继续解码就是白烧内存和 CPU。
+- **必须**在拿到 `Animatable`（GifDrawable / AnimatedImageDrawable）后显式 `setVisible(true, true)` + `start()`：View 版由 ImageView 代劳，Compose 侧没有这一层，漏了动图依旧不动。
 - **禁止**在 Composable / ViewModel 里手写 `withContext(Dispatchers.IO) { BitmapFactory.decode... }` 自己解码 bitmap 塞 `Image()`——缓存、采样率、请求去重、取消逻辑全要自己维护，纯造轮子。
-- **禁止**在 Compose 层使用 View 版 API（`Glide.with(...).into(imageView)`）；老 XML 代码里的存量调用不动，新代码一律走上面的 bitmap 链路。
+- **禁止**在 Compose 层使用 View 版 API（`Glide.with(...).into(imageView)`）；老 XML 代码里的存量调用不动，新代码一律走上面的链路。
 
 ### 7.4 字体与排版
 
@@ -169,8 +171,12 @@ TopAppBar(
 #### 7.8.1 重建路径选择（强制）
 
 - **必须**：主题切换需要重建页面的，统一接管 `recreate()` 为「销毁 + 全新 `startActivity`」——新实例在前，再 `finish()` 旧实例，使新窗口以 **全新启动路径** 建立，规避系统原地重建带来的 Compose 重组冻结。**禁止**直接调用 `super.recreate()` / `Activity.recreate()`。
-- **必须**：接管 `recreate()` 时应保留防重入守卫（`recreatePending` + `isFinishing`/`isDestroyed`），并在 `onCreate` 记录实例创建时刻；重建广播（`ThemeConfig.notifyRecreate` 1.5s 防抖后迟到的事件总线 `RECEIVE`）必须被「实例创建时刻 + 2s 宽限」拦截，避免二次重建打断正在建立的窗口。
-  参考实现：`ui/config/theme/manage/ThemeManageActivity`（`recreate()` 接管 + `RECREATE_IGNORE_MS = 2000L` 宽限）。
+- **必须**：接管 `recreate()` 时应保留防重入守卫（`recreatePending` + `isFinishing`/`isDestroyed`），并记录本次重启的时刻（接管点记在 `recreate()` 里，或在 `onCreate` 记录实例创建时刻）；重建广播（`ThemeConfig.notifyRecreate` 合并窗口后迟到的事件总线 `RECREATE`）必须被「重启时刻 + 2s 宽限」拦截，避免二次重建打断正在建立的窗口。
+- **必须**：宽限窗只对**主题状态未变**的请求生效——宽限窗内状态已变的请求是用户新的一次切换，必须放行。只按时间丢弃会把「配置已改、新窗口还是旧主题」的请求一并吞掉：回主界面时底栏与背景被 `onResume` 刷成新主题，内容区（Compose 页）却停在旧主题（表现为「底栏切换了、界面没切换」）。基线取「触发本次重启时生效的主题状态」，**模式与色板一起比对**：主题模式（日间/夜间/跟随系统/墨水屏）+ 日夜 + 主题名 + 主色/强调色/背景/底栏色 + 背景图（含模糊）+ 透明底栏。漏掉模式会把「日间 ↔ 墨水屏」当成没变化（两者的色板都读日间偏好，取值完全相同）。
+  参考实现：`ui/main/MainActivity`（`recreate()` 接管 + `RECREATE_IGNORE_MS = 2000L` + `isLateRecreateEcho()` 状态比对）。
+  例外（待补状态比对）：`ui/config/theme/manage/ThemeManageActivity` 有同样的接管与纯时间宽限，二次应用落在窗内时日夜切换仍由 AppCompat relaunch 生效，纯色变化会被延后重绘。
+- **必须**：接管 `recreate()` 的主界面**必须**在 manifest 上挂 `AppTheme.Main`（`windowDisablePreview = true`）。重启期间系统按**系统日夜模式**给启动窗口（预览窗口 / Android 12+ splash）铺底，而应用自身的日夜模式是用户单独设置、可与系统不一致（如系统亮色 + 应用暗色），启动窗口会闪一屏与当前主题无关的底色；关掉预览窗口后保留旧界面内容直到新实例画出第一帧。**禁止**当成"冗余属性"删掉（冷启动入口是 `WelcomeActivity`，不受此主题影响）。
+- **必须**：除 `recreate()` 之外，系统还会以「原地 relaunch」路径重建页面——未被 manifest `configChanges` 覆盖的配置变化（字体大小 `fontScale`、显示大小 `density` 等）与低内存回收后的恢复，都会**带着 `savedInstanceState`** 送一个新实例进来。这类恢复态（FragmentManager 一并恢复的 Tab Fragment + ViewPager 恢复的 adapter state）会与页面新建的 adapter 打架：ViewPager 容器里同时存在恢复的旧页面 view 与新页面 view，而它按 child 顺序布局，靠后的 Tab 被挤出可视区——表现为切到那些 Tab 时**整页空白**（只剩背景与底栏，连 View 顶栏都看不到）。因此接管 `recreate()` 的页面**必须**在 `onCreate` 里识别 `savedInstanceState != null` 的实例，把它也纳进「清任务 + 全新启动」路径（先 `super.onCreate(null)` 丢掉恢复态，再换新实例），并带一个一次性 intent 标记兜底防重入。参考实现：`ui/main/MainActivity`（`onCreate` 拦截 + `EXTRA_FRESH_RESTART` + `restartFresh()`）。
 
 #### 7.8.2 新建代码的优先方向（推荐）
 

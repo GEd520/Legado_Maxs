@@ -24,8 +24,10 @@ import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.removeType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.AudioPlay
 import io.legado.app.model.BookCover
+import io.legado.app.model.CacheBook
 import io.legado.app.service.AudioPlayService
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.book.changesource.ChangeBookSourceDialog
@@ -40,10 +42,12 @@ import io.legado.app.utils.invisible
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.sendToClip
+import io.legado.app.utils.setTintMutate
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
 import io.legado.app.utils.toDurationTime
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import io.legado.app.utils.visible
 import kotlinx.coroutines.Dispatchers.IO
@@ -124,6 +128,8 @@ class AudioPlayActivity :
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
         menu.findItem(R.id.menu_login)?.isVisible = !AudioPlay.bookSource?.loginUrl.isNullOrBlank()
         menu.findItem(R.id.menu_wake_lock)?.isChecked = AppConfig.audioPlayUseWakeLock
+        menu.findItem(R.id.menu_audio_play_cache)?.isChecked = AppConfig.audioPlayCacheEnabled
+        menu.findItem(R.id.menu_audio_cache)?.icon?.setTintMutate(primaryTextColor)
         return super.onMenuOpened(featureId, menu)
     }
 
@@ -154,6 +160,10 @@ class AudioPlayActivity :
             }
 
             R.id.menu_wake_lock -> AppConfig.audioPlayUseWakeLock = !AppConfig.audioPlayUseWakeLock
+            R.id.menu_audio_play_cache ->
+                AppConfig.audioPlayCacheEnabled = !AppConfig.audioPlayCacheEnabled
+
+            R.id.menu_audio_cache -> showAudioCacheRangeDialog()
             R.id.menu_copy_audio_url -> {
                 AudioPlay.book?.let {
                     val url = AudioPlayService.url
@@ -184,6 +194,26 @@ class AudioPlayActivity :
             R.id.menu_log -> showDialogFragment<AppLogDialog>()
         }
         return super.onCompatOptionsItemSelected(item)
+    }
+
+    /**
+     * 章节缓存弹窗：弹窗只负责选范围，确认后立刻消失，
+     * 所以实际动作放在 Activity 的作用域里做（弹窗自己的协程会被一起取消）。
+     */
+    private fun showAudioCacheRangeDialog() {
+        val book = AudioPlay.book ?: return
+        showDialogFragment(AudioCacheRangeDialog { start, end ->
+            //CacheBook 按 bookUrl 取书，书还没入库（例如没放入书架）时缓存不成立，先查一次目录避免静默失败
+            lifecycleScope.launch(IO) {
+                val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl, start - 1, end - 1)
+                if (chapters.isEmpty()) {
+                    toastOnUi(R.string.chapter_list_empty)
+                } else {
+                    CacheBook.start(this@AudioPlayActivity, book, start - 1, end - 1)
+                    toastOnUi(R.string.download_start)
+                }
+            }
+        })
     }
 
     private fun initView() {

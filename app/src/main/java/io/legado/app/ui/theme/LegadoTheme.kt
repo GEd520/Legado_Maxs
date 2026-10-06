@@ -1,13 +1,16 @@
 package io.legado.app.ui.theme
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import io.legado.app.help.config.AppConfig
+import io.legado.app.lib.theme.ThemeStateStore
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.utils.ColorUtils
 
@@ -18,8 +21,10 @@ import io.legado.app.utils.ColorUtils
  * 并通过 [MaterialTheme] 提供给子组件使用。
  *
  * ## 主题响应机制
- * 主题切换后 Activity 会 `recreate()`，整个 Compose 树重建，
- * 此时会重新从 [ThemeStore] 读取最新的颜色值构建 [ColorScheme]。
+ * 颜色取自 [ThemeStore] 的普通值，本身没有可观察源，因此这里读取 [ThemeStateStore.version]：
+ * [io.legado.app.help.config.ThemeConfig.applyTheme] 改完色板会递增该版本号，
+ * 读到它的组合立刻重组，不再依赖 Activity `recreate()` 把整棵树重建
+ * （重建窗口内、重建请求被回声判定吞掉时都不会再停在旧配色）。
  *
  * ## 使用方式
  * ```kotlin
@@ -45,6 +50,41 @@ fun LegadoTheme(
     val textPrimaryColor = ThemeStore.textColorPrimary(context)
     val textSecondaryColor = ThemeStore.textColorSecondary(context)
 
+    // 色板版本号既建立重组依赖（见类注释），也作为色板对象的缓存键：
+    // 输入没变时不必每次重组都重建整个 ColorScheme
+    val colorScheme = remember(
+        ThemeStateStore.version,
+        isNightTheme,
+        primaryColorValue,
+        accentColor,
+        bgColor,
+        textPrimaryColor,
+        textSecondaryColor,
+    ) {
+        buildLegadoColorScheme(
+            isNightTheme = isNightTheme,
+            primaryColorValue = primaryColorValue,
+            accentColor = accentColor,
+            bgColor = bgColor,
+            textPrimaryColor = textPrimaryColor,
+            textSecondaryColor = textSecondaryColor,
+        )
+    }
+
+    MaterialTheme(colorScheme = colorScheme) {
+        content()
+    }
+}
+
+/** 由主题配置推导 Material3 色板。非 Composable：纯计算，便于被 `remember` 缓存 */
+private fun buildLegadoColorScheme(
+    isNightTheme: Boolean,
+    primaryColorValue: Int,
+    accentColor: Int,
+    bgColor: Int,
+    textPrimaryColor: Int,
+    textSecondaryColor: Int,
+): ColorScheme {
     val isLight = !isNightTheme && ColorUtils.isColorLight(bgColor)
     val background = Color(bgColor)
     val primary = Color(accentColor)
@@ -66,7 +106,7 @@ fun LegadoTheme(
     val surfaceContainerHigh = lerp(background, elevationTarget, if (isLight) 0.075f else 0.18f)
     val surfaceContainerHighest = lerp(background, elevationTarget, if (isLight) 0.10f else 0.24f)
 
-    val colorScheme = if (isLight) {
+    return if (isLight) {
         lightColorScheme(
             primary = primary,
             secondary = secondary,
@@ -116,9 +156,5 @@ fun LegadoTheme(
             surfaceContainerHigh = surfaceContainerHigh,
             surfaceContainerHighest = surfaceContainerHighest
         )
-    }
-
-    MaterialTheme(colorScheme = colorScheme) {
-        content()
     }
 }

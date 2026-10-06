@@ -13,17 +13,6 @@
     </issue>
 
     <issue
-        id="GestureBackNavigation"
-        message="`onBackPressed` is no longer called for back gestures; migrate to AndroidX&apos;s backward compatible `OnBackPressedDispatcher`"
-        errorLine1="    override fun onBackPressed() {"
-        errorLine2="                 ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/config/BubbleManageActivity.kt"
-            line="177"
-            column="18"/>
-    </issue>
-
-    <issue
         id="CheckResult"
         message="The result of `override` is not used"
         errorLine1="                builder.override(overrideWidth, overrideHeight)"
@@ -387,50 +376,6 @@
     </issue>
 
     <issue
-        id="InlinedApi"
-        message="Field requires API level 24 (current min is 23): `android.text.Html#FROM_HTML_MODE_LEGACY`"
-        errorLine1="                            Html.fromHtml(it, Html.FROM_HTML_MODE_LEGACY).toString().trim()"
-        errorLine2="                                              ~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/homepage/HomepageViewModel.kt"
-            line="618"
-            column="47"/>
-    </issue>
-
-    <issue
-        id="InlinedApi"
-        message="Field requires API level 24 (current min is 23): `android.text.Html#FROM_HTML_MODE_LEGACY`"
-        errorLine1="                            intro = article.description?.let { Html.fromHtml(it, Html.FROM_HTML_MODE_LEGACY).toString().trim() },"
-        errorLine2="                                                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/homepage/HomepageViewModel.kt"
-            line="802"
-            column="82"/>
-    </issue>
-
-    <issue
-        id="InlinedApi"
-        message="Field requires API level 28 (current min is 23): `android.graphics.ImageDecoder#ALLOCATOR_SOFTWARE`"
-        errorLine1="                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE"
-        errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="179"
-            column="37"/>
-    </issue>
-
-    <issue
-        id="InlinedApi"
-        message="Field requires API level 28 (current min is 23): `android.graphics.ImageDecoder#ALLOCATOR_SOFTWARE`"
-        errorLine1="                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE"
-        errorLine2="                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="179"
-            column="37"/>
-    </issue>
-
-    <issue
         id="InternalInsetResource"
         message="Using internal inset dimension resource `status_bar_height` is not supported"
         errorLine1="                            resources.getIdentifier(&quot;status_bar_height&quot;, &quot;dimen&quot;, &quot;android&quot;)"
@@ -450,215 +395,6 @@
             file="src/main/java/io/legado/app/ui/widget/TitleBar.kt"
             line="195"
             column="29"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.app.Dialog#requireViewById`"
-        errorLine1="                val start = alertDialog.requireViewById&lt;android.widget.EditText>(R.id.edit_start)"
-        errorLine2="                                        ~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/read/BaseReadBookActivity.kt"
-            line="295"
-            column="41"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.app.Dialog#requireViewById`"
-        errorLine1="                val end = alertDialog.requireViewById&lt;android.widget.EditText>(R.id.edit_end)"
-        errorLine2="                                      ~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/read/BaseReadBookActivity.kt"
-            line="297"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Field requires API level 29 (current min is 23): `android.provider.MediaStore.Downloads#EXTERNAL_CONTENT_URI`"
-        errorLine1="                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,"
-        errorLine2="                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/download/DownloadManageActivity.kt"
-            line="84"
-            column="21"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 24 (current min is 23): `android.text.Html#fromHtml`"
-        errorLine1="                            Html.fromHtml(it, Html.FROM_HTML_MODE_LEGACY).toString().trim()"
-        errorLine2="                                 ~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/homepage/HomepageViewModel.kt"
-            line="618"
-            column="34"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 24 (current min is 23): `android.text.Html#fromHtml`"
-        errorLine1="                            intro = article.description?.let { Html.fromHtml(it, Html.FROM_HTML_MODE_LEGACY).toString().trim() },"
-        errorLine2="                                                                    ~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/homepage/HomepageViewModel.kt"
-            line="802"
-            column="69"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder#createSource`"
-        errorLine1="            val source = ImageDecoder.createSource(file)"
-        errorLine2="                                      ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="177"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder#decodeBitmap`"
-        errorLine1="            ImageDecoder.decodeBitmap(source) { decoder, info, _ ->"
-        errorLine2="                         ~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="178"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder#setAllocator`"
-        errorLine1="                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE"
-        errorLine2="                        ~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="179"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder#setAllocator`"
-        errorLine1="                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE"
-        errorLine2="                                  ~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="179"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder#setMutableRequired`"
-        errorLine1="                decoder.isMutableRequired = false"
-        errorLine2="                        ~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="180"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder#setMutableRequired`"
-        errorLine1="                decoder.isMutableRequired = false"
-        errorLine2="                                          ~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="180"
-            column="43"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder.ImageInfo#getSize`"
-        errorLine1="                    info.size.width,"
-        errorLine2="                         ~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="182"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder.ImageInfo#getSize`"
-        errorLine1="                    info.size.height,"
-        errorLine2="                         ~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="183"
-            column="26"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder.ImageInfo#getSize`"
-        errorLine1="                val width = (info.size.width / sampleSize).coerceAtLeast(1)"
-        errorLine2="                                  ~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="187"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder.ImageInfo#getSize`"
-        errorLine1="                val height = (info.size.height / sampleSize).coerceAtLeast(1)"
-        errorLine2="                                   ~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="188"
-            column="36"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.graphics.ImageDecoder#setTargetSize`"
-        errorLine1="                decoder.setTargetSize(width, height)"
-        errorLine2="                        ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/image/ImageCropActivity.kt"
-            line="189"
-            column="25"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.app.Dialog#requireViewById`"
-        errorLine1="                val start = alertDialog.requireViewById&lt;android.widget.EditText>(R.id.edit_start)"
-        errorLine2="                                        ~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="749"
-            column="41"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 28 (current min is 23): `android.app.Dialog#requireViewById`"
-        errorLine1="                val end = alertDialog.requireViewById&lt;android.widget.EditText>(R.id.edit_end)"
-        errorLine2="                                      ~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="751"
-            column="39"/>
-    </issue>
-
-    <issue
-        id="NewApi"
-        message="Call requires API level 24 (current min is 23): `android.graphics.drawable.GradientDrawable#getColor`"
-        errorLine1="        is GradientDrawable -> color?.defaultColor?.takeIf { it != Color.TRANSPARENT }"
-        errorLine2="                               ~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/widget/TitleBarConfig.kt"
-            line="147"
-            column="32"/>
     </issue>
 
     <issue
@@ -1055,17 +791,6 @@
             file="../gradle/libs.versions.toml"
             line="9"
             column="8"/>
-    </issue>
-
-    <issue
-        id="GradleDependency"
-        message="A newer version of androidx.collection:collection than 1.5.0 is available: 1.6.0"
-        errorLine1="collection = &quot;1.5.0&quot;"
-        errorLine2="             ~~~~~~~">
-        <location
-            file="../gradle/libs.versions.toml"
-            line="47"
-            column="14"/>
     </issue>
 
     <issue
@@ -2653,230 +2378,6 @@
     </issue>
 
     <issue
-        id="StringFormatInvalid"
-        message="Format string &apos;`backward_pre_download_s`&apos; is not a valid format string so it should not be passed to `String.format`"
-        errorLine1="                getString(R.string.backward_pre_download_s, value)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/config/OtherConfigFragment.kt"
-            line="280"
-            column="17"/>
-        <location
-            file="src/main/res/values-zh-rHK/strings.xml"
-            line="1324"
-            column="5"
-            message="This definition does not require arguments"/>
-    </issue>
-
-    <issue
-        id="StringFormatInvalid"
-        message="Format string &apos;`backward_pre_download_s`&apos; is not a valid format string so it should not be passed to `String.format`"
-        errorLine1="                getString(R.string.backward_pre_download_s, value)"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/config/OtherConfigFragment.kt"
-            line="280"
-            column="17"/>
-        <location
-            file="src/main/res/values-zh-rHK/strings.xml"
-            line="1324"
-            column="5"
-            message="This definition does not require arguments"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="                getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/config/MangaQuickSettingDialog.kt"
-            line="168"
-            column="52"/>
-        <location
-            file="src/main/res/values-zh-rHK/strings.xml"
-            line="891"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="                getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/config/MangaQuickSettingDialog.kt"
-            line="168"
-            column="52"/>
-        <location
-            file="src/main/res/values-zh-rHK/strings.xml"
-            line="891"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="                getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/config/MangaQuickSettingDialog.kt"
-            line="168"
-            column="52"/>
-        <location
-            file="src/main/res/values-zh/strings.xml"
-            line="1065"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="                getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/config/MangaQuickSettingDialog.kt"
-            line="168"
-            column="52"/>
-        <location
-            file="src/main/res/values-zh/strings.xml"
-            line="1065"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="                getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/config/MangaQuickSettingDialog.kt"
-            line="168"
-            column="52"/>
-        <location
-            file="src/main/res/values/strings.xml"
-            line="1066"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="                getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/config/MangaQuickSettingDialog.kt"
-            line="168"
-            column="52"/>
-        <location
-            file="src/main/res/values/strings.xml"
-            line="1066"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="            getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="1001"
-            column="48"/>
-        <location
-            file="src/main/res/values-zh-rHK/strings.xml"
-            line="891"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="            getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="1001"
-            column="48"/>
-        <location
-            file="src/main/res/values-zh-rHK/strings.xml"
-            line="891"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="            getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="1001"
-            column="48"/>
-        <location
-            file="src/main/res/values-zh/strings.xml"
-            line="1065"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="            getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="1001"
-            column="48"/>
-        <location
-            file="src/main/res/values-zh/strings.xml"
-            line="1065"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="            getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="1001"
-            column="48"/>
-        <location
-            file="src/main/res/values/strings.xml"
-            line="1066"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
-        id="StringFormatMatches"
-        message="Suspicious argument type for formatting argument #1 in `pre_download_m`: conversion is `s`, received `int` (argument #2 in method call) (Did you mean formatting character `d`, &apos;o&apos; or `x`?)"
-        errorLine1="            getString(R.string.pre_download_m, AppConfig.mangaPreDownloadNum)"
-        errorLine2="                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/book/manga/ReadMangaActivity.kt"
-            line="1001"
-            column="48"/>
-        <location
-            file="src/main/res/values/strings.xml"
-            line="1066"
-            column="5"
-            message="Conflicting argument declaration here"/>
-    </issue>
-
-    <issue
         id="LogNotTimber"
         message="Using &apos;Log&apos; instead of &apos;Timber&apos;"
         errorLine1="                        Log.d(&quot;AppDatabaseCallback&quot;, &quot;准备 设置 locale for API ${Build.VERSION.SDK_INT}...&quot;)"
@@ -3955,38 +3456,6 @@
     </issue>
 
     <issue
-        id="StringFormatCount"
-        message="Inconsistent number of arguments in formatting string `backward_pre_download_s`; found both 0 here and 1 in values/strings.xml"
-        errorLine1="    &lt;string name=&quot;backward_pre_download_s&quot;>預先下載前面的章節&lt;/string>"
-        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-zh-rHK/strings.xml"
-            line="1324"
-            column="5"/>
-        <location
-            file="src/main/res/values/strings.xml"
-            line="1069"
-            column="5"
-            message="Conflicting number of arguments (1) here"/>
-    </issue>
-
-    <issue
-        id="StringFormatCount"
-        message="Inconsistent number of arguments in formatting string `backward_pre_download_s`; found both 0 here and 1 in values/strings.xml"
-        errorLine1="    &lt;string name=&quot;backward_pre_download_s&quot;>預先下載前面的章節&lt;/string>"
-        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/values-zh-rTW/strings.xml"
-            line="1329"
-            column="5"/>
-        <location
-            file="src/main/res/values/strings.xml"
-            line="1069"
-            column="5"
-            message="Conflicting number of arguments (1) here"/>
-    </issue>
-
-    <issue
         id="IntentWithNullActionLaunch"
         message="This intent has no action set and is not explicit by component. You should either make this intent explicit by component or set an action matching the targeted intent filter."
         errorLine1="        val intent = Intent()"
@@ -4798,50 +4267,6 @@
             file="src/main/java/io/legado/app/ui/config/widget/DayNightPager.kt"
             line="77"
             column="56"/>
-    </issue>
-
-    <issue
-        id="FrequentlyChangingValue"
-        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
-        errorLine1="    val info = state.layoutInfo"
-        errorLine2="                     ~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/widget/components/VerticalScrollbar.kt"
-            line="54"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="FrequentlyChangingValue"
-        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
-        errorLine1="    val scrollOffset = state.firstVisibleItemIndex * avgItemHeight + state.firstVisibleItemScrollOffset"
-        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/widget/components/VerticalScrollbar.kt"
-            line="69"
-            column="30"/>
-    </issue>
-
-    <issue
-        id="FrequentlyChangingValue"
-        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
-        errorLine1="    val scrollOffset = state.firstVisibleItemIndex * avgItemHeight + state.firstVisibleItemScrollOffset"
-        errorLine2="                                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/widget/components/VerticalScrollbar.kt"
-            line="69"
-            column="76"/>
-    </issue>
-
-    <issue
-        id="FrequentlyChangingValue"
-        message="Reading a value annotated with @FrequentlyChangingValue inside composition"
-        errorLine1="        scrollFraction = (state.value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f),"
-        errorLine2="                                ~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/widget/components/VerticalScrollbar.kt"
-            line="98"
-            column="33"/>
     </issue>
 
     <issue
@@ -9362,17 +8787,6 @@
         <location
             file="src/main/res/drawable/ic_cfg_donate.xml"
             line="1"
-            column="1"/>
-    </issue>
-
-    <issue
-        id="UnusedResources"
-        message="The resource `R.drawable.ic_copy` appears to be unused"
-        errorLine1="&lt;vector xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
-        errorLine2="^">
-        <location
-            file="src/main/res/drawable/ic_copy.xml"
-            line="2"
             column="1"/>
     </issue>
 
@@ -15526,28 +14940,6 @@
 
     <issue
         id="UseKtx"
-        message="Use the KTX extension function `ViewGroup.isNotEmpty` instead?"
-        errorLine1="                if (isResume &amp;&amp; flexbox.childCount > 0) {"
-        errorLine2="                                ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/explore/ExploreAdapter.kt"
-            line="199"
-            column="33"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `ViewGroup.isNotEmpty` instead?"
-        errorLine1="            &amp;&amp; flexbox.childCount > 0"
-        errorLine2="               ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/explore/ExploreAdapter.kt"
-            line="269"
-            column="16"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
         message="Use the KTX extension function `Bitmap.get` instead?"
         errorLine1="                    generateParticle(bitmap.getPixel((j + 1) * w, (i + 1) * h), random)"
         errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
@@ -15764,17 +15156,6 @@
             file="src/main/java/io/legado/app/lib/prefs/NameListPreference.kt"
             line="21"
             column="26"/>
-    </issue>
-
-    <issue
-        id="UseKtx"
-        message="Use the KTX extension function `Bitmap.toDrawable` instead?"
-        errorLine1="                return bitmap?.let { BitmapDrawable(context.resources, it) }"
-        errorLine2="                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/help/config/NavigationBarConfig.kt"
-            line="359"
-            column="38"/>
     </issue>
 
     <issue
@@ -16616,17 +15997,6 @@
     <issue
         id="ContentDescription"
         message="Missing `contentDescription` attribute on image"
-        errorLine1="            &lt;ImageView"
-        errorLine2="             ~~~~~~~~~">
-        <location
-            file="src/main/res/layout/item_highlight_preset_rule.xml"
-            line="126"
-            column="14"/>
-    </issue>
-
-    <issue
-        id="ContentDescription"
-        message="Missing `contentDescription` attribute on image"
         errorLine1="    &lt;ImageView"
         errorLine2="     ~~~~~~~~~">
         <location
@@ -17029,39 +16399,6 @@
             file="src/main/java/io/legado/app/ui/widget/BatteryView.kt"
             line="152"
             column="39"/>
-    </issue>
-
-    <issue
-        id="SetTextI18n"
-        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
-        errorLine1="            tvReadPercent.text = &quot;${(progress * 100).toInt()}%&quot;"
-        errorLine2="                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/bookshelf/style2/BooksAdapterList.kt"
-            line="46"
-            column="34"/>
-    </issue>
-
-    <issue
-        id="SetTextI18n"
-        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
-        errorLine1="            binding.tvReadPercent.text = &quot;${(progress * 100).toInt()}%&quot;"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/bookshelf/style1/books/BooksAdapterList.kt"
-            line="140"
-            column="42"/>
-    </issue>
-
-    <issue
-        id="SetTextI18n"
-        message="Do not concatenate text displayed with `setText`. Use resource string with placeholders."
-        errorLine1="            binding.tvReadPercent.text = &quot;${(progress * 100).toInt()}%&quot;"
-        errorLine2="                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/io/legado/app/ui/main/bookshelf/style1/books/BooksAdapterList2.kt"
-            line="136"
-            column="42"/>
     </issue>
 
     <issue

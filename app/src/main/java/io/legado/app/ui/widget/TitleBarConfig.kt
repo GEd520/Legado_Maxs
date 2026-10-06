@@ -20,6 +20,7 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import android.util.StateSet
 import android.view.View
+import androidx.collection.LruCache
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import com.google.android.material.tabs.TabLayout
@@ -119,25 +120,45 @@ private fun TitleBar.applyTopBarContentColor(contentColor: Int = topBarContentCo
 }
 
 /**
+ * 顶栏内容色（文字/图标）的统一取色入口。
+ *
+ * View 侧 [TitleBar] 与 Compose 侧顶栏（[io.legado.app.ui.theme.pageTopBarColors]）必须走同一套规则：
+ * 历史实现里 Compose 侧按「主色明度」取色、View 侧按「顶栏实际背景亮度」取色，
+ * 一旦顶栏背景色不是主题主色（自定义顶栏配置），两套实现会给出深浅相反的文字色。
+ *
+ * @param contentBackground 顶栏实际显示背景的纯色（半透明时需先与页面背景合成）；
+ *   含壁纸等无法判定亮度的图层时传 null，回退到 [MenuExtensions.getMenuColor] 的默认取色
+ */
+fun resolveTopBarContentColor(
+    context: Context,
+    topBarTheme: Theme,
+    contentBackground: Int?,
+): Int {
+    if (topBarTheme != Theme.Auto) {
+        return MenuExtensions.getMenuColor(context, topBarTheme)
+    }
+    if (contentBackground == null) {
+        return MenuExtensions.getMenuColor(context, topBarTheme)
+    }
+    // 背景越亮文字越深：亮背景(>0.5)用深色文字，暗背景用浅色文字。
+    // 与 MenuExtensions.getMenuColor 透明导航栏分支的取色约定保持一致。
+    return context.getPrimaryTextColor(
+        ColorUtils.calculateLuminance(contentBackground) > 0.5,
+    )
+}
+
+/**
  * 顶栏内容颜色。
  * Auto 模式下按顶栏实际背景（TopBarConfig 纯色/半透明背景与页面背景合成）的亮度决定深浅，
  * 避免主题主色与顶栏背景色调不一致时文字看不清（与二级标签栏的取色思路一致）；
  * 背景含壁纸等无法判定亮度的图层时回退到 getMenuColor 的默认逻辑。
  */
 private fun TitleBar.topBarContentColor(): Int {
-    if (topBarTheme != Theme.Auto) {
-        return MenuExtensions.getMenuColor(context, topBarTheme)
-    }
-    background.resolveSolidColor()
-        ?.compositeOverPageBackground(context)
-        ?.let { bgColor ->
-            // 背景越亮文字越深：亮背景(>0.5)用深色文字，暗背景用浅色文字。
-            // 与 MenuExtensions.getMenuColor 透明导航栏分支的取色约定保持一致。
-            return context.getPrimaryTextColor(
-                ColorUtils.calculateLuminance(bgColor) > 0.5,
-            )
-        }
-    return MenuExtensions.getMenuColor(context, topBarTheme)
+    return resolveTopBarContentColor(
+        context = context,
+        topBarTheme = topBarTheme,
+        contentBackground = background.resolveSolidColor()?.compositeOverPageBackground(context),
+    )
 }
 
 /** 解析背景中的纯色：含壁纸等非纯色图层时返回 null（无法判定亮度） */
@@ -288,14 +309,25 @@ private fun tabTextColorStateList(contentColor: Int): ColorStateList {
     )
 }
 
+/**
+ * 顶栏壁纸解码结果缓存。
+ *
+ * 壁纸是整屏宽的大图，解码一次要几十毫秒；而 [applyTopBarConfig] 会在每个页面的 TitleBar
+ * 创建、附加到窗口、顶栏配置变更时各跑一次——复杂主题下切页/返回时反复解码同一张图。
+ * key 含文件时间与大小、目标尺寸，配置包里换了壁纸自然失效。
+ * 容量按日/夜两套主题各留一份余量。
+ */
+private val topBarWallpaperCache = LruCache<String, Bitmap>(4)
+
 private fun TitleBar.bitmapLayer(file: File, alphaPercent: Int, radius: Float): Drawable? {
-    val bitmap = kotlin.runCatching {
-        BitmapUtils.decodeBitmap(
-            file.absolutePath,
-            resources.displayMetrics.widthPixels.coerceAtLeast(1),
-            height.takeIf { it > 0 } ?: (56 * resources.displayMetrics.density).toInt(),
-        )
-    }.getOrNull() ?: return null
+    val targetWidth = resources.displayMetrics.widthPixels.coerceAtLeast(1)
+    val targetHeight = height.takeIf { it > 0 } ?: (56 * resources.displayMetrics.density).toInt()
+    val key = "${file.absolutePath}|${file.lastModified()}|${file.length()}|$targetWidth|$targetHeight"
+    val bitmap = topBarWallpaperCache[key]
+        ?: kotlin.runCatching {
+            BitmapUtils.decodeBitmap(file.absolutePath, targetWidth, targetHeight)
+        }.getOrNull()?.also { topBarWallpaperCache.put(key, it) }
+        ?: return null
     return TopBarWallpaperDrawable(
         bitmap = bitmap,
         radius = radius,

@@ -218,6 +218,7 @@ object PreferKey {
     const val webServiceAuthEnabled = "webServiceAuthEnabled"
     const val unsafeSsl = "unsafeSsl"
     const val audioPlayWakeLock = "audioPlayWakeLock"
+    const val audioPlayCache = "audioPlayCache"
     const val readAloudWakeLock = "readAloudWakeLock"
     const val showLastUpdateTime = "showLastUpdateTime"
     const val showWaitUpCount = "showWaitUpCount"
@@ -319,6 +320,18 @@ object PreferKey {
 
     /** 发现列表布局模式，由"切换布局"菜单控制 */
     const val exploreGridMode = "exploreGridMode"
+
+    /** 发现主界面是否显示新版（源选择行 + 分类标签 + 内容列表） */
+    const val exploreModernPage = "exploreModernPage"
+
+    /** 订阅主界面是否显示新版（源选择行 + 分类标签 + 文章列表） */
+    const val rssModernPage = "rssModernPage"
+
+    /** 新版发现上次选中的书源 */
+    const val exploreModernSourceUrl = "exploreModernSourceUrl"
+
+    /** 新版订阅上次选中的订阅源 */
+    const val rssModernSourceUrl = "rssModernSourceUrl"
 
     /** 跳转确认记忆，存储 JSON: {"sourceUrl":"allow|deny", ...} */
     const val openUrlConfirmMemory = "openUrlConfirmMemory"

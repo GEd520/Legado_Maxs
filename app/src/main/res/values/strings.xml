@@ -1067,6 +1067,7 @@
     <string name="sort_by_respondTime">Sort by respond time</string>
     <string name="search_content">Search content</string>
     <string name="rss_source_empty">Empty now!</string>
+    <string name="open_rss_source">Open %1$s</string>
     <string name="explore_empty">Empty now!</string>
     <string name="page_key_set_help">Focusing on the input box and pressing a physical key will automatically enter the value of the key, and multiple keys will be automatically separated by commas.</string>
     <string name="theme_name">Theme name</string>
@@ -1681,6 +1682,11 @@
     <string name="start_full">Start Fullscreen</string>
     <string name="video_setting">Video Settings</string>
     <string name="video_setting_summary">Auto play, fullscreen play and other settings</string>
+    <string name="video_play_settings">Playback</string>
+    <string name="video_cache_settings">Cache</string>
+    <string name="video_play_cache">Cache while playing</string>
+    <string name="video_play_cache_summary">Cache while playing for offline playback; off = no caching</string>
+    <string name="audio_play_cache">Cache while playing</string>
 
     <!-- Reading & Source Settings -->
     <string name="no_more_chapter">No More Chapters</string>
@@ -2087,6 +2093,15 @@
 
     <!-- Explore Show Column Layout -->
     <string name="switch_layout">Switch Layout</string>
+    <string name="switch_layout_current">Switch Layout (Current: %1$s)</string>
+    <string name="switch_to_new_explore">Switch to New Explore</string>
+    <string name="switch_to_old_explore">Switch to Classic Explore</string>
+    <string name="switch_to_new_rss">Switch to New RSS</string>
+    <string name="switch_to_old_rss">Switch to Classic RSS</string>
+    <string name="source_not_exist">Source does not exist</string>
+    <string name="select">Select</string>
+    <string name="expand">Expand</string>
+    <string name="error_view_detail">Tap to view details</string>
     <string name="select_column">Select Column(%d)</string>
     <string name="select_column_count">Select Column Count</string>
     <string name="switch_layout_list">List</string>
@@ -2618,4 +2633,48 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="storage_cache_item_count">%1$d cache items</string>
     <!-- Precise manage: file management -->
     <string name="file_delete_confirm">Delete \"%1$s\"?</string>
+
+    <!-- Cache manage: book/audio/video/manga caches -->
+    <string name="cache_manage_title">Cache manager</string>
+    <string name="cache_manage_summary">Manage book, audio, video and manga caches in one place</string>
+    <string name="cache_manage_books">Books</string>
+    <string name="cache_manage_audio">Audio</string>
+    <string name="cache_manage_video">Video</string>
+    <string name="cache_manage_manga">Manga</string>
+    <string name="cache_manage_stats">Stats</string>
+    <string name="cache_manage_empty">No %1$s cache</string>
+    <string name="cache_manage_cached_count_with_size">Cached %1$d/%2$d · %3$s</string>
+    <string name="cache_manage_size_calculating">Calculating…</string>
+    <string name="cache_manage_chapters">Cached chapters</string>
+    <string name="cache_manage_search_chapter">Search chapter</string>
+    <string name="cache_manage_all_chapters">All</string>
+    <string name="cache_manage_cached">Cached</string>
+    <string name="cache_manage_not_cached">Not cached</string>
+    <string name="cache_manage_long_press_hint">Long press a chapter to select, then cache or delete in batches</string>
+    <string name="cache_manage_selected_count">%1$d selected</string>
+    <string name="cache_manage_cache_selected">Cache</string>
+    <string name="cache_manage_cache_selected_done">Queued %1$d chapter(s)</string>
+    <string name="cache_manage_add_bookshelf">Add to shelf</string>
+    <string name="cache_manage_use_cache">Use cache</string>
+    <string name="cache_manage_add_bookshelf_success">Added to bookshelf from cache</string>
+    <string name="cache_manage_use_cache_success">Chapters synced from cache</string>
+    <string name="cache_manage_upload">Upload</string>
+    <string name="cache_manage_upload_all">Upload all</string>
+    <string name="cache_manage_uploading">Uploading…</string>
+    <string name="cache_manage_upload_success">Upload successful</string>
+    <string name="cache_manage_upload_failed">Upload failed: %1$s</string>
+    <string name="cache_manage_delete_all">Delete all</string>
+    <string name="cache_manage_delete_all_confirm">Delete all cache of %1$d book(s) in the current list?</string>
+    <string name="cache_manage_delete_book_confirm">Delete all cache of "%1$s"?</string>
+    <string name="cache_manage_delete_selected_confirm">Delete cache of %1$d selected chapter(s)?</string>
+    <string name="cache_manage_delete_chapter_failed">Failed to delete chapter cache: %1$s</string>
+    <string name="cache_manage_delete_failed">Failed to delete cache: %1$s</string>
+    <string name="cache_manage_chapter_load_failed">Failed to load chapters: %1$s</string>
+    <string name="cache_manage_no_cache">No cache to upload</string>
+    <string name="cache_manage_use_cache_failed">No cache manifest for this book, so it cannot be added back to the bookshelf</string>
+    <string name="cache_manage_search_empty">No matching book</string>
+    <string name="cache_manage_pack_failed">Failed to pack cache</string>
+    <string name="cache_manage_batch_empty">No cache to operate</string>
+    <string name="cache_manage_batch_upload_done">Batch upload finished: %1$d succeeded, %2$d failed</string>
+    <string name="delete_success">Deleted</string>
 </resources>

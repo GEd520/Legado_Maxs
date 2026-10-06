@@ -4,6 +4,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.CacheManifestHelper
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileUtils
@@ -142,7 +146,7 @@ object StorageCalculator {
                 val book = folderMap[bookDir.name]
                 val size = calculateDirSizeFast(bookDir)
                 if (size > 0) {
-                    val chapterCount = countCachedChapters(bookDir)
+                    val chapterCount = countCachedChapters(bookDir, book)
                     val name = book?.name ?: bookDir.name
                     val meta = if (book != null) {
                         "${chapterCount}章 · 最后阅读: ${formatLastRead(book)}"
@@ -185,7 +189,17 @@ object StorageCalculator {
         return map
     }
 
-    private fun countCachedChapters(bookDir: File): Int {
+    private fun countCachedChapters(bookDir: File, book: Book? = null): Int {
+        if (book != null && (book.isVideo || book.isAudio)) {
+            // 音视频书缓存的是一章一个媒体文件，按各自的媒体缓存判定
+            val useVideoCache = book.isVideo
+            return runCatching {
+                //按"确实有缓存的地址"统计：章节表里的地址过期后不该被算成没缓存
+                val manifest = CacheManifestHelper.read(book)
+                appDb.bookChapterDao.getChapterList(book.bookUrl)
+                    .count { CacheManifestHelper.cachedMediaUrl(book, it, manifest) != null }
+            }.getOrDefault(0)
+        }
         return bookDir.listFiles()?.count { it.isFile && it.extension == "nb" } ?: 0
     }
 

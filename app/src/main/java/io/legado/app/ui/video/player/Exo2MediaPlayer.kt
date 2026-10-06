@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -32,6 +33,41 @@ class Exo2MediaPlayer(context: Context) : IjkExo2MediaPlayer(context) {
     private val window = Timeline.Window()
     private var storedLeftVolume = 1f
     private var storedRightVolume = 1f
+
+    /**
+     * 自己构建 MediaSource：库默认用 DefaultDataSource，不会读 ExoPlayer 缓存，
+     * 这里改为读 setUp 传入的缓存目录（视频书是书级缓存目录），
+     * 已离线缓存的章节即可直接本地播放，未缓存的章节边播边缓存
+     *
+     * 目前播放都走 cacheWithPlay=false + 本重写，GCacheManager 分支不会被触发；
+     * 本地文件（FileDescriptor）用库默认数据源即可，无需缓存
+     */
+    override fun setDataSource(context: Context?, uri: Uri?) {
+        val dataSource = uri?.toString() ?: return
+        mDataSource = dataSource
+        mMediaSource = ExoPlayerHelper.createVideoMediaSource(
+            context ?: mAppContext,
+            dataSource,
+            mHeaders ?: emptyMap(),
+            mCacheDir,
+            ExoPlayerHelper.mimeTypeOfExtension(overrideExtension),
+            //关闭边播放边缓存时只读缓存：已离线缓存的章节照常本地播，播放过程不再写新数据
+            writable = VideoPlay.playCacheEnabled
+        )
+    }
+
+    override fun setDataSource(context: Context?, uri: Uri?, headers: MutableMap<String, String>?) {
+        if (headers != null) {
+            mHeaders.clear()
+            mHeaders.putAll(headers)
+        }
+        setDataSource(context, uri)
+    }
+
+    override fun setDataSource(dataSource: String?) {
+        val url = dataSource ?: return
+        setDataSource(mAppContext, url.toUri())
+    }
 
     override fun setVolume(left: Float, right: Float) {
         storedLeftVolume = left

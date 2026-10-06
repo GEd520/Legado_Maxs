@@ -2,6 +2,7 @@ package io.legado.app.ui.book.read.page.provider
 
 import android.graphics.Paint
 import android.text.Layout
+import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.Spanned
@@ -128,6 +129,15 @@ class TextChapterLayout(
 
     /** 九宫格"强制"策略需要从列末尾扣掉的宽度（见 [computeNeighborPush]），按段落排版时写入 */
     private var columnTrimEnd: FloatArray? = null
+
+    /**
+     * HTML 段落的命中字距（px）：命中段首字符的左侧留白与尾字符的右侧留白。
+     *
+     * StaticLayout 已把留白算进推进宽度，列坐标取的是布局坐标，所以要把它从列范围里剥掉：
+     * 首字符列右移留白量、尾字符列左收留白量，背景才不会被留白撑宽（见 [setTypeHtml]）。
+     */
+    private var matchSpacingBefore: FloatArray? = null
+    private var matchSpacingAfter: FloatArray? = null
 
     /**
      * 九宫格"强制"策略在**段首带缩进**时给缩进额外让出的宽度（见 [computeNeighborPush]）。
@@ -269,11 +279,49 @@ class TextChapterLayout(
             }
         }
 
+        layoutBodyContents(
+            contents = processedContents,
+            imageStyle = imageStyle,
+            isTextImageStyle = isTextImageStyle,
+            bodyHighlightStyles = bodyHighlightStyles,
+            breakPageAfterImage = true,
+        )
+
+        val textPage = pendingTextPage
+        val endPadding = 20.dpToPx()
+        val durYPadding = durY + endPadding
+        if (textPage.height < durYPadding) {
+            textPage.height = durYPadding
+        } else {
+            textPage.height += endPadding
+        }
+        textPage.text = stringBuilder.toString()
+        currentCoroutineContext().ensureActive()
+        onPageCompleted()
+
+        pendingTextPage = TextPage()
+        stringBuilder.clear()
+        durY = 0f
+        absStartX = paddingLeft
+    }
+
+    /**
+     * 正文段落排版主循环，首次排版与懒加载续排共用。
+     *
+     * @param breakPageAfterImage 大图之后是否强制换页：首排仅在单图模式下换页，续排始终换页（沿用既有行为）
+     * @return 本次排版的正文字数
+     */
+    private suspend fun layoutBodyContents(
+        contents: List<String>,
+        imageStyle: String?,
+        isTextImageStyle: Boolean,
+        bodyHighlightStyles: BodyHighlightStyles,
+        breakPageAfterImage: Boolean,
+    ): Int {
         val sb = StringBuffer()
         var isSetTypedImage = false
         var wordCount = 0
-
-        for ((contentIndex, content) in processedContents.withIndex()) {
+        for ((contentIndex, content) in contents.withIndex()) {
             currentCoroutineContext().ensureActive()
             if (adaptSpecialStyle) {
                 val text = content.trim()
@@ -314,15 +362,17 @@ class TextChapterLayout(
                     imageStyle,
                     srcList = srcList,
                     clickList = clickList,
-                    bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
+                    bodyHighlightStyles = bodyHighlightStyles,
                     bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
                 )
             } else {
-                if (isSetTypedImage) {
+                if (breakPageAfterImage && isSetTypedImage) {
                     isSetTypedImage = false
                     prepareNextPageIfNeed()
                 }
                 var start = 0
+                // 本段排版文本在全文中的起始偏移；被大图拆成多段时随 flush / 跳图推进
+                var layoutTextOffset = bodyHighlightStyles.startAt(contentIndex)
                 val srcList = LinkedList<String>()
                 val clickList = LinkedList<String?>()
                 sb.setLength(0)
@@ -331,61 +381,20 @@ class TextChapterLayout(
                     val matcher = AppPattern.imgPattern.matcher(text)
                     while (matcher.find()) {
                         currentCoroutineContext().ensureActive()
-                        val bubbleResult = tryParseForcedBubbleSrcWithClick(matcher.group(1)!!)
-                        val imgSrc = bubbleResult.renderSrc
-                        val isBubble = ParagraphBubbleRenderer.isBubbleSrc(imgSrc)
-                        var style: String? = if (isBubble) "TEXT" else null
-                        var click: String? = if (isBubble) bubbleResult.click else null
-                        var imgSize = ImageProvider.getImageSize(book, imgSrc, ReadBook.bookSource)
-                        val isAnimated = if (isBubble) false else ImageProvider.isGif(book, imgSrc, ReadBook.bookSource)
-                        val urlMatcher = paramPattern.matcher(imgSrc)
-                        if (urlMatcher.find()) {
-                            var width: String? = null
-                            val urlOptionStr = imgSrc.substring(urlMatcher.end())
-                            GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()?.let { map ->
-                                map.forEach { (key, value) ->
-                                    when (key) {
-                                        "style" -> style = value
-                                        "width" -> width = value
-                                        "click" -> click = value
-                                    }
-                                }
-                            }
-                            width?.let {
-                                if (width.endsWith("%")) {
-                                    width.dropLast(1).toIntOrNull()?.let { percentage ->
-                                        val imgWidth = visibleWidth * percentage / 100
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(imgWidth, sizeHeight * imgWidth / sizeWidth)
-                                    }
-                                } else {
-                                    width.toIntOrNull()?.let { width ->
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(width, sizeHeight * width / sizeWidth)
-                                    }
-                                }
-                            }
-                        }
-                        if (style == null) {
-                            style = if (imgSize.width < 80 && imgSize.height < 80) {
-                                "text"
-                            } else {
-                                imageStyle
-                            }
-                        }
+                        val img = resolveBodyImage(matcher.group(1)!!, imageStyle)
                         if (start < matcher.start()) {
                             sb.append(text.subSequence(start, matcher.start()))
                         }
-                        when (style) {
+                        when (img.style) {
                             "TEXT" -> {
                                 sb.append(reviewChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
+                                srcList.add(img.src)
+                                clickList.add(img.click)
                             }
                             "text" -> {
                                 sb.append(srcReplaceChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
+                                srcList.add(img.src)
+                                clickList.add(img.click)
                             }
                             else -> {
                                 val textBefore = sb.toString()
@@ -393,7 +402,7 @@ class TextChapterLayout(
                                     wordCount += textBefore.replace(noWordCountRegex, "").length
                                     setTypeText(
                                         book,
-                                        sb.toString(),
+                                        textBefore,
                                         contentPaint,
                                         contentPaintTextHeight,
                                         contentPaintFontMetrics,
@@ -401,19 +410,24 @@ class TextChapterLayout(
                                         isFirstLine = isFirstLine,
                                         srcList = srcList,
                                         clickList = clickList,
+                                        bodyHighlightStyles = bodyHighlightStyles,
+                                        bodyHighlightStart = layoutTextOffset,
                                     )
+                                    layoutTextOffset += textBefore.length
                                     sb.setLength(0)
                                     isFirstLine = false
                                 }
                                 setTypeImage(
                                     book,
-                                    imgSrc,
+                                    img.src,
                                     contentPaintTextHeight,
-                                    style,
-                                    imgSize,
-                                    click,
-                                    isAnimated,
+                                    img.style,
+                                    img.size,
+                                    img.click,
+                                    img.isAnimated,
                                 )
+                                // 大图不进排版文本，跳过全文中对应的占位字符
+                                layoutTextOffset += 1
                                 isSetTypedImage = true
                             }
                         }
@@ -421,12 +435,11 @@ class TextChapterLayout(
                     }
                 }
                 if (start < content.length) {
-                    if (isSetTypedImage) {
+                    if (breakPageAfterImage && isSetTypedImage) {
                         isSetTypedImage = false
                         prepareNextPageIfNeed()
                     }
-                    val textAfter = content.subSequence(start, content.length)
-                    sb.append(textAfter)
+                    sb.append(content.subSequence(start, content.length))
                 }
                 text = sb.toString()
                 if (text.isNotBlank()) {
@@ -441,31 +454,73 @@ class TextChapterLayout(
                         isFirstLine = isFirstLine,
                         srcList = srcList,
                         clickList = clickList,
-                        bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
-                        bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
+                        bodyHighlightStyles = bodyHighlightStyles,
+                        bodyHighlightStart = layoutTextOffset,
                     )
                 }
             }
             pendingTextPage.lines.lastOrNull()?.isParagraphEnd = true
             stringBuilder.append("\n")
         }
+        return wordCount
+    }
 
-        val textPage = pendingTextPage
-        val endPadding = 20.dpToPx()
-        val durYPadding = durY + endPadding
-        if (textPage.height < durYPadding) {
-            textPage.height = durYPadding
-        } else {
-            textPage.height += endPadding
+    private class BodyImage(
+        val src: String,
+        val style: String?,
+        val size: Size,
+        val click: String?,
+        val isAnimated: Boolean,
+    )
+
+    /**
+     * 解析正文 <img> 的地址与 URL 选项（style/width/click），并按尺寸推断默认样式
+     */
+    private suspend fun resolveBodyImage(rawImgSrc: String, imageStyle: String?): BodyImage {
+        val bubbleResult = tryParseForcedBubbleSrcWithClick(rawImgSrc)
+        val imgSrc = bubbleResult.renderSrc
+        val isBubble = ParagraphBubbleRenderer.isBubbleSrc(imgSrc)
+        var style: String? = if (isBubble) "TEXT" else null
+        var click: String? = if (isBubble) bubbleResult.click else null
+        var imgSize = ImageProvider.getImageSize(book, imgSrc, ReadBook.bookSource)
+        // 气泡 URL 走软件渲染，跳过 isGif 检测避免无意义判断
+        val isAnimated = if (isBubble) false else ImageProvider.isGif(book, imgSrc, ReadBook.bookSource)
+        val urlMatcher = paramPattern.matcher(imgSrc)
+        if (urlMatcher.find()) {
+            var width: String? = null
+            val urlOptionStr = imgSrc.substring(urlMatcher.end())
+            GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()?.let { map ->
+                map.forEach { (key, value) ->
+                    when (key) {
+                        "style" -> style = value
+                        "width" -> width = value
+                        "click" -> click = value
+                    }
+                }
+            }
+            width?.let { value ->
+                if (value.endsWith("%")) {
+                    value.dropLast(1).toIntOrNull()?.let { percentage ->
+                        val imgWidth = visibleWidth * percentage / 100
+                        val (sizeHeight, sizeWidth) = imgSize
+                        imgSize = Size(imgWidth, sizeHeight * imgWidth / sizeWidth)
+                    }
+                } else {
+                    value.toIntOrNull()?.let { width ->
+                        val (sizeHeight, sizeWidth) = imgSize
+                        imgSize = Size(width, sizeHeight * width / sizeWidth)
+                    }
+                }
+            }
         }
-        textPage.text = stringBuilder.toString()
-        currentCoroutineContext().ensureActive()
-        onPageCompleted()
-
-        pendingTextPage = TextPage()
-        stringBuilder.clear()
-        durY = 0f
-        absStartX = paddingLeft
+        val finalStyle = style ?: if (imgSize.width < SMALL_IMAGE_THRESHOLD_PX &&
+            imgSize.height < SMALL_IMAGE_THRESHOLD_PX
+        ) {
+            "text"
+        } else {
+            imageStyle
+        }
+        return BodyImage(imgSrc, finalStyle, imgSize, click, isAnimated)
     }
 
     private fun onPageCompleted() {
@@ -657,186 +712,13 @@ class TextChapterLayout(
         val isTextImageStyle = imageStyle.equals(Book.imgStyleText, true)
         val bodyHighlightStyles = buildBodyHighlightStyles(contents)
 
-        val sb = StringBuffer()
-        var isSetTypedImage = false
-        var wordCount = 0
-        contents.forEachIndexed { contentIndex, content ->
-            currentCoroutineContext().ensureActive()
-            if (adaptSpecialStyle) {
-                val text = content.trim()
-                if (text == "[newpage]") {
-                    prepareNextPageIfNeed()
-                    return@forEachIndexed
-                } else if (text.startsWith("<usehtml>")) {
-                    val endInt = text.lastIndexOf("<")
-                    if (endInt > 9) {
-                        setTypeHtml(imageStyle, book, text.substring(9, endInt))
-                        return@forEachIndexed
-                    }
-                }
-            }
-            var text = content.replace(srcReplaceChar, srcReplacementChar)
-            if (isTextImageStyle) {
-                // 图片样式为文字嵌入类型
-                val srcList = LinkedList<String>()
-                val clickList = LinkedList<String?>()
-                sb.setLength(0)
-                val matcher = AppPattern.imgPattern.matcher(text)
-                while (matcher.find()) {
-                    matcher.group(1)?.let { src ->
-                        val bubbleResult = tryParseForcedBubbleSrcWithClick(src)
-                        srcList.add(bubbleResult.renderSrc)
-                        clickList.add(bubbleResult.click)
-                        matcher.appendReplacement(sb, srcReplaceStr)
-                    }
-                }
-                matcher.appendTail(sb)
-                text = sb.toString()
-                wordCount += text.replace(noWordCountRegex, "").length
-                setTypeText(
-                    book,
-                    text,
-                    contentPaint,
-                    contentPaintTextHeight,
-                    contentPaintFontMetrics,
-                    imageStyle,
-                    srcList = srcList,
-                    clickList = clickList,
-                    bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
-                    bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
-                )
-            } else {
-                if (isSingleImageStyle && isSetTypedImage) {
-                    isSetTypedImage = false
-                    prepareNextPageIfNeed()
-                }
-                var start = 0
-                val srcList = LinkedList<String>()
-                val clickList = LinkedList<String?>()
-                sb.setLength(0)
-                var isFirstLine = true
-                if (content.contains("<img")) {
-                    val matcher = AppPattern.imgPattern.matcher(text)
-                    while (matcher.find()) {
-                        currentCoroutineContext().ensureActive()
-                        val bubbleResult = tryParseForcedBubbleSrcWithClick(matcher.group(1)!!)
-                        val imgSrc = bubbleResult.renderSrc
-                        val isBubble = ParagraphBubbleRenderer.isBubbleSrc(imgSrc)
-                        var style: String? = if (isBubble) "TEXT" else null
-                        var click: String? = if (isBubble) bubbleResult.click else null
-                        var imgSize = ImageProvider.getImageSize(book, imgSrc, ReadBook.bookSource)
-                        val isAnimated = if (isBubble) false else ImageProvider.isGif(book, imgSrc, ReadBook.bookSource)
-                        val urlMatcher = paramPattern.matcher(imgSrc)
-                        if (urlMatcher.find()) {
-                            var width: String? = null
-                            val urlOptionStr = imgSrc.substring(urlMatcher.end())
-                            GSON.fromJsonObject<Map<String, String>>(urlOptionStr).getOrNull()?.let { map ->
-                                map.forEach { (key, value) ->
-                                    when (key) {
-                                        "style" -> style = value
-                                        "width" -> width = value
-                                        "click" -> click = value
-                                    }
-                                }
-                            }
-                            width?.let {
-                                if (width.endsWith("%")) {
-                                    width.dropLast(1).toIntOrNull()?.let { percentage ->
-                                        val imgWidth = visibleWidth * percentage / 100
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(imgWidth, sizeHeight * imgWidth / sizeWidth)
-                                    }
-                                } else {
-                                    width.toIntOrNull()?.let { width ->
-                                        val (sizeHeight, sizeWidth) = imgSize
-                                        imgSize = Size(width, sizeHeight * width / sizeWidth)
-                                    }
-                                }
-                            }
-                        }
-                        if (style == null) {
-                            style = if (imgSize.width < 80 && imgSize.height < 80) {
-                                "text"
-                            } else {
-                                imageStyle
-                            }
-                        }
-                        if (start < matcher.start()) {
-                            sb.append(text.subSequence(start, matcher.start()))
-                        }
-                        when (style) {
-                            "TEXT" -> {
-                                sb.append(reviewChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
-                            }
-                            "text" -> {
-                                sb.append(srcReplaceChar)
-                                srcList.add(imgSrc)
-                                clickList.add(click)
-                            }
-                            else -> {
-                                val textBefore = sb.toString()
-                                if (textBefore.isNotBlank()) {
-                                    wordCount += textBefore.replace(noWordCountRegex, "").length
-                                    setTypeText(
-                                        book,
-                                        sb.toString(),
-                                        contentPaint,
-                                        contentPaintTextHeight,
-                                        contentPaintFontMetrics,
-                                        "TEXT",
-                                        isFirstLine = isFirstLine,
-                                        srcList = srcList,
-                                        clickList = clickList,
-                                    )
-                                    sb.setLength(0)
-                                    isFirstLine = false
-                                }
-                                setTypeImage(
-                                    book,
-                                    imgSrc,
-                                    contentPaintTextHeight,
-                                    style,
-                                    imgSize,
-                                    click,
-                                    isAnimated,
-                                )
-                                isSetTypedImage = true
-                            }
-                        }
-                        start = matcher.end()
-                    }
-                }
-                if (start < content.length) {
-                    if (isSingleImageStyle && isSetTypedImage) {
-                        isSetTypedImage = false
-                        prepareNextPageIfNeed()
-                    }
-                    val textAfter = content.subSequence(start, content.length)
-                    sb.append(textAfter)
-                }
-                text = sb.toString()
-                if (text.isNotBlank()) {
-                    wordCount += text.replace(noWordCountRegex, "").length
-                    setTypeText(
-                        book,
-                        text,
-                        contentPaint,
-                        contentPaintTextHeight,
-                        contentPaintFontMetrics,
-                        "TEXT",
-                        isFirstLine = isFirstLine,
-                        srcList = srcList,
-                        clickList = clickList,
-                        bodyHighlightStyles = bodyHighlightStyles.takeIf { !content.contains("<img") },
-                        bodyHighlightStart = bodyHighlightStyles.startAt(contentIndex),
-                    )
-                }
-            }
-            pendingTextPage.lines.last().isParagraphEnd = true
-            stringBuilder.append("\n")
-        }
+        val wordCount = layoutBodyContents(
+            contents = contents,
+            imageStyle = imageStyle,
+            isTextImageStyle = isTextImageStyle,
+            bodyHighlightStyles = bodyHighlightStyles,
+            breakPageAfterImage = isSingleImageStyle,
+        )
         val chapterWordCount = StringUtils.wordCountFormat(wordCount.toString())
         bookChapter.wordCount = chapterWordCount
         appDb.bookChapterDao.upWordCount(bookChapter.bookUrl, bookChapter.url, chapterWordCount)
@@ -990,6 +872,9 @@ class TextChapterLayout(
                 }
             }
         }
+        // 命中字距：同样挂到字符自身的推进宽度上，StaticLayout 断行与两端对齐才按真实宽度算；
+        // 留白量另存一份，建列时从列范围里剥掉（背景不跟着变宽）
+        applyMatchLetterSpacing(spanned)
         val textColor = ReadBookConfig.textColor
         if (textPaint.color != textColor) {
             textPaint.color = textColor
@@ -1040,6 +925,9 @@ class TextChapterLayout(
                     continue
                 }
                 val charX = staticLayout.getPrimaryHorizontal(charIndex)
+                // 命中字距已算进布局推进宽度，列范围要把它剥掉，背景才不会被留白撑宽
+                val spacingBeforeChar = matchSpacingBefore?.getOrNull(charIndex) ?: 0f
+                val spacingAfterChar = matchSpacingAfter?.getOrNull(charIndex) ?: 0f
                 val textSize = extractTextSize(spanned, charIndex, textPaint.textSize)
                 val textColor = extractTextColor(spanned, charIndex)
                 val linkUrl = extractLinkUrl(spanned, charIndex)
@@ -1064,13 +952,14 @@ class TextChapterLayout(
                     staticLayout.getPrimaryHorizontal(charIndex + 1)
                 } else {
                     tempPaint.textSize = textSize
-                    // 行尾字符无下一列可取坐标，需按该字符实际字体测宽，保持与绘制一致
+                    // 行尾字符无下一列可取坐标，需按该字符实际字体测宽，保持与绘制一致；
+                    // 该字符自带命中字距时，布局推进宽度里已含留白，量宽时一并补上口径才一致
                     tempPaint.typeface = HighlightFontCache.getTypefaceFor(
                         highlightFontPath,
                         textPaint.typeface,
                     ) ?: textPaint.typeface
                     val charWidth = tempPaint.measureText(char)
-                    charX + charWidth
+                    charX + charWidth + spacingBeforeChar + spacingAfterChar
                 }
                 var needAddText = true
                 spanned.getSpans(charIndex, charIndex + 1, ImageSpan::class.java).firstOrNull()?.let { span ->
@@ -1176,9 +1065,10 @@ class TextChapterLayout(
                     }
                     needAddText = false
                 }
-                // 只认自定义标签用的 ReplacementSpan：邻字外推挂的 HighlightSpacingSpan 不算
+                // 只认自定义标签用的 ReplacementSpan：邻字外推挂的 HighlightSpacingSpan
+                // 与命中字距挂的 BoundarySpacingSpan 都不算
                 spanned.getSpans(charIndex, charIndex + 1, ReplacementSpan::class.java)
-                    .firstOrNull { it !is HighlightSpacingSpan }?.let { _ ->
+                    .firstOrNull { it !is HighlightSpacingSpan && it !is BoundarySpacingSpan }?.let { _ ->
                     // 自定义标签
                     if (char == HR_PLACE_CHAR) {
                         columns.add(
@@ -1213,9 +1103,10 @@ class TextChapterLayout(
                 if (needAddText) {
                     columns.add(
                         TextHtmlColumn(
-                            absStartX + charX,
-                            // 九宫格"强制"策略给最后一个字加的宽度要扣掉，否则背景会跟着一起变宽
-                            absStartX + charRight - (columnTrimEnd?.getOrNull(charIndex) ?: 0f),
+                            absStartX + charX + spacingBeforeChar,
+                            // 九宫格"强制"外推与命中字距给字符多加的宽度都要扣掉，否则背景会跟着一起变宽
+                            absStartX + charRight -
+                                (columnTrimEnd?.getOrNull(charIndex) ?: 0f) - spacingAfterChar,
                             char,
                             textSize,
                             textColor,
@@ -1533,13 +1424,34 @@ class TextChapterLayout(
      * 与逐段建 SpannableStringBuilder 再 setSpan 的旧方案等价，
      * 但每条规则只产生一个共享样式对象，命中只做数组写入，
      * 排版期逐字符消费改为数组下标访问。
+     *
+     * 拼接时与排版侧保持一致：先把 img 标签压成单个占位字符再拼，
+     * 保证 starts 里的偏移与排版文本逐字符对齐——否则含段评气泡/插图的段落
+     * 会把它后面的段落整体推偏，跨段规则的高亮会落到气泡或错误字符上。
+     *
+     * 占位必须是单字符：排版侧气泡用 reviewChar、小图用 srcReplaceStr（取值为单字符），
+     * 大图不进排版文本而由游标 +1；若把占位改成多字符，偏移会静默错位且不报错。
      */
     private fun buildBodyHighlightStyles(contents: List<String>): BodyHighlightStyles {
+        // 无正文高亮规则时不必拼全文跑正则（styles 为 null，排版期不设置任何样式）
+        if (compiledHighlightRules.none { it.rule.appliesTo(false, book.name, book.origin) }) {
+            return BodyHighlightStyles(null, emptyList())
+        }
         val starts = ArrayList<Int>(contents.size)
         val fullText = StringBuilder()
+        val imgSb = StringBuffer()
         contents.forEachIndexed { index, content ->
             starts.add(fullText.length)
-            fullText.append(content.replace(srcReplaceChar, srcReplacementChar))
+            val text = content.replace(srcReplaceChar, srcReplacementChar)
+            imgSb.setLength(0)
+            val matcher = AppPattern.imgPattern.matcher(text)
+            while (matcher.find()) {
+                // 与排版侧一致：img 标签压缩为单个占位字符（气泡/小图在排版文本里就是单字符，
+                // 大图由排版游标跳过），维持偏移对齐
+                matcher.appendReplacement(imgSb, reviewChar.toString())
+            }
+            matcher.appendTail(imgSb)
+            fullText.append(imgSb)
             if (index != contents.lastIndex) {
                 fullText.append('\n')
             }
@@ -1569,9 +1481,11 @@ class TextChapterLayout(
                 val style = compiled.charStyle
                 val active = styles ?: arrayOfNulls<CharStyle>(text.length).also { styles = it }
                 for (i in start until end) {
+                    // 命中字距只落在命中段首尾字符上：留白属于命中段与邻字之间，段内不加
+                    val charStyle = style.withMatchBoundary(i == start, i == end - 1)
                     active[i] = when (val existing = active[i]) {
-                        null -> style
-                        else -> existing.mergedWith(style)
+                        null -> charStyle
+                        else -> existing.mergedWith(charStyle)
                     }
                 }
             }
@@ -1628,7 +1542,8 @@ class TextChapterLayout(
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
             )
         }
-        if (style.hasDecoration) {
+        // 只设了命中字距的规则同样要带样式 Span：留白靠它传给排版测量
+        if (style.hasDecoration || style.hasLetterSpacing) {
             spannable.setSpan(
                 HighlightStyleSpan(style),
                 start,
@@ -1702,18 +1617,38 @@ class TextChapterLayout(
         ) { index -> widthsArray.getOrElse(index) { 0f } }
         columnTrimEnd = neighborPush?.trimEnd
         columnIndentExtra = neighborPush?.indentAdd ?: 0f
+        // 逐列排版在加字符时直接按字符样式让出命中字距，不需要 HTML 路径那份坐标修正
+        matchSpacingBefore = null
+        matchSpacingAfter = null
         neighborPush?.let { push ->
             for (i in push.widthAdd.indices) {
                 if (push.widthAdd[i] != 0f) widthsArray[i] += push.widthAdd[i]
             }
         }
+        // 命中字距要计入断行，否则行尾命中时整行会被压窄、与预览的换行位置不一致；
+        // 但列位置在加字符时按留白让位（见 addCharsToLine*），所以留白只并进"断行用的副本"，
+        // 不污染 widthsArray，避免同一份留白被算两次
+        // 注意 widthsArray 是复用缓存，长度可能大于 text.length（见 allocateFloatArray，
+        // 上一段更长时尾部留下的还是脏数据），这里只能按文本长度取值
+        val matchSpacingWidths = charStyles.matchSpacingWidths(text.length)
+        val layoutWidthsArray = if (matchSpacingWidths == null) {
+            widthsArray
+        } else {
+            FloatArray(text.length) { index ->
+                widthsArray.getOrElse(index) { 0f } + matchSpacingWidths[index]
+            }
+        }
         val layout = if (useZhLayout) {
-            val (words, widths) = measureTextSplit(text, widthsArray)
+            val (words, widths) = measureTextSplit(text, layoutWidthsArray)
             val indentSize = if (isFirstLine) paragraphIndent.length else 0
             ZhLayout(text, textPaint, visibleWidth, words, widths, indentSize)
         } else {
             StaticLayout(
-                buildFontAwareLayoutText(text, charStyles, neighborPush?.widthAdd),
+                buildFontAwareLayoutText(
+                    text,
+                    charStyles,
+                    mergeWidthAdd(neighborPush?.widthAdd, matchSpacingWidths),
+                ),
                 textPaint,
                 visibleWidth,
                 Layout.Alignment.ALIGN_NORMAL,
@@ -1759,10 +1694,16 @@ class TextChapterLayout(
         }
         for (lineIndex in 0 until layout.lineCount) {
             val textLine = TextLine(isTitle = isTitle)
-            prepareNextPageIfNeed(durY + textHeight)
             val lineStart = layout.getLineStart(lineIndex)
             val lineEnd = layout.getLineEnd(lineIndex)
             val lineText = text.substring(lineStart, lineEnd)
+            // 命中行行距：包含命中的行才加，同一行内上/下留白各取较大值
+            val (highlightLineTop, highlightLineBottom) =
+                extractLineSpacing(charStyles, lineStart, lineEnd)
+            // 命中行行距也要算进翻页判断，否则命中行落在页底时会被推到版面外看不见
+            prepareNextPageIfNeed(durY + highlightLineTop + textHeight + highlightLineBottom)
+            // 本行命中字距实际占的宽度：两端对齐与标题对齐的基准都要含它，否则整行右侧溢出
+            val lineMatchSpacing = charStyles.measureLineMatchSpacing(lineStart, lineEnd)
             val (words, widths) = measureTextSplit(lineText, widthsArray, lineStart)
             val desiredWidth = widths.fastSum()
             textLine.text = lineText
@@ -1787,14 +1728,15 @@ class TextChapterLayout(
                 0f
             }
             // 行尾要压回 visibleWidth - endBleed 才放得下背景右缘；末行右侧空白不足时才需要压缩
+            // （行宽判断同样要含命中字距，留白是真实占位）
             val endSqueezeNeeded = endBleed > 0f &&
-                (visibleWidth - lineStartExtra - desiredWidth) < endBleed
+                (visibleWidth - lineStartExtra - desiredWidth - lineMatchSpacing) < endBleed
             when (lineIndex) {
                 0 if layout.lineCount > 1 && !isTitle && isFirstLine -> {
                     // 多行的第一行 非标题
                     addCharsToLineFirst(
                         book, absStartX, textLine, words, textPaint,
-                        desiredWidth, widths, srcList, clickList, charStyles, lineStart,
+                        desiredWidth, lineMatchSpacing, widths, srcList, clickList, charStyles, lineStart,
                         lineStartExtra,
                     )
                 }
@@ -1807,11 +1749,12 @@ class TextChapterLayout(
                                 emptyContent ||
                                 isVolumeTitle ||
                                 imageStyle?.uppercase() == Book.imgStyleSingle -> {
-                                (visibleWidth - desiredWidth) / 2
+                                (visibleWidth - desiredWidth - lineMatchSpacing) / 2
                             }
                             // 右对齐：扣掉段末匹配让出的外扩量，背景右侧边缘正好落在正文列右边界；
                             // 行满时扣成负数会把左侧文字挤进页边距，改为保住文字、外扩量部分溢出
-                            isRightTitle -> (visibleWidth - desiredWidth - titleEndExtra).coerceAtLeast(0f)
+                            isRightTitle -> (visibleWidth - desiredWidth - lineMatchSpacing - titleEndExtra)
+                                .coerceAtLeast(0f)
                             else -> lineStartExtra
                         }
                     } else {
@@ -1821,11 +1764,13 @@ class TextChapterLayout(
                     if (!isTitle && textFullJustify && endSqueezeNeeded) {
                         // 末行右端放不下段末外扩：走两端对齐的压缩分布。addCharsToLineMiddle 的
                         // 行尾基准是 visibleWidth，desiredWidth 补上全部外扩量后 residual 恒为负、
-                        // 行尾正好落在 visibleWidth - endBleed，背景右缘贴住正文列右边界
+                        // 行尾正好落在 visibleWidth - endBleed，背景右缘贴住正文列右边界。
+                        // 这里的负 residual 是刻意压缩，clampNegativeResidual 必须关掉
                         addCharsToLineMiddle(
                             book, absStartX, textLine, words, textPaint,
-                            desiredWidth + startX + endBleed, startX,
+                            desiredWidth + startX + endBleed + lineMatchSpacing, startX,
                             widths, srcList, clickList, charStyles, lineStart,
+                            clampNegativeResidual = false,
                         )
                     } else {
                         addCharsToLineNatural(
@@ -1842,9 +1787,9 @@ class TextChapterLayout(
                                 emptyContent ||
                                 isVolumeTitle ||
                                 imageStyle?.uppercase() == Book.imgStyleSingle -> {
-                                (visibleWidth - desiredWidth) / 2
+                                (visibleWidth - desiredWidth - lineMatchSpacing) / 2
                             }
-                            isRightTitle -> visibleWidth - desiredWidth
+                            isRightTitle -> visibleWidth - desiredWidth - lineMatchSpacing
                             else -> lineStartExtra
                         }
                         addCharsToLineNatural(
@@ -1853,11 +1798,13 @@ class TextChapterLayout(
                         )
                     } else {
                         // 中间行；续段（被图片分割出的残段）首行没有缩进、同样可能吃到行首匹配的
-                        // 整行右移，desiredWidth 同步补上右移量让行尾仍落在正文列右边界
+                        // 整行右移，desiredWidth 同步补上右移量、命中字距一并补上，
+                        // 让行尾仍落在正文列右边界（留白已参与自然换行，不允许再压负 residual）
                         addCharsToLineMiddle(
                             book, absStartX, textLine, words, textPaint,
-                            desiredWidth + lineStartExtra, lineStartExtra,
+                            desiredWidth + lineStartExtra + lineMatchSpacing, lineStartExtra,
                             widths, srcList, clickList, charStyles, lineStart,
+                            clampNegativeResidual = lineMatchSpacing > 0f,
                         )
                     }
                 }
@@ -1867,15 +1814,43 @@ class TextChapterLayout(
             }
             calcTextLinePosition(textPages, textLine, stringBuilder.length)
             stringBuilder.append(lineText)
-            textLine.upTopBottom(durY, textHeight, fontMetrics)
+            // 上留白把整行下移，下留白加在行后：命中行与上下行之间留出空白，行盒本身高度不变
+            textLine.upTopBottom(durY + highlightLineTop, textHeight, fontMetrics)
             val textPage = pendingTextPage
             textPage.addLine(textLine)
-            durY += textHeight * lineSpacingExtra
+            durY += highlightLineTop + textHeight * lineSpacingExtra + highlightLineBottom
             if (textPage.height < durY) {
                 textPage.height = durY
             }
         }
         durY += textHeight * paragraphSpacing / 10f
+    }
+
+    /** 合并两份"额外宽度"数组（九宫格外推 + 命中字距），都为 null 时返回 null */
+    private fun mergeWidthAdd(a: FloatArray?, b: FloatArray?): FloatArray? = when {
+        a == null -> b
+        b == null -> a
+        else -> FloatArray(a.size) { a[it] + b.getOrElse(it) { 0f } }
+    }
+
+    /**
+     * 命中行上下行距：取 [start, end) 范围内命中字符给出的上/下留白（px），无命中行为 (0, 0)。
+     */
+    private fun extractLineSpacing(
+        charStyles: Array<CharStyle?>?,
+        start: Int,
+        end: Int,
+    ): Pair<Float, Float> {
+        if (charStyles == null || end <= start) return 0f to 0f
+        var top = 0f
+        var bottom = 0f
+        for (index in start.coerceAtLeast(0) until minOf(end, charStyles.size)) {
+            val style = charStyles[index] ?: continue
+            if (!style.lineSpacingEnabled) continue
+            if (style.lineSpacingTop > top) top = style.lineSpacingTop
+            if (style.lineSpacingBottom > bottom) bottom = style.lineSpacingBottom
+        }
+        return top to bottom
     }
 
     private fun calcTextLinePosition(
@@ -1911,6 +1886,8 @@ class TextChapterLayout(
         textPaint: TextPaint,
         /**自然排版长度**/
         desiredWidth: Float,
+        /** 本行命中字距占的宽度：两端对齐的剩余宽度要扣掉它 **/
+        lineMatchSpacing: Float,
         textWidths: List<Float>,
         srcList: LinkedList<String>?,
         clickList: LinkedList<String?>?,
@@ -1951,7 +1928,9 @@ class TextChapterLayout(
                 book, absStartX, textLine, text1, textPaint,
                 // 整行右移让出背景后，两端对齐的终点要扣回同样的量，行尾仍落在正文列右边界
                 //（有缩进时 startExtra 恒为 0，缩进路径不受影响）
-                desiredWidth + startExtra, x, textWidths1, srcList, clickList, charStyles, lineStart + bodyIndent.length,
+                desiredWidth + startExtra + lineMatchSpacing, x, textWidths1, srcList, clickList,
+                charStyles, lineStart + bodyIndent.length,
+                clampNegativeResidual = lineMatchSpacing > 0f,
             )
         }
     }
@@ -1965,7 +1944,10 @@ class TextChapterLayout(
         textLine: TextLine,
         words: List<String>,
         textPaint: TextPaint,
-        /**自然排版长度**/
+        /**
+         * 自然排版长度：字形宽度之和，再加上行首让位量与本行命中字距（调用方已补）。
+         * 命中字距必须算进来，否则两端对齐后整行会多出留白那么宽，高亮文字从右侧溢出
+         */
         desiredWidth: Float,
         /**起始x坐标**/
         startX: Float,
@@ -1974,6 +1956,14 @@ class TextChapterLayout(
         clickList: LinkedList<String?>?,
         charStyles: Array<CharStyle?>?,
         lineStart: Int,
+        /**
+         * 是否禁止 residual 为负（只有带命中字距的行才传 true）。
+         *
+         * 命中字距已经参与自然换行，再按负 residual 分配等于把正文字符压到一起（字挤在一起）；
+         * 而**刻意压缩整行**给段末外扩让位的分支仍然是负 residual（见 setTypeText 的
+         * endSqueezeNeeded 分支），所以默认保持旧行为、由调用方决定。
+         */
+        clampNegativeResidual: Boolean = false,
     ) {
         if (!textFullJustify) {
             addCharsToLineNatural(
@@ -1983,7 +1973,9 @@ class TextChapterLayout(
             )
             return
         }
-        val residualWidth = visibleWidth - desiredWidth
+        val residualWidth = (visibleWidth - desiredWidth).let {
+            if (clampNegativeResidual) it.coerceAtLeast(0f) else it
+        }
         val spaceSize = words.count { it == " " }
         textLine.startX = absStartX + startX
         if (spaceSize > 1) {
@@ -1993,6 +1985,10 @@ class TextChapterLayout(
             for (index in words.indices) {
                 val char = words[index]
                 val cw = textWidths[index]
+                // 命中字距：留白加在命中段与邻字之间（命中段跨行时行首/行尾同样让出），
+                // 不计入字符列本身，背景也就不会跟着变宽
+                val charIndex = lineStart + index
+                x += charStyles.lineSpacingBefore(charIndex, index == 0)
                 val x1 = if (char == " ") {
                     if (index != words.lastIndex) (x + cw + d) else (x + cw)
                 } else {
@@ -2001,9 +1997,9 @@ class TextChapterLayout(
                 addCharToLine(
                     book, absStartX, textLine, char,
                     x, x1, index + 1 == words.size, srcList,
-                    clickList, charStyles, lineStart + index,
+                    clickList, charStyles, charIndex,
                 )
-                x = x1
+                x = x1 + charStyles.lineSpacingAfter(charIndex, index == words.lastIndex)
             }
         } else {
             val gapCount: Int = words.lastIndex
@@ -2014,13 +2010,17 @@ class TextChapterLayout(
             for (index in words.indices) {
                 val char = words[index]
                 val cw = textWidths[index]
+                // 命中字距：留白加在命中段与邻字之间（命中段跨行时行首/行尾同样让出），
+                // 不计入字符列本身，背景也就不会跟着变宽
+                val charIndex = lineStart + index
+                x += charStyles.lineSpacingBefore(charIndex, index == 0)
                 val x1 = if (index != words.lastIndex) (x + cw + d) else (x + cw)
                 addCharToLine(
                     book, absStartX, textLine, char,
                     x, x1, index + 1 == words.size, srcList,
-                    clickList, charStyles, lineStart + index,
+                    clickList, charStyles, charIndex,
                 )
-                x = x1
+                x = x1 + charStyles.lineSpacingAfter(charIndex, index == words.lastIndex)
             }
         }
         exceed(absStartX, textLine, words)
@@ -2048,6 +2048,10 @@ class TextChapterLayout(
         for (index in words.indices) {
             val char = words[index]
             val cw = textWidths[index]
+            // 命中字距：留白加在命中段与邻字之间（命中段跨行时行首/行尾同样让出），
+            // 不计入字符列本身，背景也就不会跟着变宽
+            val charIndex = lineStart + index
+            x += charStyles.lineSpacingBefore(charIndex, index == 0)
             val x1 = x + cw
             addCharToLine(
                 book,
@@ -2060,9 +2064,9 @@ class TextChapterLayout(
                 srcList,
                 clickList,
                 charStyles,
-                lineStart + index,
+                charIndex,
             )
-            x = x1
+            x = x1 + charStyles.lineSpacingAfter(charIndex, index == words.lastIndex)
             if (hasIndent && index == indentLength - 1) {
                 textLine.indentWidth = x
             }
@@ -2325,6 +2329,43 @@ class TextChapterLayout(
     }
 
     /**
+     * 把命中字距挂到 HTML 段落的字符上，并记下每字符的留白量。
+     *
+     * 命中段首字符带左侧留白、尾字符带右侧留白（描边拆开是为了让留白落在命中段外侧，
+     * 而不是挤进命中段内部）；重叠规则同一侧取较大值。
+     */
+    private fun applyMatchLetterSpacing(spanned: Spannable) {
+        matchSpacingBefore = null
+        matchSpacingAfter = null
+        val spans = spanned.getSpans(0, spanned.length, HighlightStyleSpan::class.java)
+            .filter { it.letterSpacingBefore > 0f || it.letterSpacingAfter > 0f }
+        if (spans.isEmpty()) return
+        val before = FloatArray(spanned.length)
+        val after = FloatArray(spanned.length)
+        spans.forEach { span ->
+            val start = spanned.getSpanStart(span)
+            val end = spanned.getSpanEnd(span)
+            if (start < 0 || end <= start || start >= spanned.length) return@forEach
+            if (span.letterSpacingBefore > before[start]) before[start] = span.letterSpacingBefore
+            val lastIndex = end - 1
+            if (lastIndex in after.indices && span.letterSpacingAfter > after[lastIndex]) {
+                after[lastIndex] = span.letterSpacingAfter
+            }
+        }
+        for (index in before.indices) {
+            if (before[index] <= 0f && after[index] <= 0f) continue
+            spanned.setSpan(
+                BoundarySpacingSpan(before[index], after[index]),
+                index,
+                index + 1,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        matchSpacingBefore = before
+        matchSpacingAfter = after
+    }
+
+    /**
      * 段落首行的缩进长度；没有缩进（标题、用户把缩进设为 0、非段落开头）时返回 0。
      */
     private fun paragraphIndentLength(text: CharSequence, isTitle: Boolean): Int {
@@ -2508,6 +2549,11 @@ class TextChapterLayout(
                 bgSpacingRight = style.bgSpacingRight,
                 bgSpacingTop = style.bgSpacingTop,
                 bgSpacingBottom = style.bgSpacingBottom,
+                letterSpacingBefore = style.letterSpacingBefore,
+                letterSpacingAfter = style.letterSpacingAfter,
+                lineSpacingEnabled = style.lineSpacingEnabled,
+                lineSpacingTop = style.lineSpacingTop,
+                lineSpacingBottom = style.lineSpacingBottom,
                 font = style.font,
             )
         }
@@ -2893,6 +2939,8 @@ class TextChapterLayout(
             """createSvg2?\s*\((?:[^,)]*,){3}\s*([0-9]{1,8})""",
             RegexOption.IGNORE_CASE,
         )
+        /** 宽高均小于该值的图片按文字内嵌（text）样式排版 */
+        private const val SMALL_IMAGE_THRESHOLD_PX = 80
         const val PARAGRAPH_BUBBLE_PREFIX = "dp:"
         val FORCED_BUBBLE_TYPES = setOf(
             "qd",

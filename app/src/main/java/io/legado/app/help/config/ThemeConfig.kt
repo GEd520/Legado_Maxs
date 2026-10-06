@@ -17,6 +17,7 @@ import io.legado.app.constant.EventBus
 import io.legado.app.constant.PreferKey
 import io.legado.app.constant.Theme
 import io.legado.app.help.DefaultData
+import io.legado.app.lib.theme.ThemeStateStore
 import io.legado.app.lib.theme.ThemeStore
 import io.legado.app.lib.theme.ThemeTransition
 import io.legado.app.model.BookCover
@@ -71,6 +72,9 @@ object ThemeConfig {
 
     /** 连续编辑（颜色选择器、滑条等）的重建合并窗口：把一串修改合并成一次重建 */
     private const val recreateEditDelay = 500L
+
+    /** [AppConfig.themeMode] 的「跟随系统」取值，见 `R.array.theme_mode_v` 与 `theme_mode` */
+    private const val THEME_MODE_SYSTEM = "0"
 
     /** 已排队广播的延迟，-1 表示当前没有排队，见 [notifyRecreate] */
     private var recreatePendingDelay = -1L
@@ -161,13 +165,23 @@ object ThemeConfig {
         initNightMode()
     }
 
+    /**
+     * 把夜间模式设置同步给 AppCompat。
+     *
+     * 「跟随系统」必须真的交给 AppCompat 跟随（[AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM]），
+     * 不能按"此刻系统的昼夜"固化成 YES/NO：调色板走 [AppConfig.isNightTheme] 的实时系统值，
+     * 而 XML/主题资源（`values-night` 限定符、`android.R.attr.textColorPrimary` 等）走 AppCompat 的
+     * 默认夜间模式。一旦固化，系统昼夜翻转后就会出现"背景/调色板跟随了、字体颜色没跟随"
+     * （浅底浅字、黑底黑字），且重建窗口也救不回来——新窗口仍按固化模式取资源。
+     */
     private fun initNightMode() {
-        val targetMode =
-            if (AppConfig.isNightTheme) {
-                AppCompatDelegate.MODE_NIGHT_YES
-            } else {
-                AppCompatDelegate.MODE_NIGHT_NO
-            }
+        val targetMode = when {
+            AppConfig.themeMode == THEME_MODE_SYSTEM ->
+                AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+
+            AppConfig.isNightTheme -> AppCompatDelegate.MODE_NIGHT_YES
+            else -> AppCompatDelegate.MODE_NIGHT_NO
+        }
         AppCompatDelegate.setDefaultNightMode(targetMode)
     }
 
@@ -681,6 +695,9 @@ object ThemeConfig {
                     .apply()
             }
         }
+        // 色板已更新：让 Compose 侧的读色（LegadoTheme/CommonPageColors）立刻重组，
+        // 不依赖随后的重建窗口（跟随系统翻转、重建被判定为回声而跳过等场景）
+        ThemeStateStore.notifyThemeChanged()
     }
 
     fun clearBg(context: Context) {

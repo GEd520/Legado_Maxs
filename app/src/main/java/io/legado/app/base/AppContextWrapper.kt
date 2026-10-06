@@ -41,6 +41,35 @@ object AppContextWrapper {
     }
 
     /**
+     * 把系统新送来的配置同步到「被包装过」的 Context 资源上。
+     *
+     * [wrap] 用 [Context.createConfigurationContext] 产出的 Context 会把**当时那份** Configuration
+     * （含 `uiMode` 昼夜位）固化成快照，之后系统配置变化不会再更新它。而 AppCompat 解析
+     * `AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM`、以及给 Activity 资源套层次时，读的正是这份快照：
+     * 系统夜切后它算出与系统相反的模式，反过来把 Activity 的资源按旧昼夜罩住，
+     * 表现为「背景/调色板跟随了、字体颜色没跟随」（浅底浅字 / 黑底黑字）。
+     *
+     * 这里把新配置（并回我们自己的语言、字号覆盖）打回资源，让快照跟着系统走。
+     */
+    @Suppress("DEPRECATION")
+    fun syncConfiguration(context: Context, configuration: Configuration) {
+        val resources = context.resources
+        val merged = Configuration(configuration).apply {
+            val targetLocale = getSetLocale(context)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                setLocales(LocaleList(targetLocale))
+            } else {
+                @Suppress("DEPRECATION")
+                locale = targetLocale
+            }
+            fontScale = getFontScale(context)
+        }
+        runCatching {
+            resources.updateConfiguration(merged, resources.displayMetrics)
+        }
+    }
+
+    /**
      * 当前系统语言
      */
     @SuppressLint("ObsoleteSdkInt")

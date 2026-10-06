@@ -26,18 +26,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.ColorUtils as AndroidXColorUtils
 import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.legado.app.R
 import io.legado.app.constant.EventBus
+import io.legado.app.constant.Theme
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.TopBarConfig
+import io.legado.app.lib.theme.ThemeStateStore
 import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.elevation
-import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.primaryColor
-import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.lib.theme.transparentNavBar
+import io.legado.app.ui.widget.resolveTopBarContentColor
 import io.legado.app.utils.BitmapUtils
 import io.legado.app.utils.eventObservable
 import java.io.File
@@ -84,19 +86,24 @@ fun pageTopBarColors(): PageTopBarColors {
         else -> with(LocalDensity.current) { context.elevation.toDp() }
     }
     val containerColor = TopBarConfig.withOpacity(backgroundColor, alphaPercent)
-    val contentColor = if (transparentNavBar) {
-        val isBackgroundLight = Color(context.backgroundColor).luminance() > 0.5f
-        Color(context.getPrimaryTextColor(isBackgroundLight))
+    val wallpaperFile = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
+        ?.takeIf { !transparentNavBar && config.style == TopBarConfig.STYLE_REGULAR }
+    // 内容色与 View 侧 TitleBar 走同一个入口（见 resolveTopBarContentColor）：
+    // 叠了壁纸时无法判定亮度，传 null 回退默认取色；否则按与页面背景合成后的亮度取深浅
+    val backgroundSolid = if (wallpaperFile != null) {
+        null
     } else {
-        Color(context.primaryTextColor)
+        AndroidXColorUtils.compositeColors(containerColor, context.backgroundColor)
     }
+    val contentColor = Color(
+        resolveTopBarContentColor(context, Theme.Auto, backgroundSolid)
+    )
     return PageTopBarColors(
         containerColor = Color(containerColor),
         contentColor = contentColor,
         cornerRadius = cornerRadius,
         shadowElevation = shadowElevation,
-        wallpaperFile = TopBarConfig.currentWallpaperFile(context, AppConfig.isNightTheme)
-            ?.takeIf { !transparentNavBar && config.style == TopBarConfig.STYLE_REGULAR },
+        wallpaperFile = wallpaperFile,
         wallpaperAlpha = TopBarConfig.opacityToAlpha(alphaPercent) / 255f
     )
 }
@@ -190,7 +197,9 @@ private fun rememberTopBarConfigVersion(): Int {
             observable.removeObserver(observer)
         }
     }
-    return version
+    // 主题色板变化（ThemeConfig.applyTheme 广播的版本号）同样要让顶栏重算：
+    // 过去只有 TOP_BAR_CHANGED 会触发，色板已换而事件未到的一瞬间顶栏会停在旧配色
+    return version + ThemeStateStore.version
 }
 
 @Composable
@@ -208,6 +217,18 @@ fun pageCardElevatedContainerColor(): Color {
     } else {
         surface.copy(alpha = 0.95f)
     }
+}
+
+/**
+ * 分组面板容器色（设置类页面的成组卡片）。
+ *
+ * 与首页模块卡片 `GlassCard` 的默认容器色取同一口径：半透明 `surfaceVariant`，
+ * 让壁纸透出来——设置页与首页都是"壁纸上的卡片"，透明度不一致会显得两套观感。
+ * 暗色下不做加亮：首页那套同样只调 alpha，保持一致才能"像首页一样"。
+ */
+@Composable
+fun pagePanelContainerColor(): Color {
+    return MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
 }
 
 @Composable

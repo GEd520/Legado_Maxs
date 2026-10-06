@@ -48,6 +48,12 @@ object TopBarConfig {
     private const val activeDayKey = PreferKey.topBarPackageDay
     private const val activeNightKey = PreferKey.topBarPackageNight
 
+    /** [currentEntry] 的读取缓存：key 含日夜、目录名与快照文件签名 */
+    private var cachedEntry: Pair<String, Entry>? = null
+
+    /** [currentWallpaperFile] 的解析缓存，key 与当前条目同源 */
+    private var cachedWallpaper: Pair<String, File?>? = null
+
     val rootDir: File
         get() = appCtx.externalFiles.getFile("topBarPackages")
 
@@ -160,30 +166,51 @@ object TopBarConfig {
      * 获取当前配置条目。
      * 若激活的是本地配置，会优先读取 _active 快照目录；
      * 若快照不存在则从源目录复制一份。
+     *
+     * 读取有缓存：自定义配置包（复杂主题）在快照目录里存的是 JSON 文件，
+     * 未命中缓存时要 `readText` + 解析，而 [currentConfig] / [currentWallpaperFile] 会被
+     * Compose 顶栏在**每次重组**时调用（见 `ui/theme/CommonPageColors.pageTopBarColors`），
+     * 于是主界面切换与列表滚动都被这份文件 IO 拖住。缓存 key 含快照文件的时间与大小，
+     * 配置包被应用/编辑后（写盘会改签名）或 [clearCurrentCache] 显式清空时自动失效。
      */
     fun currentEntry(context: Context, isNight: Boolean): Entry {
         migrateLegacyIfNeeded(context)
         val dirName = activeDirName(isNight)
         if (dirName == DEFAULT_DIR_NAME) return defaultEntry(context, isNight)
-        readEntry(activeLocalDir(isNight))?.let {
-            return it.copy(dirName = dirName)
-        }
-        val entry = readEntry(localDir(isNight, dirName)) ?: return defaultEntry(context, isNight)
-        runCatching { writeActiveSnapshot(entry) }
-        return readEntry(activeLocalDir(isNight))?.copy(dirName = dirName) ?: entry
+        val snapshotDir = activeLocalDir(isNight)
+        val snapshotFile = File(snapshotDir, packageFileName)
+        val key = "$isNight|$dirName|${snapshotFile.lastModified()}|${snapshotFile.length()}"
+        cachedEntry?.takeIf { it.first == key }?.let { return it.second }
+        val entry = readEntry(snapshotDir)?.copy(dirName = dirName)
+            ?: readEntry(localDir(isNight, dirName))?.let { source ->
+                runCatching { writeActiveSnapshot(source) }
+                readEntry(activeLocalDir(isNight))?.copy(dirName = dirName) ?: source
+            }
+            ?: return defaultEntry(context, isNight)
+        cachedEntry = key to entry
+        return entry
     }
 
-    /** 获取当前壁纸文件，不存在时返回 null */
+    /**
+     * 获取当前壁纸文件，不存在时返回 null。
+     *
+     * 解析结果随 [currentEntry] 一起缓存：路径与包目录都没变时不必反复 `exists()`；
+     * 配置包里换了壁纸必然重写 top_bar.json，签名随之变化，缓存自然失效。
+     */
     fun currentWallpaperFile(context: Context, isNight: Boolean): File? {
         val entry = currentEntry(context, isNight)
         val path = entry.config.wallpaperPath?.takeIf { it.isNotBlank() } ?: return null
+        val key = "${entry.config.isNightMode}|${entry.dirName}|$path|${entry.localDir?.absolutePath}"
+        cachedWallpaper?.takeIf { it.first == key }?.let { return it.second }
         val file = File(path)
         val resolved = if (file.isAbsolute) {
             file
         } else {
             File(entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName), path)
         }
-        return resolved.takeIf { it.exists() && it.isFile }
+        return resolved.takeIf { it.exists() && it.isFile }.also {
+            cachedWallpaper = key to it
+        }
     }
 
     /** 加载所有配置条目（内置 + 本地），按更新时间排序 */
@@ -225,11 +252,13 @@ object TopBarConfig {
             updatedAt = System.currentTimeMillis()
         )
         File(dir, packageFileName).writeText(GSON.toJson(next))
+        clearCurrentCache()
         return Entry(next, Source.LOCAL, dirName, localDir = dir)
     }
 
     /** 应用指定配置：若为默认配置则清除快照，否则写入快照并设置激活目录 */
     fun apply(entry: Entry) {
+        clearCurrentCache()
         if (entry.dirName == DEFAULT_DIR_NAME) {
             FileUtils.delete(activeLocalDir(entry.config.isNightMode), deleteRootDir = true)
             appCtx.putPrefString(
@@ -248,6 +277,7 @@ object TopBarConfig {
     /** 删除本地配置目录，若删除的是当前激活配置则重置为默认 */
     fun deleteLocal(entry: Entry) {
         if (entry.dirName == DEFAULT_DIR_NAME) return
+        clearCurrentCache()
         FileUtils.delete(entry.localDir ?: localDir(entry.config.isNightMode, entry.dirName), deleteRootDir = true)
         resetActiveIfNeeded(entry)
     }
@@ -369,6 +399,7 @@ object TopBarConfig {
     }
 
     private fun resetActiveIfNeeded(entry: Entry) {
+        clearCurrentCache()
         if (activeDirName(entry.config.isNightMode) == entry.dirName) {
             FileUtils.delete(activeLocalDir(entry.config.isNightMode), deleteRootDir = true)
             appCtx.putPrefString(
@@ -385,6 +416,17 @@ object TopBarConfig {
             FileUtils.delete(targetDir, deleteRootDir = true)
         }
         sourceDir.copyRecursively(targetDir, overwrite = true)
+    }
+
+    /**
+     * 清空当前配置与壁纸的读取缓存。
+     *
+     * 写盘会改变快照签名、缓存本会自然失效；这里在配置包的增删改与应用处再显式清一次，
+     * 兜住"同一毫秒内写入且长度未变"这类签名看不出来的改动。
+     */
+    private fun clearCurrentCache() {
+        cachedEntry = null
+        cachedWallpaper = null
     }
 
     private fun activeLocalDir(isNight: Boolean): File {

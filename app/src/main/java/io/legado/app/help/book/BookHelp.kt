@@ -13,6 +13,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.data.entities.BookSource
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.model.CacheBook
 import io.legado.app.model.analyzeRule.AnalyzeUrl
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.ArchiveUtils
@@ -64,13 +66,25 @@ object BookHelp {
 
     val cachePath = FileUtils.getPath(downloadDir, cacheFolderName)
 
+    /**
+     * 单本书的缓存目录
+     */
+    fun getCacheDir(book: Book): File {
+        return downloadDir.getFile(cacheFolderName, book.getFolderName())
+    }
+
     fun clearCache() {
+        //先停缓存任务，再释放 media3 缓存实例（实例持有目录锁），最后删目录
+        CacheBook.close()
+        ExoPlayerHelper.releaseAllBookCaches()
         FileUtils.delete(
             FileUtils.getPath(downloadDir, cacheFolderName)
         )
     }
 
     fun clearCache(book: Book) {
+        CacheBook.cacheBookMap[book.bookUrl]?.stop()
+        ExoPlayerHelper.releaseBookCaches(book)
         val filePath = FileUtils.getPath(downloadDir, cacheFolderName, book.getFolderName())
         FileUtils.delete(filePath)
     }
@@ -89,6 +103,8 @@ object BookHelp {
             cacheFolderName,
             newFolderName
         )
+        //整个目录要挪走：先释放旧路径的缓存实例，否则新路径会再建一个实例指向同一物理目录
+        ExoPlayerHelper.releaseBookMediaCacheOf(File(oldFolderPath))
         FileUtils.move(oldFolderPath, newFolderPath)
     }
 
@@ -119,7 +135,13 @@ object BookHelp {
             }
             downloadDir.getFile(cacheFolderName)
                 .listFiles()?.forEach { bookFile ->
-                    if (!bookFolderNames.contains(bookFile.name)) {
+                    //有缓存清单说明是"书已从书架删除、只剩缓存"的目录：
+                    //缓存管理页还要靠它列出这书并支持"加入书架/使用缓存"，不能当无效缓存清掉
+                    if (!bookFolderNames.contains(bookFile.name) &&
+                        !CacheManifestHelper.hasManifest(bookFile)
+                    ) {
+                        //删目录前先放掉 media3 缓存实例，否则实例会一直指向已删除的目录
+                        ExoPlayerHelper.releaseBookMediaCacheOf(bookFile)
                         FileUtils.delete(bookFile.absolutePath)
                     }
                 }
@@ -387,16 +409,18 @@ object BookHelp {
      * 检测该章节是否下载
      */
     fun hasContent(book: Book, bookChapter: BookChapter): Boolean {
+        if (book.isVideo || book.isAudio) {
+            // 音视频章节的离线内容是媒体文件：判定要走"缓存时用的那个地址"，
+            // 章节表里的地址可能已过期或被新解析结果覆盖，只看它会误判成没缓存
+            return CacheManifestHelper.cachedMediaUrl(book, bookChapter) != null
+        }
         return if (book.isLocalTxt ||
             (bookChapter.isVolume && bookChapter.url.startsWith(bookChapter.title))
         ) {
             true
         } else {
-            downloadDir.exists(
-                cacheFolderName,
-                book.getFolderName(),
-                bookChapter.getFileName()
-            )
+            //标题/序号被目录刷新改过时，缓存文件名对不上当前章节，交给清单按缓存当时的名字找回
+            CacheManifestHelper.cachedTextFileName(book, bookChapter) != null
         }
     }
 
@@ -446,7 +470,8 @@ object BookHelp {
      * 读取章节内容
      */
     fun getContent(book: Book, bookChapter: BookChapter): String? {
-        val file = downloadDir.getFile(
+        //标题/序号变过时按当前名字找不到文件，清单里记着缓存当时的名字
+        val file = CacheManifestHelper.cachedTextFile(book, bookChapter) ?: downloadDir.getFile(
             cacheFolderName,
             book.getFolderName(),
             bookChapter.getFileName()
@@ -478,6 +503,8 @@ object BookHelp {
             book.getFolderName(),
             bookChapter.getFileName()
         ).delete()
+        //删掉缓存后清单里的"已缓存"要与实际一致
+        CacheManifestHelper.refreshAsync(book)
     }
 
     /**

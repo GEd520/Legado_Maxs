@@ -1,11 +1,14 @@
 package io.legado.app.ui.book.read.page
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.PointF
 import android.graphics.drawable.LayerDrawable
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.withTranslation
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
@@ -20,6 +23,7 @@ import io.legado.app.help.config.ReadTipConfig
 import io.legado.app.help.config.ReaderInfoValues
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.TextPos
@@ -445,6 +449,50 @@ class PageView(context: Context) : FrameLayout(context) {
 
     fun selectEndMove(x: Float, y: Float) {
         binding.contentTextView.selectEndMove(x - imgBgPaddingStart, y - headerHeight)
+    }
+
+    /**
+     * 选择端点拖到内容区上下边缘时排队自动翻页（跨页选择）
+     */
+    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean) {
+        binding.contentTextView.checkSelectAutoPage(
+            x - imgBgPaddingStart, y - headerHeight, dragStartPoint
+        )
+    }
+
+    /**
+     * 取消排队中的跨页选择翻页
+     */
+    fun cancelSelectAutoPage() {
+        binding.contentTextView.cancelSelectAutoPage()
+    }
+
+    /**
+     * 选择端点的锚点（本视图坐标）：选区边界 x + 端点所在行的中线 y
+     * 放大镜按这个点取景，气泡里看到的选中状态才能和实际选区一致
+     */
+    fun getSelectEndpointAnchor(textPos: TextPos, startPoint: Boolean): PointF {
+        val anchor = binding.contentTextView.getSelectEndpointAnchor(textPos, startPoint)
+        anchor.x += imgBgPaddingStart
+        anchor.y += headerHeight
+        return anchor
+    }
+
+    /**
+     * 翻页（含翻页动画）导致页窗口位移后，跨页选择的选区两端跟着平移
+     */
+    fun shiftSelectByPageTurn(direction: PageDirection) {
+        binding.contentTextView.shiftSelectByPageTurn(direction)
+    }
+
+    /**
+     * 把正文内容画到画布上（不含页眉页脚与手柄），供自绘放大镜复用
+     */
+    fun drawContentText(canvas: Canvas) {
+        val content = binding.contentTextView
+        canvas.withTranslation(content.left.toFloat(), content.top.toFloat()) {
+            content.draw(this)
+        }
     }
 
     fun selectEndMoveIndex(

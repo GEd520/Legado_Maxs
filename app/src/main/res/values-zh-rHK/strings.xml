@@ -891,6 +891,7 @@
     <string name="sort_by_lastUpdateTime">更新時間排序</string>
     <string name="search_content">全文搜索</string>
     <string name="rss_source_empty">Empty now!</string>
+    <string name="open_rss_source">打開%1$s</string>
     <string name="explore_empty">目前沒有發現源!</string>
     <string name="page_key_set_help">將焦點放到輸入框按下物理按鍵會自動輸入鍵值,多個按鍵會自動用英文逗號隔開.</string>
     <string name="theme_name">主題名</string>
@@ -1501,6 +1502,11 @@
     <string name="verbose_update_log_summary">記錄更詳細的更新過程日誌</string>
     <string name="video_setting">影片設定</string>
     <string name="video_setting_summary">自動播放、全螢幕播放等配置</string>
+    <string name="video_play_settings">播放</string>
+    <string name="video_cache_settings">緩存</string>
+    <string name="video_play_cache">邊播放邊緩存</string>
+    <string name="video_play_cache_summary">播放時緩存影片，看完可離線播放；關閉則只播放不緩存</string>
+    <string name="audio_play_cache">邊播放邊緩存</string>
     <string name="view_backup_info_s">查看備份檔案資訊</string>
     <string name="view_backup_info_t">查看備份資訊</string>
     <string name="view_cookie">查看 Cookie</string>
@@ -1539,6 +1545,15 @@
 
     <!-- Explore Show Column Layout -->
     <string name="switch_layout">切換佈局</string>
+    <string name="switch_layout_current">切換佈局(目前:%1$s)</string>
+    <string name="switch_to_new_explore">切換到新版發現</string>
+    <string name="switch_to_old_explore">切換到經典發現</string>
+    <string name="switch_to_new_rss">切換到新版訂閱</string>
+    <string name="switch_to_old_rss">切換到經典訂閱</string>
+    <string name="source_not_exist">源不存在</string>
+    <string name="select">選擇</string>
+    <string name="expand">展開</string>
+    <string name="error_view_detail">點擊查看詳情</string>
     <string name="select_column">選擇分列(%d)</string>
     <string name="select_column_count">選擇列數</string>
     <string name="switch_layout_list">列表</string>
@@ -2082,4 +2097,48 @@
     <string name="rr_date_format_md">M/d</string>
     <string name="rr_date_format_md_weekday">M/d E</string>
 
+
+    <!-- 緩存管理：書籍/音頻/視頻/漫畫緩存 -->
+    <string name="cache_manage_title">緩存管理</string>
+    <string name="cache_manage_summary">統一管理書籍、音頻、視頻、漫畫的離線緩存</string>
+    <string name="cache_manage_books">書籍</string>
+    <string name="cache_manage_audio">音頻</string>
+    <string name="cache_manage_video">視頻</string>
+    <string name="cache_manage_manga">漫畫</string>
+    <string name="cache_manage_stats">統計</string>
+    <string name="cache_manage_empty">暫無%1$s緩存</string>
+    <string name="cache_manage_cached_count_with_size">已緩存 %1$d/%2$d · %3$s</string>
+    <string name="cache_manage_size_calculating">計算中…</string>
+    <string name="cache_manage_chapters">已緩存章節</string>
+    <string name="cache_manage_search_chapter">搜尋章節</string>
+    <string name="cache_manage_all_chapters">全部</string>
+    <string name="cache_manage_cached">已緩存</string>
+    <string name="cache_manage_not_cached">未緩存</string>
+    <string name="cache_manage_long_press_hint">長按章節可多選，之後可批量緩存或刪除</string>
+    <string name="cache_manage_selected_count">已選 %1$d 章</string>
+    <string name="cache_manage_cache_selected">緩存</string>
+    <string name="cache_manage_cache_selected_done">已加入緩存隊列 %1$d 章</string>
+    <string name="cache_manage_add_bookshelf">加入書架</string>
+    <string name="cache_manage_use_cache">使用緩存</string>
+    <string name="cache_manage_add_bookshelf_success">已按緩存加入書架</string>
+    <string name="cache_manage_use_cache_success">已按緩存同步章節</string>
+    <string name="cache_manage_upload">上傳</string>
+    <string name="cache_manage_upload_all">上傳全部</string>
+    <string name="cache_manage_uploading">正在上傳…</string>
+    <string name="cache_manage_upload_success">上傳成功</string>
+    <string name="cache_manage_upload_failed">上傳失敗：%1$s</string>
+    <string name="cache_manage_delete_all">刪除全部</string>
+    <string name="cache_manage_delete_all_confirm">刪除當前列表 %1$d 本書的全部緩存？</string>
+    <string name="cache_manage_delete_book_confirm">刪除《%1$s》的全部緩存？</string>
+    <string name="cache_manage_delete_selected_confirm">刪除所選 %1$d 章的緩存？</string>
+    <string name="cache_manage_delete_chapter_failed">刪除章節緩存失敗：%1$s</string>
+    <string name="cache_manage_delete_failed">刪除緩存失敗：%1$s</string>
+    <string name="cache_manage_chapter_load_failed">讀取章節失敗：%1$s</string>
+    <string name="cache_manage_no_cache">沒有可上傳的緩存</string>
+    <string name="cache_manage_use_cache_failed">找不到這本書的緩存清單，無法把它加回書架</string>
+    <string name="cache_manage_search_empty">沒有符合的書籍</string>
+    <string name="cache_manage_pack_failed">打包緩存失敗</string>
+    <string name="cache_manage_batch_empty">沒有可操作的緩存</string>
+    <string name="cache_manage_batch_upload_done">批量上傳完成：成功 %1$d 個，失敗 %2$d 個</string>
+    <string name="delete_success">已刪除</string>
 </resources>
