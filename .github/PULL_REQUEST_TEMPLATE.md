@@ -1,6 +1,5 @@
 <!--
 感谢提交 PR！请先阅读 CONTRIBUTING.md。
-安全问题请勿用公开 PR 报告，改走 SECURITY.md 的私密渠道。
 -->
 
 ## 这个 PR 做了什么
