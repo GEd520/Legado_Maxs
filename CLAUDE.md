@@ -130,7 +130,7 @@ GitHub Actions 全部位于 `.github/workflows/`，各 workflow 的职责与触�
 - `NonTransitiveRClass` is enabled — reference only directly used resources.
 - Room schema exports to `$projectDir/schemas` for migration verification.
 - Default-disabled build features (via `gradle.properties`): resvalues, shaders. buildConfig is explicitly enabled (Cronet version fields); do not assume BuildConfig is absent.
-- Architecture documentation in `Structure/` directory (Chinese) covers app startup flow, database schema, reading flow, event bus, and module dependencies.
+- 架构文档有两个家，职责不同、不要混：**`Structure/`（中文）** 是项目**整体架构总览与学习笔记**——启动流程、数据库架构、阅读核心流程、事件总线、模块依赖关系等“全应用层面”的叙述；**`docs/architecture/`** 是**逐模块/专题的长期设计说明**（Cookie 管理、高亮规则、Web 服务架构等）。新增“某一个模块长期怎么做”的设计文档进 `docs/architecture/`（见上文「计划/方案文档的收尾」）；“整个项目怎么搭起来”的总览仍留在 `Structure/`。两者都遵循“文档是导航不是契约、以代码为准”。
 
 ## Git Commit 规范
 
@@ -164,7 +164,7 @@ Conventional Commits 中文适配，husky + commitlint 自动校验不合规提�
 9. **复杂 bug/调试直接走诊断技能** — 遇到无法一眼定位的复杂 bug、性能回归或难排查的调试问题时，先加载 `diagnosing-bugs` 技能按流程收窄根因（先写到最小复现、建立「复现 — 修复 — 回归验证」反馈闭环），不要凭感觉直接改代码猜。
 10. **架构改进走架构诊断技能** — 用户想改进架构或要求产出架构诊断报告时，加载 `improve-codebase-architecture` 扫描出深化改进点、产出报告后再动代码。
 11. **学习项目知识走 teach 技能** — 用户明确表示想学习某个概念、模块或技能时，加载 `teach` 组织讲解，不要泛泛而谈或只甩源码。
-12. **术语歧义走 domain-modeling** — 讨论中出现术语含义不一致、概念边界模糊或需要记录架构决策时，加载 `domain-modeling` 统一术语并把结论写进 CONTEXT.md / docs/adr。
+12. **术语歧义走 domain-modeling** — 讨论中出现术语含义不一致、概念边界模糊或需要记录架构决策时，加载 `domain-modeling` 统一术语并把结论写进 `docs/adr/`（决策）与根目录 `CONTEXT.md`（术语表 / ubiquitous language，首次用到该 skill 时创建）。
 13. **不确定的技术事实走 research** — 涉及外部 API、规范、库行为、版本差异等凭记忆说不准的事实时，先走 `research` 用高置信一手资料查证并落成文档结论，不凭记忆作答。
 14. **合并/重摊冲突走 resolving-merge-conflicts** — 遇到 git merge 或 rebase 冲突时，加载 `resolving-merge-conflicts` 按意图逐个 resolve（**绝不 `--abort`、不随手挑一行**），全部解决后再完成操作。
 
