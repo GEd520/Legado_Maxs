@@ -59,6 +59,11 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
     private var findIndex = -1
     private lateinit var findBackCallback: OnBackPressedCallback
 
+    /**
+     * 本地调试开关：不持久化，每次进入界面默认关闭；下次开始调试时生效
+     */
+    private var localDebug = false
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initRecyclerView()
         initSearchView()
@@ -208,7 +213,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
             binding.rotateLoading.gone()
             binding.fbStop.invisible()
             toastOnUi("未获取到书源")
-        })
+        }, localDebug)
     }
 
     /**
@@ -354,10 +359,19 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
         return super.onCompatCreateOptionsMenu(menu)
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        menu.findItem(R.id.menu_local_debug)?.isChecked = localDebug
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_scan -> qrCodeResult.launch()
             R.id.menu_find_text -> toggleFindBar()
+            R.id.menu_local_debug -> {
+                item.isChecked = !item.isChecked
+                localDebug = item.isChecked
+            }
             R.id.menu_search_src -> showDialogFragment(TextDialog("html", viewModel.searchSrc))
             R.id.menu_book_src -> showDialogFragment(TextDialog("html", viewModel.bookSrc))
             R.id.menu_toc_src -> showDialogFragment(TextDialog("html", viewModel.tocSrc))

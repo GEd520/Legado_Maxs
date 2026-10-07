@@ -32,6 +32,7 @@ import java.util.*
 object Debug {
     var callback: Callback? = null
     private var debugSource: String? = null
+    private var localDebugSession: String? = null
     private val tasks: CompositeCoroutine = CompositeCoroutine()
     val debugMessageMap = HashMap<String, String>()
     private val debugTimeMap = HashMap<String, Long>()
@@ -197,8 +198,16 @@ object Debug {
 
         if (destroy) {
             debugSource = null
+            localDebugSession = null
             callback = null
         }
+    }
+
+    /**
+     * 当前源是否处于本地调试会话：本地调试下流水线不发网络请求，规则直跑
+     */
+    fun isLocalDebug(sourceUrl: String?): Boolean {
+        return localDebugSession != null && localDebugSession == sourceUrl
     }
 
     /**
@@ -246,10 +255,12 @@ object Debug {
      * 开始调试RSS源
      * @param scope 协程作用域
      * @param rssSource RSS源
+     * @param localDebug 是否本地调试（规则直跑，流水线不发网络请求）
      */
-    suspend fun startDebug(scope: CoroutineScope, rssSource: RssSource) {
+    suspend fun startDebug(scope: CoroutineScope, rssSource: RssSource, localDebug: Boolean = false) {
         cancelDebug()
         debugSource = rssSource.sourceUrl
+        localDebugSession = if (localDebug) rssSource.sourceUrl else null
         logRss(debugSource, "︾开始解析")
         val sort = rssSource.sortUrls().first()
         Rss.getArticles(scope, sort.first, sort.second, rssSource, 1)
@@ -283,10 +294,12 @@ object Debug {
      * @param scope 协程作用域
      * @param rssSource RSS源
      * @param key 关键字
+     * @param localDebug 是否本地调试（规则直跑，流水线不发网络请求）
      */
-    fun startDebug(scope: CoroutineScope, rssSource: RssSource, key: String) {
+    fun startDebug(scope: CoroutineScope, rssSource: RssSource, key: String, localDebug: Boolean = false) {
         cancelDebug()
         debugSource = rssSource.sourceUrl
+        localDebugSession = if (localDebug) rssSource.sourceUrl else null
         startTime = System.currentTimeMillis()
         when {
             key.contains("::") -> {
@@ -392,10 +405,12 @@ object Debug {
      * @param scope 协程作用域
      * @param bookSource 书源
      * @param key 关键字
+     * @param localDebug 是否本地调试（规则直跑，流水线不发网络请求）
      */
-    fun startDebug(scope: CoroutineScope, bookSource: BookSource, key: String) {
+    fun startDebug(scope: CoroutineScope, bookSource: BookSource, key: String, localDebug: Boolean = false) {
         cancelDebug()
         debugSource = bookSource.bookSourceUrl
+        localDebugSession = if (localDebug) bookSource.bookSourceUrl else null
         startTime = System.currentTimeMillis()
         when {
             key.isAbsUrl() -> {

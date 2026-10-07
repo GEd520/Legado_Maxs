@@ -51,6 +51,11 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
     private var findIndex = -1
     private lateinit var findBackCallback: OnBackPressedCallback
 
+    /**
+     * 本地调试开关：不持久化，每次进入界面默认关闭；下次开始调试时生效
+     */
+    private var localDebug = false
+
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initRecyclerView()
         initSearchView()
@@ -75,9 +80,18 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
         return super.onCompatCreateOptionsMenu(menu)
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        menu.findItem(R.id.menu_local_debug)?.isChecked = localDebug
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_find_text -> toggleFindBar()
+            R.id.menu_local_debug -> {
+                item.isChecked = !item.isChecked
+                localDebug = item.isChecked
+            }
             R.id.menu_list_src -> showDialogFragment(TextDialog("Html", viewModel.listSrc))
             R.id.menu_content_src -> showDialogFragment(TextDialog("Html", viewModel.contentSrc))
             R.id.menu_preview_source_url -> showPreview(R.string.preview_title_source_url, null)
@@ -215,7 +229,7 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
             binding.rotateLoading.gone()
             binding.fbStop.invisible()
             toastOnUi("未获取到书源")
-        })
+        }, localDebug)
     }
 
     /**

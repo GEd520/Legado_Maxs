@@ -1616,6 +1616,7 @@
     <string name="manga_color_filter">Color Filter</string>
     <string name="hide_manga_title">Hide Manga List Title</string>
     <string name="refresh_explore">Refresh Explore</string>
+    <string name="local_debug">Local Debug</string>
     <string name="padding_display_cutouts">Padding display cutouts</string>
     <string name="read_aloud_pause_resume">Pause/Resume Speech</string>
     <string name="manga_epaper">E-Paper Mode</string>

@@ -115,6 +115,7 @@ object WebBook {
             ruleData = ruleData,
             coroutineContext = currentCoroutineContext()
         )
+        analyzeUrl.localDebug = Debug.isLocalDebug(bookSource.bookSourceUrl)
         val checkJs = bookSource.loginCheckJs
         val res = kotlin.runCatching {
             analyzeUrl.getStrResponseAwait().let {
@@ -205,6 +206,7 @@ object WebBook {
             coroutineContext = currentCoroutineContext(),
             infoMap = exploreInfoMap
         )
+        analyzeUrl.localDebug = Debug.isLocalDebug(bookSource.bookSourceUrl)
         val checkJs = bookSource.loginCheckJs
         val res = kotlin.runCatching {
             analyzeUrl.getStrResponseAwait().let {
@@ -301,6 +303,7 @@ object WebBook {
                 ruleData = book,
                 coroutineContext = currentCoroutineContext()
             )
+            analyzeUrl.localDebug = Debug.isLocalDebug(bookSource.bookSourceUrl)
             val checkJs = bookSource.loginCheckJs
             val res = kotlin.runCatching {
                 analyzeUrl.getStrResponseAwait().let {
@@ -433,6 +436,7 @@ object WebBook {
                     ruleData = book,
                     coroutineContext = currentCoroutineContext()
                 )
+                analyzeUrl.localDebug = Debug.isLocalDebug(bookSource.bookSourceUrl)
                 val checkJs = bookSource.loginCheckJs
                 val res = kotlin.runCatching {
                     analyzeUrl.getStrResponseAwait().let {
@@ -516,6 +520,7 @@ object WebBook {
                 ruleData = book,
                 coroutineContext = currentCoroutineContext()
             )
+            analyzeUrl.localDebug = Debug.isLocalDebug(bookSource.bookSourceUrl)
             val checkJs = bookSource.loginCheckJs
             val res = kotlin.runCatching {
                 analyzeUrl.getStrResponseAwait().let {
@@ -646,6 +651,7 @@ object WebBook {
                 chapter = bookChapter,
                 coroutineContext = currentCoroutineContext()
             )
+            analyzeUrl.localDebug = Debug.isLocalDebug(bookSource.bookSourceUrl)
             val checkJs = bookSource.loginCheckJs
             val res = kotlin.runCatching {
                 analyzeUrl.getStrResponseAwait(
@@ -727,6 +733,7 @@ object WebBook {
                 chapter = bookChapter,
                 coroutineContext = currentCoroutineContext()
             )
+            analyzeUrl.localDebug = Debug.isLocalDebug(bookSource.bookSourceUrl)
             val checkJs = bookSource.loginCheckJs
             val res = kotlin.runCatching {
                 analyzeUrl.getStrResponseAwait(

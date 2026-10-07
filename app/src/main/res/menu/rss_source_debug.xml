@@ -40,4 +40,10 @@
         android:title="@string/preview_content"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/menu_local_debug"
+        android:checkable="true"
+        android:title="@string/local_debug"
+        app:showAsAction="never" />
+
 </menu>

@@ -18,6 +18,7 @@ import io.legado.app.constant.AppPattern
 import io.legado.app.data.entities.BaseSource
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
+import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.CacheManager
 import io.legado.app.data.repository.debug.FlowLogRecorder
 import io.legado.app.help.ConcurrentRateLimiter
@@ -128,6 +129,13 @@ class AnalyzeUrl(
     // 服务器ID
     var serverID: Long? = null
         private set
+
+    /**
+     * 本地调试模式：为 true 时 [getStrResponseAwait] 不发起流水线网络请求，
+     * 规则结果是内容则直接返回，是网址则打印请求摘要后终止链路。
+     * 仅源调试会话置位，规则内部 JS 自建的 AnalyzeUrl 不受影响。
+     */
+    var localDebug = false
 
     init {
         coroutineContext = coroutineContext.minusKey(ContinuationInterceptor)
@@ -428,6 +436,9 @@ class AnalyzeUrl(
         // 必须返回 hex 编码以与 type 路径（HexUtil.encodeHexStr(getByteArrayAwait())）保持一致，
         // 否则 JS 侧 hexDecodeToString() 会因遇到非 hex 字符而抛出异常。
         getDataUrlHexContent()?.let { return it }
+        if (localDebug) {
+            return localDebugStrResponse()
+        }
         if (type != null) {
             return StrResponse(url, HexUtil.encodeHexStr(getByteArrayAwait()))
         }
@@ -489,6 +500,35 @@ class AnalyzeUrl(
             return header.substring(start, endIdx).takeIf { it.isNotBlank() }
         }
         return null
+    }
+
+    /**
+     * 本地调试：URL 规则在构造时已在本地执行完毕，这里不再发起流水线网络请求。
+     * 规则结果是内容则直接作为本阶段网页内容返回，是网址（或为空）则打印请求摘要后终止链路。
+     * 规则内部发起的取内容请求（如 JS 里的 java.ajax）走 JsExtensions 自建的 AnalyzeUrl，不经过本分支。
+     */
+    private fun localDebugStrResponse(): StrResponse {
+        val sourceKey = source?.getKey()
+        return when (judgeLocalDebugResult(ruleUrl)) {
+            LocalDebugResult.Content -> {
+                Debug.log(sourceKey, "≡本地调试：规则返回内容，直接解析")
+                StrResponse(sourceKey ?: url, ruleUrl)
+            }
+
+            LocalDebugResult.Empty -> {
+                Debug.log(sourceKey, "≡本地调试：规则结果为空")
+                throw NoStackTraceException("本地调试：规则结果为空，调试结束")
+            }
+
+            LocalDebugResult.Request -> {
+                Debug.log(sourceKey, "≡本地调试：规则算出请求 $method $url")
+                headerMap.forEach { (key, value) ->
+                    Debug.log(sourceKey, "├$key: $value")
+                }
+                body?.let { Debug.log(sourceKey, "├body: $it") }
+                throw NoStackTraceException("本地调试：未取网页内容，调试结束")
+            }
+        }
     }
 
     fun isSimpleGetRequest(): Boolean {
@@ -771,6 +811,20 @@ class AnalyzeUrl(
     }
 
     /**
+     * 本地调试下 URL 规则计算结果的类别
+     */
+    enum class LocalDebugResult {
+        /** 结果为空 */
+        Empty,
+
+        /** 结果是一个待请求的网址（含 data:、相对地址） */
+        Request,
+
+        /** 结果是网页/接口内容，可直接交给解析规则 */
+        Content
+    }
+
+    /**
      * 上传文件
      */
     suspend fun upload(fileName: String, file: Any, contentType: String): StrResponse {
@@ -864,6 +918,29 @@ class AnalyzeUrl(
         private val queryEncoder =
             RFC3986.UNRESERVED.orNew(PercentCodec.of("!$%&()*+,/:;=?@[\\]^`{|}"))
         val customIp by lazy { ConcurrentHashMap<String, String>() }
+
+        /**
+         * 本地调试结果判定（纯函数）：先按 [paramPattern] 切掉尾部 ,{...} 选项段
+         * （选项段只对真实请求有意义），剩余部分按前缀启发式判定为请求还是内容。
+         */
+        fun judgeLocalDebugResult(ruleUrl: String): LocalDebugResult {
+            val matcher = paramPattern.matcher(ruleUrl)
+            val noOption = if (matcher.find()) ruleUrl.substring(0, matcher.start()) else ruleUrl
+            val trimmed = noOption.trim()
+            if (trimmed.isEmpty()) {
+                return LocalDebugResult.Empty
+            }
+            return if (trimmed.startsWith("http://", true) ||
+                trimmed.startsWith("https://", true) ||
+                trimmed.startsWith("data:", true) ||
+                trimmed.startsWith("/")
+            ) {
+                LocalDebugResult.Request
+            } else {
+                LocalDebugResult.Content
+            }
+        }
+
         fun AnalyzeUrl.getMediaItem(): MediaItem {
             setCookie()
             return ExoPlayerHelper.createMediaItem(url, headerMap)
