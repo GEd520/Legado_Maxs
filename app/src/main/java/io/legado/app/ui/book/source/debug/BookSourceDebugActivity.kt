@@ -14,13 +14,18 @@ import io.legado.app.databinding.ActivitySourceDebugBinding
 import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.source.exploreKinds
 import io.legado.app.lib.dialogs.selector
+import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.dialog.TextDialog
+import io.legado.app.utils.ColorUtils
+import io.legado.app.utils.applyNavigationBarMargin
 import io.legado.app.utils.applyNavigationBarPadding
+import io.legado.app.utils.invisible
 import io.legado.app.utils.launch
 import io.legado.app.utils.setEdgeEffectColor
+import io.legado.app.utils.visible
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.toastOnUi
@@ -55,7 +60,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
                 adapter.addItem(msg)
                 if (state == -1 || state == 1000) {
                     binding.rotateLoading.gone()
-                    menuStop.isVisible = false
+                    binding.fbStop.invisible()
                 }
             }
         }
@@ -66,6 +71,14 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
         binding.recyclerView.adapter = adapter
         binding.recyclerView.applyNavigationBarPadding()
         binding.rotateLoading.loadingColor = accentColor
+        binding.fbStop.backgroundTintList = Selector.colorBuild()
+            .setDefaultColor(accentColor)
+            .setPressedColor(ColorUtils.darkenColor(accentColor))
+            .create()
+        binding.fbStop.setOnClickListener {
+            stopDebug()
+        }
+        binding.fbStop.applyNavigationBarMargin(true)
     }
 
     private fun initSearchView() {
@@ -178,10 +191,10 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
         adapter.clearItems()
         viewModel.startDebug(key, {
             binding.rotateLoading.visible()
-            menuStop.isVisible = true
+            binding.fbStop.visible()
         }, {
             binding.rotateLoading.gone()
-            menuStop.isVisible = false
+            binding.fbStop.invisible()
             toastOnUi("未获取到书源")
         })
     }
@@ -192,12 +205,9 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
     private fun stopDebug() {
         viewModel.stopDebug()
         binding.rotateLoading.gone()
-        menuStop.isVisible = false
+        binding.fbStop.invisible()
         adapter.addItem("■ 已手动停止调试")
     }
-
-    private val menuStop: MenuItem
-        get() = binding.titleBar.menu.findItem(R.id.menu_stop)
 
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_source_debug, menu)
@@ -206,7 +216,6 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
 
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
-            R.id.menu_stop -> stopDebug()
             R.id.menu_scan -> qrCodeResult.launch()
             R.id.menu_search_src -> showDialogFragment(TextDialog("html", viewModel.searchSrc))
             R.id.menu_book_src -> showDialogFragment(TextDialog("html", viewModel.bookSrc))

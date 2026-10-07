@@ -5,13 +5,6 @@
     tools:ignore="AlwaysShowAction">
 
     <item
-        android:id="@+id/menu_stop"
-        android:icon="@drawable/ic_stop_black_24dp"
-        android:title="@string/stop_debug"
-        android:visible="false"
-        app:showAsAction="always" />
-
-    <item
         android:id="@+id/menu_list_src"
         android:title="@string/list_src"
         app:showAsAction="never" />

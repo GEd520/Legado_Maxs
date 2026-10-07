@@ -11,13 +11,6 @@
         app:showAsAction="always" />
 
     <item
-        android:id="@+id/menu_stop"
-        android:icon="@drawable/ic_stop_black_24dp"
-        android:title="@string/stop_debug"
-        android:visible="false"
-        app:showAsAction="always" />
-
-    <item
         android:id="@+id/menu_search_src"
         android:title="@string/search_src"
         app:showAsAction="never" />
