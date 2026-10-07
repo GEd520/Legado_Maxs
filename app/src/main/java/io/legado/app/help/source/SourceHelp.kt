@@ -101,6 +101,8 @@ object SourceHelp {
         appCtx.removePref("${PreferKey.exploreGridMode}_${key}")
         appCtx.removePref("${PreferKey.exploreShowColumnWaterfall}_${key}")
         appCtx.removePref("${PreferKey.exploreShowColumn}_${key}")
+        appCtx.removePref("${PreferKey.exploreShowCategoryTab}_${key}")
+        appCtx.removePref("${PreferKey.exploreShowPreload}_${key}")
         // 清理跳转确认记忆
         OpenUrlConfirmMemory.forget(appCtx, key)
     }

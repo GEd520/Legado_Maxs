@@ -4,6 +4,8 @@ package io.legado.app.ui.main
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
+import android.os.SystemClock
 import android.text.format.DateUtils
 import android.graphics.Outline
 import android.view.Gravity
@@ -11,7 +13,9 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.ViewTreeObserver
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
@@ -48,7 +52,9 @@ import io.legado.app.help.config.ThemeConfig
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.storage.Backup
 import io.legado.app.lib.dialogs.alert
+import io.legado.app.lib.theme.ThemeTransition
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.bottomBackground
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.getSecondaryTextColor
@@ -135,6 +141,19 @@ class MainActivity :
     }
     private var onUpBooksBadgeView: BadgeView? = null
     private var bottomNavigationConfigSignature: String? = null
+
+    /** 首屏分步放开常驻范围是否已开始，见 [ensureFullOffscreenPageLimit] */
+    private var offscreenLimitStaged = false
+
+    /**
+     * 底栏页面全量常驻所需的 offscreenPageLimit，取「实际启用的 Tab 数 - 1」。
+     *
+     * 这样任何两个页面之间的跨度都在预加载范围内，跨页切换不会销毁 Fragment
+     * （FragmentStatePagerAdapter 销毁后重建会让书架重走 upGroup、产生分组闪烁）；
+     * 按实际 Tab 数算而不是写死 4，用户关掉部分 Tab 时就不会白白多建页面。
+     * 在 [initView] 里随 [bottomMenuCount] 一起确定。
+     */
+    private var fullOffscreenPageLimit = 4
     private var bottomNavigationInset = 0
 
     /** 背景图签名缓存，配合 [currentBackgroundSignature] 避免每次 onResume 重复解码 */
@@ -142,6 +161,12 @@ class MainActivity :
 
     /** 背景是否至少应用过一次（区分“尚未初始化”与“签名匹配跳过”） */
     private var backgroundImageApplied = false
+
+    /** 主界面背景已消费的主题切换代数，见 [ThemeTransition.generation]（重建后实例重置） */
+    private var contentTransitionGeneration = -1
+
+    /** 底栏已消费的主题切换代数，见 [ThemeTransition.generation] */
+    private var bottomBarTransitionGeneration = -1
 
     private fun bookshelfPosition(): Int = realPositions.indexOf(idBookshelf)
 
@@ -177,7 +202,8 @@ class MainActivity :
      * 其他注意点：
      * - 背景图解码在子线程异步执行，回调 [onBackgroundDrawableLoaded] 在主线程触发后
      *   才同步 content_container；decode 失败或无背景图配置时 drawable 为 null，
-     *   会将 content_container 背景同步为 null（清除背景，不遗留旧背景图）。
+     *   此时 content_container 回退为**主题纯色底**而非置空——采样源若透明，
+     *   玻璃/磨砂在纯色背景下完全失效（无像素可供折射/模糊）。
      * - mutate() 仅克隆 Drawable 状态对象，底层像素（bitmap/constantState）仍与 decorView
      *   共享，不会因双份背景导致像素内存翻倍，仅额外占用一份轻量状态对象。
      */
@@ -189,8 +215,9 @@ class MainActivity :
             return
         }
         backgroundImageSignature = signature
-        // 注意：背景解码是异步的，super 返回时背景尚未生效，
-        // content_container 的同步统一在 onBackgroundDrawableLoaded 回调中完成
+        // 注意：配置了背景图时解码是异步的，super 返回时背景尚未生效，
+        // content_container 的同步统一在 onBackgroundDrawableLoaded 回调中完成；
+        // 未配置背景图（纯色底）时 super 同步回调，使其与底栏在同一帧进入过渡
         super.upBackgroundImage()
     }
 
@@ -200,15 +227,77 @@ class MainActivity :
         // 使用 constantState?.newDrawable()?.mutate() 创建独立副本，
         // 避免两个 View 共享同一 Drawable 状态导致绘制冲突
         // 注意：此处会无条件覆盖 content_container 背景，详见上方约束说明
-        binding.contentContainer.background = drawable?.constantState?.newDrawable()?.mutate()
+        // 无背景图时回退主题纯色底：LiquidGlass 只能采到 content_container 自身
+        // 的绘制内容，背景置 null 会使采样源透明，玻璃/磨砂效果随之失效
+        val target = drawable?.constantState?.newDrawable()?.mutate()
+            ?: backgroundColor.toDrawable()
+        binding.contentContainer.background = themeContentBackground(target)
         backgroundImageApplied = true
     }
 
     /**
-     * 计算当前主题背景的签名，统一委托 [ThemeConfig.getBackgroundSignature]，
-     * 与 BaseActivity 的进程级背景缓存使用同一口径。
+     * 主界面背景（content_container）的落地。
+     *
+     * 日/夜切换时与底栏共用 [ThemeTransition] 的时长与表现做交叉淡化：两者的数据来源与刷新时机
+     * 本不相同（底栏色值读自 ThemeStore 同步可得，背景可能来自异步解码回调），若各自硬切换，
+     * 底栏瞬变、背景随后才变，观感上就是割裂。
+     *
+     * 起点层按上一轮的实际形态取：上一轮是纯色就重建 ColorDrawable，是背景图就
+     * 从进程级缓存取那张图（[ThemeConfig.getCachedBgImage] 返回共享像素的副本，
+     * 不会多占一张整屏位图；且动画结束即换成终点 Drawable，不长期持有旧图）。
+     * 两者都取不到时保持原有的直接切换。
      */
-    private fun currentBackgroundSignature(): String = ThemeConfig.getBackgroundSignature(this)
+    private fun themeContentBackground(target: Drawable): Drawable {
+        val signature = currentBackgroundSignature()
+        val toColor = (target as? ColorDrawable)?.color
+        ThemeTransition.rememberContentBackground(signature, toColor)
+        val overlay = binding.contentContainer
+        val enteredNewGeneration = contentTransitionGeneration != ThemeTransition.generation
+        contentTransitionGeneration = ThemeTransition.generation
+        if (!enteredNewGeneration) {
+            // 同一轮过渡内再次落地（配置了背景图时会先落地占位图、再落地解码结果）：
+            // 只换终点层，让过渡从占位图接着走到新背景，而不是被这次落地打断
+            if (ThemeTransition.updateCrossFadeTarget(overlay, target)) {
+                return overlay.background ?: target
+            }
+            return target
+        }
+        val startSignature = ThemeTransition.contentTransitionStartSignature
+        val startColor = ThemeTransition.contentTransitionStartColor
+        val unchanged = startSignature == signature &&
+            (signature != null || startColor == toColor)
+        if (unchanged) return target
+        val from = startSignature?.let { ThemeConfig.getCachedBgImage(it) }
+            ?: startColor?.toDrawable()
+            ?: return target
+        return ThemeTransition.crossFade(overlay, from, target)
+    }
+
+    /**
+     * 计算当前主题背景的签名，统一委托 [ThemeConfig.getBackgroundSignature]，
+     * 与 BaseActivity 的进程级背景缓存使用同一口径；未配置背景图时为 null。
+     */
+    private fun currentBackgroundSignature(): String? = ThemeConfig.getBackgroundSignature(this)
+
+    /**
+     * 系统原地 relaunch（字体/显示大小等配置变化）或低内存恢复时，系统会带着
+     * savedInstanceState 重建本实例。恢复出来的是上一次的 Tab Fragment 与 ViewPager 状态，
+     * 它们会和本页新建的 adapter 打架：ViewPager 容器里同时存在恢复的旧页面 view 与新创建的
+     * 页面 view，而它按 child 顺序布局，靠后的 Tab 就被挤出可视区——表现为切到那些 Tab 时
+     * 整页空白（只剩背景与底栏，连 View 顶栏都看不到）。
+     *
+     * 主界面重建一律走「清任务 + 全新启动」（见 [recreate]，theme-styles.md §7.8.1）；
+     * 这里把系统送来的恢复态也纳入同一条路径：先以 null 走完基础初始化（不恢复任何状态），
+     * 再换一个全新启动的实例。[EXTRA_FRESH_RESTART] 保证新实例不再重复重启。
+     */
+    override fun onCreate(savedInstanceState: Bundle?) {
+        if (savedInstanceState != null && !intent.getBooleanExtra(EXTRA_FRESH_RESTART, false)) {
+            super.onCreate(null)
+            restartFresh()
+            return
+        }
+        super.onCreate(savedInstanceState)
+    }
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         // 清理已销毁 Fragment 的引用，避免 fragmentMap 持有导致内存泄漏
@@ -222,7 +311,17 @@ class MainActivity :
         )
         upBottomMenu()
         initView()
-        upHomePage()
+        // 本页重建走「清任务 + 全新启动」（见 recreate()），不带 savedInstanceState，
+        // 重建前所在的 Tab 只能记在进程级 lastTabFragmentId 里；
+        // 冷启动（-1）才落回 defaultHomePage，否则用户会被"踢"回默认首页。
+        // 记 id 而不是下标：导航项的显隐与顺序可被用户改，下标会错位，id 始终稳定
+        val restoredIndex = realPositions.indexOf(lastTabFragmentId)
+        if (restoredIndex in 0 until bottomMenuCount) {
+            binding.viewPagerMain.setCurrentItem(restoredIndex, false)
+        } else {
+            upHomePage()
+        }
+        lastTabFragmentId = realPositions[binding.viewPagerMain.currentItem]
         // setCurrentItem 到 position 0 时不会触发 onPageSelected 回调，
         // 需要显式更新底部导航栏的选中状态
         val position = binding.viewPagerMain.currentItem
@@ -270,8 +369,9 @@ class MainActivity :
             binding.viewPagerMain.postDelayed(1000) {
                 viewModel.ruleSubsUp()
             }
-            // 自动更新书籍
-            val isAutoRefreshedBook = savedInstanceState?.getBoolean("isAutoRefreshedBook") ?: false
+            // 自动更新书籍（recreate 走重启路径时标记通过 intent 传递，见 recreate()）
+            val isAutoRefreshedBook = savedInstanceState?.getBoolean("isAutoRefreshedBook")
+                ?: intent.getBooleanExtra("isAutoRefreshedBook", false)
             if (AppConfig.autoRefreshBook && !isAutoRefreshedBook) {
                 // 每次进入书架后5秒自动更新书籍目录
                 binding.viewPagerMain.postDelayed(5000) {
@@ -285,6 +385,9 @@ class MainActivity :
     }
 
     override fun onNavigationItemSelected(item: MenuItem): Boolean = binding.run {
+        // 用户真的要切页了：先恢复满值，避免首屏分步放开期间跨页切换销毁远处 Fragment
+        // （FragmentStatePagerAdapter 会销毁超出范围的页面，书架重建会重走 upGroup 产生分组闪烁）
+        ensureFullOffscreenPageLimit()
         when (item.itemId) {
             R.id.menu_bookshelf ->
                 viewPagerMain.setCurrentItem(bookshelfPosition(), false)
@@ -324,13 +427,84 @@ class MainActivity :
         }
     }
 
+    /**
+     * 首屏其余页面在主线程**空闲时段**逐级放开（见 [initView] 的说明）。
+     *
+     * 用 [android.os.MessageQueue.IdleHandler] 而不是固定延时：每放开一级都会立刻创建一页
+     * （Compose 首次组合 + 首个数据查询，真机实测单页 0.3-0.5s 主线程阻塞），
+     * 放在"这一帧已经画完、消息队列为空"的间隙里做，才不会正好压在用户的滑动/点击帧上；
+     * 每级之间留 [OFFSCREEN_PAGE_STEP_MIN_GAP] 间隔，避免连续几帧都拿去建页面。
+     * 阶梯只升不降：`setOffscreenPageLimit` 只在值变化时才 `populate()`，反向调小会把已建好的
+     * 页面销毁重建（实测会销毁并重建"我的"页）。用户真的切页时
+     * [ensureFullOffscreenPageLimit] 会立刻拉满，不必等空闲。
+     */
+    private fun scheduleOffscreenPageLimitSteps() {
+        var limit = INITIAL_OFFSCREEN_PAGE_LIMIT
+        var lastStepAt = 0L
+        Looper.myQueue().addIdleHandler {
+            val now = SystemClock.uptimeMillis()
+            when {
+                isFinishing || isDestroyed -> false
+                limit >= fullOffscreenPageLimit -> false
+                now - lastStepAt < OFFSCREEN_PAGE_STEP_MIN_GAP -> true
+                else -> {
+                    lastStepAt = now
+                    limit++
+                    if (binding.viewPagerMain.offscreenPageLimit < limit) {
+                        binding.viewPagerMain.offscreenPageLimit = limit
+                    }
+                    limit < fullOffscreenPageLimit
+                }
+            }
+        }
+    }
+
+    /**
+     * 把 ViewPager 的常驻范围立刻拉满（见 [fullOffscreenPageLimit]）。
+     *
+     * 用在"用户真的要切页"的入口上：首屏分步放开期间若发生跨页切换，
+     * FragmentStatePagerAdapter 会销毁超出范围的页面，远处页面（书架）重建会重走 upGroup
+     * 产生分组闪烁。提前拉满后，切换路径与改动前完全一致。
+     *
+     * 分步放开尚未开始时一律忽略（[offscreenLimitStaged]）：启动流程自己会在
+     * `onActivityCreated` 里 `setCurrentItem` 恢复上次的 Tab，那次也会走到
+     * `onPageSelected`，若在这里拉满就等于首屏又把 5 个页面全建一遍，阶梯形同失效。
+     */
+    private fun ensureFullOffscreenPageLimit() {
+        if (!offscreenLimitStaged) return
+        if (binding.viewPagerMain.offscreenPageLimit < fullOffscreenPageLimit) {
+            binding.viewPagerMain.offscreenPageLimit = fullOffscreenPageLimit
+        }
+    }
+
     private fun initView() = binding.run {
         viewPagerMain.setEdgeEffectColor(primaryColor)
-        // offscreenPageLimit 设为 4，确保 5 个 Tab 互相切换时 Fragment 都不会被销毁重建。
+        // offscreenPageLimit 满值设为 4，确保 5 个 Tab 互相切换时 Fragment 都不会被销毁重建。
         // 之前值为 3 时，从 position 4（我的）切到 position 0（书架）距离为 4 超过预加载范围，
         // 导致书架 Fragment 被销毁重建，重新走 upGroup 流程产生分组闪烁。
-        viewPagerMain.offscreenPageLimit = 4
+        //
+        // 但一开始就给满值，意味着首屏要把 5 个页面全部创建并完成首次布局：
+        // 冷启动/主题重建/从后台恢复时这一段会在首帧里压出一段长帧。
+        // 因此首屏只保留当前页与相邻页，首帧画出来后按 1 → 2 → 3 → 4 分步放开；
+        // 用户一旦真的切页（[ensureFullOffscreenPageLimit]）立刻恢复满值，
+        // 所以"跨页切换不销毁 Fragment"的既有保证不受影响。
+        viewPagerMain.offscreenPageLimit = INITIAL_OFFSCREEN_PAGE_LIMIT
+        viewPagerMain.viewTreeObserver.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    viewPagerMain.viewTreeObserver.removeOnPreDrawListener(this)
+                    // 首帧已按"当前页 + 相邻页"画完，从下一帧起分步放开其余页面：
+                    // 阶梯只升不降（setOffscreenPageLimit 只在值变化时才 populate），
+                    // 避免把已经建好的页面又销毁掉
+                    offscreenLimitStaged = true
+                    scheduleOffscreenPageLimitSteps()
+                    return true
+                }
+            }
+        )
         viewPagerMain.adapter = adapter
+        // 常驻范围按实际启用的 Tab 数确定（见 [fullOffscreenPageLimit]）
+        fullOffscreenPageLimit = (bottomMenuCount - 1).coerceAtLeast(INITIAL_OFFSCREEN_PAGE_LIMIT)
         viewPagerMain.addOnPageChangeListener(PageChangeCallback())
         bottomNavigationView.setOnNavigationItemSelectedListener(this@MainActivity)
         bottomNavigationView.setOnNavigationItemReselectedListener(this@MainActivity)
@@ -339,9 +513,15 @@ class MainActivity :
             bottomNavigationView.setBackgroundResource(R.drawable.bg_eink_border_top)
         }
         bottomNavigationGlass.setOnApplyWindowInsetsListenerCompat { view, windowInsets ->
-            bottomNavigationInset = windowInsets.navigationBarHeight
+            // 只有导航栏高度真的变了才重新应用底栏：insets 在启动期会派发多次
+            // （状态栏/导航栏/IME 各来一次），每次都 force 重建会让底栏图标与布局整包重做，
+            // 首屏因此多出数秒的主线程阻塞
+            val inset = windowInsets.navigationBarHeight
             view.bottomPadding = 0
-            refreshBottomNavigationConfig(force = true)
+            if (inset != bottomNavigationInset) {
+                bottomNavigationInset = inset
+                refreshBottomNavigationConfig(force = true)
+            }
             windowInsets
         }
     }
@@ -546,18 +726,65 @@ class MainActivity :
      */
     private var recreateOnResume = false
 
+    /** 一次重建只放行一个请求，避免同一实例周期内多次触发叠加 */
+    private var recreatePending = false
+
     /**
-     * 如果重启太快fragment不会重建,这里更新一下书架的排序
+     * 判断这条 RECREATE 是否只是「本窗口所依据的那次主题变更」的迟到回声。
+     *
+     * 一次主题变更可能广播两次：触发重建的即时广播，以及 [ThemeConfig] 合并窗口后的防抖广播。
+     * 后者到达时新窗口往往刚建立，放行会与窗口过渡对撞，需要丢弃。
+     *
+     * 判据是**主题状态有没有变**，而不是单纯的时间：紧接在重建之后的第二次真实切换同样落在
+     * 宽限窗内，只按时间丢弃会把「配置已改、窗口还是旧主题」的请求一起吞掉——回到主界面后底栏与
+     * 背景被 onResume 刷新成新主题，内容区（Compose 页）却停在旧主题，正是「底栏切换了、界面没切换」。
+     *
+     * 状态与本窗口建立时完全一致 → 是回声；只要有一项不同（见 [ThemeState] 的比对范围）→ 是新请求。
+     * 取不到基线时按「已变化」处理：宁可多重建一次，也不吞真实切换。
+     *
+     * 比对的是偏好值本身，因此 [ThemeConfig.applyTheme] 的纠正写入（如背景色明度与日夜不匹配时就地改写）
+     * 同样算作状态变化，会多放行一次重建——一次性开销，不成环。
      */
-    override fun recreate() {
-        try {
-            (fragmentMap[getFragmentId(bookshelfPosition())] as? BaseBookshelfFragment)?.run {
-                upSort()
-            }
-        } catch (e: Exception) {
-            // 忽略 upSort 异常，确保 super.recreate() 始终被调用
+    private fun isLateRecreateEcho(): Boolean {
+        if (System.currentTimeMillis() - instanceCreateTime >= RECREATE_IGNORE_MS) {
+            return false
         }
-        super.recreate()
+        val atRestart = themeStateAtRestart ?: return false
+        return ThemeState(AppConfig.themeMode, ThemeConfig.getDurConfig(this)) == atRestart
+    }
+
+    /**
+     * 主界面重建统一走「清任务 + 全新启动」（theme-styles.md §7.8.1 强制）。
+     *
+     * 原地 `super.recreate()` 建立的新窗口里，Compose 实例首帧组合后重组/重绘调度即冻结
+     * （证据链见 docs/archive/主题列表应用主题后UI卡死根因分析.md §15）：书架与首页列表
+     * 现在都是 Compose，切书架布局配置后列表停在空态就是该缺陷的变现；View 侧不受影响，
+     * 所以书架还是 RecyclerView 时问题一直不可见。全新 startActivity 建立的窗口全链路健康。
+     *
+     * 本页是 singleTask，实例还在任务栈里时直接 startActivity 只会回调本实例的
+     * onNewIntent，必须带 FLAG_ACTIVITY_CLEAR_TASK 才能真正建出新窗口。
+     */
+    override fun recreate() = restartFresh()
+
+    /**
+     * 以「清任务 + 全新启动」路径换一个本页实例，见 [recreate] 与 [onCreate] 的 relaunch 拦截。
+     */
+    private fun restartFresh() {
+        if (recreatePending || isFinishing || isDestroyed) return
+        recreatePending = true
+        instanceCreateTime = System.currentTimeMillis()
+        // 记下新窗口将依据的主题状态，供 isLateRecreateEcho() 识别这次变更的迟到回声
+        themeStateAtRestart = ThemeState(AppConfig.themeMode, ThemeConfig.getDurConfig(this))
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                // 旧实例已做过自动更新目录，重启后不再重复（等价于原来 recreate 保留的
+                // savedInstanceState 标记，见 onPostCreate）
+                .putExtra("isAutoRefreshedBook", true)
+                .putExtra(EXTRA_FRESH_RESTART, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        )
+        finish()
     }
 
     override fun observeLiveBus() {
@@ -576,6 +803,10 @@ class MainActivity :
             onUpBooksBadgeView!!.setBadgeCount(it)
         }
         observeEvent<String>(EventBus.RECREATE) {
+            // 只丢弃「同一次主题变更的迟到回声」，窗口内主题状态已变的请求必须放行（见 isLateRecreateEcho）
+            if (isLateRecreateEcho()) {
+                return@observeEvent
+            }
             if (lifecycle.currentState == Lifecycle.State.RESUMED) {
                 // 前台：直接刷新背景并重建（即使 recreate 失败或被跳过也能生效）
                 upBackgroundImage()
@@ -696,6 +927,10 @@ class MainActivity :
 
         override fun onPageSelected(position: Int) {
             pagePosition = position
+            // 已经发生切页（含滑动切换）：立刻拉满常驻范围，后续切换不再销毁远处 Fragment
+            ensureFullOffscreenPageLimit()
+            // recreate() 不带 savedInstanceState，这里实时记录，重建后才能回到本页
+            lastTabFragmentId = realPositions[position]
             val fragmentId = realPositions[position]
             val menuItemId = fragmentIdToMenuItemId(fragmentId)
             binding.bottomNavigationView.menu.findItem(menuItemId)?.isChecked = true
@@ -814,10 +1049,7 @@ class MainActivity :
             val glassView = bottomNavigationGlassView
             if (!glassView.isReleased()) return@run
             val config = NavigationBarConfig.activeConfig(this@MainActivity, AppConfig.isNightTheme)
-            val needsGlass = config.layoutMode != NavigationBarConfig.LAYOUT_STANDARD &&
-                config.effectMode != NavigationBarConfig.EFFECT_SOLID &&
-                DevicePerformanceUtils.supportsRealtimeGlass
-            if (!needsGlass) return@run
+            if (!usesRealtimeGlassShell(config)) return@run
             glassView.visible()
             val bgColor = resolveNavigationBarBackground(config)
             val cornerRadius = if (config.layoutMode == NavigationBarConfig.LAYOUT_FLOATING) 24f.dpToPx() else 0f
@@ -928,7 +1160,6 @@ class MainActivity :
         // 低不透明度时背景近乎透明，深色阴影直接投射在页面内容上对比度反而更高，
         // 所以必须控制阴影本身的 alpha，而非仅缩放 elevation 值。
         val opacityFactor = config.opacity.coerceIn(0, 100) / 100f
-        val fullyTransparent = opacityFactor <= 0f
         val baseElevation = when (config.effectMode) {
             NavigationBarConfig.EFFECT_SOLID -> 8.dpToPx().toFloat()
             NavigationBarConfig.EFFECT_FROSTED -> 14.dpToPx().toFloat()
@@ -956,10 +1187,7 @@ class MainActivity :
         }
         bottomNavigationView.setBackgroundColor(Color.TRANSPARENT)
         bottomNavigationView.background = Color.TRANSPARENT.toDrawable()
-        // 判断是否使用实时玻璃效果：用户配置为玻璃/磨砂 且 非标准布局 且 设备支持实时模糊
-        val wantsLiquid = !standard && config.effectMode != NavigationBarConfig.EFFECT_SOLID
-        val canRealtimeGlass = DevicePerformanceUtils.supportsRealtimeGlass
-        val liquid = wantsLiquid && canRealtimeGlass
+        val liquid = usesRealtimeGlassShell(config)
         applyBottomNavigationGlassOutline(bottomNavigationGlass, if (floating) 24f.dpToPx() else 0f)
         if (liquid) {
             // 玻璃/磨砂效果：保留液态玻璃视图，即使不透明度为 0 也能反映页面滑动的折射/模糊效果
@@ -967,17 +1195,7 @@ class MainActivity :
             setupBottomLiquidGlass(bottomNavigationGlassView, config, if (floating) 24f.dpToPx() else 0f, bgColor)
             // 不透明度为 0 时 shell overlay 设为透明，避免静态底色/描边残留（如 strokeAlpha 基底 0.22）；
             // 液态玻璃视图本身的折射/模糊效果不受影响，仍能反映页面滑动
-            bottomNavigationShellOverlay.background = if (fullyTransparent) {
-                Color.TRANSPARENT.toDrawable()
-            } else {
-                createLiquidGlassShellDrawable(
-                    glassLevel = config.opacity.coerceIn(0, 100) / 100f,
-                    cornerRadius = if (floating) 24f.dpToPx() else 0f,
-                    effectMode = config.effectMode,
-                    bgColor = bgColor,
-                    strokeColor = resolveBottomNavigationBorderColor(config),
-                )
-            }
+            bottomNavigationShellOverlay.background = themeBottomBarBackground(config, floating, bgColor)
         } else {
             // 非实时玻璃（实色效果或低性能设备降级）：释放采样视图以停止持续采样
             if (!bottomNavigationGlassView.isReleased()) {
@@ -986,11 +1204,84 @@ class MainActivity :
             bottomNavigationGlassView.invisible()
             // 不透明度为 0 时无静态背景，确保完全透明；
             // 否则用静态玻璃材质 Drawable 替代实时模糊（低性能设备降级）
-            bottomNavigationShellOverlay.background = if (fullyTransparent) {
-                Color.TRANSPARENT.toDrawable()
-            } else {
-                createBottomNavigationShellDrawable(config, bgColor)
+            bottomNavigationShellOverlay.background = themeBottomBarBackground(config, floating, bgColor)
+        }
+    }
+
+    /**
+     * 底栏背景的落地。
+     *
+     * 与主界面背景封装成同一套过渡：日/夜切换时用 [ThemeTransition.bottomBarTransitionStartColor]
+     * （切换前记录的旧颜色）重建「旧外观」作为起始层，与新外观在同一时长内交叉淡化，
+     * 避免底栏瞬变而背景滞后一拍。
+     *
+     * 非主题切换（如拖动不透明度/圆角等配置）走代数判断直接落地，避免高频过渡互相打断。
+     */
+    private fun themeBottomBarBackground(
+        config: NavigationBarConfig,
+        floating: Boolean,
+        bgColor: Int,
+    ): Drawable {
+        val target = buildBottomBarShellDrawable(config, floating, bgColor)
+        val fromColor = ThemeTransition.bottomBarTransitionStartColor
+        ThemeTransition.rememberBottomBarColor(bgColor)
+        val enteredNewGeneration = bottomBarTransitionGeneration != ThemeTransition.generation
+        bottomBarTransitionGeneration = ThemeTransition.generation
+        if (!enteredNewGeneration) {
+            // 同一轮过渡内再次落地（首个 insets 回调会让底栏内边距由 0 变为真实值，从而整包重建一次）：
+            // 只把进行中的交叉淡化换上新的终点层，否则刚起步的过渡会被这次落地当场打断
+            val overlay = binding.bottomNavigationShellOverlay
+            if (ThemeTransition.updateCrossFadeTarget(overlay, target)) {
+                // 返回当前的包装 Drawable；赋值同一实例不会重启动画
+                return overlay.background ?: target
             }
+            return target
+        }
+        if (fromColor == null || fromColor == bgColor) {
+            return target
+        }
+        return ThemeTransition.crossFade(
+            binding.bottomNavigationShellOverlay,
+            buildBottomBarShellDrawable(config, floating, fromColor),
+            target,
+        )
+    }
+
+    /**
+     * 判断是否使用实时液态玻璃：用户配置为玻璃/磨砂 且 非标准布局 且 设备支持实时模糊。
+     *
+     * 判定被「整包应用」与「构建 Shell 背景」共用，收敛成一处，避免两条路径的条件漂移
+     * 导致同一配置下算出的外观不一致。
+     */
+    private fun usesRealtimeGlassShell(config: NavigationBarConfig): Boolean =
+        config.layoutMode != NavigationBarConfig.LAYOUT_STANDARD &&
+            config.effectMode != NavigationBarConfig.EFFECT_SOLID &&
+            DevicePerformanceUtils.supportsRealtimeGlass
+
+    /**
+     * 构建底栏 Shell 背景 Drawable，与 [applyBottomNavigationShell] 的落地分支一一对应。
+     * 独立成方法是因为过渡需要用「上一轮颜色」重建旧外观作为交叉淡化的起始层。
+     */
+    private fun buildBottomBarShellDrawable(
+        config: NavigationBarConfig,
+        floating: Boolean,
+        bgColor: Int,
+    ): Drawable {
+        val opacityFactor = config.opacity.coerceIn(0, 100) / 100f
+        if (opacityFactor <= 0f) {
+            // 完全透明时无静态背景，避免静态底色/描边残留（如 strokeAlpha 基底 0.22）
+            return Color.TRANSPARENT.toDrawable()
+        }
+        return if (usesRealtimeGlassShell(config)) {
+            createLiquidGlassShellDrawable(
+                glassLevel = opacityFactor,
+                cornerRadius = if (floating) 24f.dpToPx() else 0f,
+                effectMode = config.effectMode,
+                bgColor = bgColor,
+                strokeColor = resolveBottomNavigationBorderColor(config),
+            )
+        } else {
+            createBottomNavigationShellDrawable(config, bgColor)
         }
     }
 
@@ -1354,5 +1645,67 @@ class MainActivity :
         } catch (e: Exception) {
             e.printOnDebug()
         }
+    }
+
+    companion object {
+
+        /**
+         * 重启后迟到的 RECREATE 广播宽限窗。
+         *
+         * 一次主题变更可能同时由即时广播与 [ThemeConfig] 合并窗口（`recreateEditDelay`）后的
+         * 防抖广播两条路送达，窗口远大于防抖延迟即可兜住迟到广播。
+         *
+         * 窗口**只对主题状态未变的请求生效**（见 [isLateRecreateEcho]）：窗口内主题状态已变的
+         * 请求是用户新的一次切换，必须放行，否则界面会停在旧主题。
+         */
+        private const val RECREATE_IGNORE_MS = 2000L
+
+        /** 首屏只保留当前页与相邻页，避免多个页面挤在首帧里一起创建与首次布局 */
+        private const val INITIAL_OFFSCREEN_PAGE_LIMIT = 1
+
+        /** 首屏分步放开常驻范围时，相邻两级之间的最小间隔（实际放开时机由主线程空闲驱动） */
+        private const val OFFSCREEN_PAGE_STEP_MIN_GAP = 600L
+
+        /**
+         * 标记本次启动是 [MainActivity.restartFresh] 拉起的全新实例，见 [MainActivity.onCreate]。
+         *
+         * 系统原地 relaunch / 低内存恢复送来的 savedInstanceState 会触发一次「全新启动」重启；
+         * 新实例本身是全新启动（不带 savedInstanceState），该标记用于兜底，避免任何情况下重复重启。
+         */
+        private const val EXTRA_FRESH_RESTART = "mainFreshRestart"
+
+        /**
+         * 触发本次重启时生效的主题状态，见 [isLateRecreateEcho]。
+         *
+         * 必须是静态值：读取它的是重启后的**新**实例，实例字段无法跨实例传递；
+         * 在 [recreate] 里随 [instanceCreateTime] 一同刷新、配对使用，只在主线程读写。
+         */
+        private var themeStateAtRestart: ThemeState? = null
+
+        /**
+         * 一次重建所依据的主题状态：**模式 + 色板**。
+         *
+         * 两者必须一起比对——墨水屏模式与日间模式拿到的色板完全相同（都读日间偏好），
+         * 只比色板会把「日间 ↔ 墨水屏」当成没变化，那次切换就会在宽限窗内被吞掉。
+         * 色板比对范围：日夜、主题名、主色、强调色、背景、底栏色、背景图（含模糊）、透明底栏。
+         */
+        private data class ThemeState(val themeMode: String?, val config: ThemeConfig.Config)
+
+        /**
+         * 最近一次由重启建立的主界面实例时刻。
+         *
+         * 必须是静态值：读取它的是重启后的**新**实例，实例字段无法跨实例传递。
+         */
+        @Volatile
+        private var instanceCreateTime = 0L
+
+        /**
+         * 重建前所在的 Tab 的 fragment id（[realPositions] 里的成员值）。
+         *
+         * 必须是静态值：[recreate] 走「清任务 + 全新启动」，新实例拿不到 savedInstanceState，
+         * 重建前的选中页只能放在进程级；`-1` 表示本进程尚未进过主界面，落回默认首页。
+         * 记 id 而非下标：导航项显隐与顺序可被用户改动，下标会错位。
+         */
+        private var lastTabFragmentId = -1
     }
 }

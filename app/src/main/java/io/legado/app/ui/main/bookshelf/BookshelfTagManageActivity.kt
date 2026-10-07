@@ -4,7 +4,6 @@ import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.legado.app.R
 import io.legado.app.base.BaseActivity
 import io.legado.app.databinding.ActivityBookshelfTagManageBinding
 import io.legado.app.ui.theme.LegadoTheme
@@ -40,8 +39,11 @@ class BookshelfTagManageActivity : BaseActivity<ActivityBookshelfTagManageBindin
                         onSaveAssignment = viewModel::saveAssignment,
                         onRequestRename = viewModel::confirmRenameTag,
                         onRenameTag = viewModel::executeRenameTag,
-                        onReorderTags = viewModel::reorderTags
-                    )
+                        onReorderTags = viewModel::reorderTags,
+                        onShowSmartTagDialog = viewModel::showSmartTagDialog,
+                        onSmartTagsEnabledChange = viewModel::setSmartTagsEnabled,
+                        onSmartTagEnabledChange = viewModel::setSmartTagEnabled,
+                    ),
                 )
             }
         }

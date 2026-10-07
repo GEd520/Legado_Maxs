@@ -28,6 +28,7 @@ interface StorageDataProvider {
     suspend fun ttsEngineCount(): Int
     suspend fun aCacheSize(): Long
     suspend fun aCacheItemCount(): Int
+    suspend fun internalCacheSize(): Long
     suspend fun dbCacheSize(): Long
     suspend fun dbCacheItemCount(): Int
     suspend fun logCacheSize(): Long
@@ -64,6 +65,7 @@ interface StorageDataProvider {
         override suspend fun ttsEngineCount(): Int = StorageCalculator.countTtsEngines()
         override suspend fun aCacheSize(): Long = StorageCalculator.calculateACacheSize()
         override suspend fun aCacheItemCount(): Int = StorageCalculator.countACacheItems()
+        override suspend fun internalCacheSize(): Long = StorageCalculator.calculateInternalCacheSize()
         override suspend fun dbCacheSize(): Long = StorageCalculator.calculateDbCacheSize()
         override suspend fun dbCacheItemCount(): Int = StorageCalculator.countDbCacheItems()
         override suspend fun logCacheSize(): Long = StorageCalculator.calculateLogCacheSize()
@@ -96,6 +98,9 @@ interface StorageDataProvider {
                 CacheType.ACACHE_DISK -> withContext(Dispatchers.IO) {
                     StorageCalculator.clearACacheAccurate(detailId)
                 }
+                CacheType.INTERNAL_CACHE -> withContext(Dispatchers.IO) {
+                    StorageCalculator.clearInternalCache()
+                }
                 CacheType.DB_CACHE -> StorageCalculator.clearDbCacheByPrefix(detailId)
                 CacheType.LOG_CACHE -> withContext(Dispatchers.IO) {
                     StorageCalculator.clearLogCache()
@@ -113,6 +118,7 @@ interface StorageDataProvider {
                 StorageCalculator.clearTempCache()
                 StorageCalculator.clearTtsCache()
                 StorageCalculator.clearACache()
+                StorageCalculator.clearInternalCache()
                 StorageCalculator.clearLogCache()
                 StorageCalculator.clearWebViewCache()
             }
@@ -125,6 +131,7 @@ interface StorageDataProvider {
             CacheType.TEMP_CACHE -> appCtx.getString(R.string.storage_cache_temp_name)
             CacheType.TTS_CACHE -> appCtx.getString(R.string.storage_cache_tts_name)
             CacheType.ACACHE_DISK -> appCtx.getString(R.string.storage_cache_acache_name)
+            CacheType.INTERNAL_CACHE -> appCtx.getString(R.string.storage_cache_internal_name)
             CacheType.DB_CACHE -> appCtx.getString(R.string.storage_cache_db_name)
             CacheType.LOG_CACHE -> appCtx.getString(R.string.storage_cache_log_name)
             CacheType.WEBVIEW_CACHE -> appCtx.getString(R.string.storage_cache_webview_name)
@@ -136,6 +143,7 @@ interface StorageDataProvider {
             CacheType.TEMP_CACHE -> appCtx.getString(R.string.storage_cache_temp_desc)
             CacheType.TTS_CACHE -> appCtx.getString(R.string.storage_cache_tts_desc)
             CacheType.ACACHE_DISK -> appCtx.getString(R.string.storage_cache_acache_desc)
+            CacheType.INTERNAL_CACHE -> appCtx.getString(R.string.storage_cache_internal_desc)
             CacheType.DB_CACHE -> appCtx.getString(R.string.storage_cache_db_desc)
             CacheType.LOG_CACHE -> appCtx.getString(R.string.storage_cache_log_desc)
             CacheType.WEBVIEW_CACHE -> appCtx.getString(R.string.storage_cache_webview_desc)
@@ -162,6 +170,7 @@ interface StorageDataProvider {
             CacheType.TEMP_CACHE -> appCtx.externalCache.absolutePath
             CacheType.TTS_CACHE -> appCtx.cacheDir.getFile("httpTTS").absolutePath
             CacheType.ACACHE_DISK -> File(appCtx.cacheDir, "ACache").absolutePath
+            CacheType.INTERNAL_CACHE -> appCtx.cacheDir.absolutePath
             CacheType.DB_CACHE -> appCtx.getDatabasePath("legado.db").absolutePath
             CacheType.WEBVIEW_CACHE -> listOf(
                 appCtx.getDir("webview", android.content.Context.MODE_PRIVATE).absolutePath,

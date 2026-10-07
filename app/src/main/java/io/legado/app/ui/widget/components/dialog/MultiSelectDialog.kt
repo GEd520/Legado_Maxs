@@ -68,6 +68,7 @@ fun MultiSelectDialogContent(
     onDeselectAll: () -> Unit,          // 全不选回�?
     headerAction: (@Composable () -> Unit)? = null, // 标题栏动作按钮插�?(�?检测格�?)
     itemTrailing: (@Composable (MultiSelectItem) -> Unit)? = null, // 行尾内容插槽 (如验证状态图�?
+    headerContent: (@Composable () -> Unit)? = null,
     onConfirm: (() -> Unit)? = null     // 确定按钮回调, 为空时确定按钮仅关闭弹窗
 ) {
     val topBarColor = pageTopBarColors().containerColor
@@ -158,6 +159,8 @@ fun MultiSelectDialogContent(
                     }
 
                     // 项目列表
+                    headerContent?.invoke()
+
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()

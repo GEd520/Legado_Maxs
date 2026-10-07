@@ -44,6 +44,10 @@ val Book.isVideo: Boolean
 val Book.isImage: Boolean
     get() = isType(BookType.image)
 
+/** 音视频书的正文规则返回的是媒体地址，离线缓存走 media3 媒体缓存 */
+val Book.isMedia: Boolean
+    get() = isAudio || isVideo
+
 val Book.isLocal: Boolean
     get() {
         if (type == 0) {

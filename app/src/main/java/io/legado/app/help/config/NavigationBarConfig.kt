@@ -2,6 +2,7 @@ package io.legado.app.help.config
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -15,7 +16,11 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.graphics.drawable.DrawableCompat
+import androidx.core.graphics.drawable.toDrawable
 import com.google.gson.JsonArray
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import io.legado.app.R
 import io.legado.app.constant.EventBus
 import io.legado.app.lib.theme.ThemeStore
@@ -46,9 +51,6 @@ import splitties.init.appCtx
  * @property opacity 背景透明度（0-100）
  * @property borderColor 边框颜色
  * @property borderAlpha 边框透明度（0-100）
- * @property wallpaperPath 壁纸图片路径（当前未使用）
- * @property sidebarBackgroundPath 侧栏背景路径（侧栏模式专用）
- * @property sidebarGravity 侧栏停靠方向："start" 或 "end"
  * @property icons 自定义图标映射，key 格式为 "{itemKey}_{state}"
  * @property updatedAt 最后更新时间戳
  */
@@ -64,9 +66,6 @@ data class NavigationBarConfig(
     var opacity: Int = 76,
     var borderColor: Int? = null,
     var borderAlpha: Int = 100,
-    var wallpaperPath: String? = null,
-    var sidebarBackgroundPath: String? = null,
-    var sidebarGravity: String = "start",
     var icons: Map<String, String> = emptyMap(),
     var updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -119,12 +118,68 @@ data class NavigationBarConfig(
         private const val PREF_KEY_ACTIVE_NIGHT = "activeNightNavBarId"
         private const val PREF_KEY_CUSTOM_CONFIGS = "customNavBarConfigs"
 
-        /** 图标 Bitmap 缓存，避免每次重新解析 SVG/PNG 文件 */
-        private val iconBitmapCache = LruCache<String, Bitmap>(64)
+        /** 图标缓存容量上限：按解码后的位图字节数计，避免用户直接选相册大图把缓存撑爆 */
+        private const val ICON_CACHE_MAX_BYTES = 12 * 1024 * 1024
+
+        /**
+         * 图标解码结果缓存（SVG 位图与位图图标都进这里）。
+         *
+         * 存的是 [Drawable.createFromPath] **原样返回的 Drawable 实例**，而不是"等价重建"的产物：
+         * 底栏图标在首次进入主界面时会被连续应用两次（`upBottomMenu` 一次、`initView` 再确认一次），
+         * 每次都要重新解码 10 张图（设备实测单次约 0.5s 主线程阻塞）。
+         * 换成 `BitmapFactory` + `BitmapDrawable` 的等价重建会改变渲染（实测底栏区 884 个像素不同），
+         * 原样复用则逐像素一致。按字节数计容量：图标过大（用户直接选相册大图）时不入缓存，
+         * 行为与改动前一致，也不会把缓存撑爆。
+         */
+        private val iconDrawableCache = object : LruCache<String, Drawable>(ICON_CACHE_MAX_BYTES) {
+            override fun sizeOf(key: String, value: Drawable): Int = when (value) {
+                is BitmapDrawable -> value.bitmap?.byteCount ?: 0
+                else -> 1024
+            }
+        }
+
+        /** 图标位图缓存（按字节计容量），与 [iconDrawableCache] 共用同一份解码结果 */
+        private val iconBitmapCache = object : LruCache<String, Bitmap>(ICON_CACHE_MAX_BYTES) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        }
+
+        /**
+         * 位图包成 Drawable 并缓存。
+         *
+         * 包一层本身很便宜，但启动期底栏图标会被应用两次以上，复用同一实例可以少一次分配；
+         * 统一用 appCtx 的资源构造，避免静态缓存间接持有 Activity。
+         */
+        private fun drawableOf(cacheKey: String, bitmap: Bitmap): Drawable {
+            return synchronized(iconDrawableCache) {
+                iconDrawableCache[cacheKey]
+            } ?: bitmap.toDrawable(appCtx.resources).also {
+                synchronized(iconDrawableCache) { iconDrawableCache.put(cacheKey, it) }
+            }
+        }
 
         /** 清空图标缓存（配置变更时调用） */
         fun clearIconCache() {
+            iconDrawableCache.evictAll()
             iconBitmapCache.evictAll()
+        }
+
+        /**
+         * 预解码当前激活配置的自定义图标（供 App 启动时后台调用）。
+         *
+         * 底栏图标首次应用时必须同步解码（实测 10 张合计约 0.6s 主线程阻塞），
+         * 启动时先在后台解好，主线程应用底栏时直接命中缓存。
+         * 多张图并行解码：源图往往是用户相册里的大图，单张 PNG 解压就要上百毫秒，
+         * 串行解完窗口太长容易赶不上。未配置自定义图标时直接返回。
+         */
+        suspend fun preloadActiveIcons(context: Context) {
+            val config = runCatching { activeConfig(context, AppConfig.isNightTheme) }.getOrNull()
+                ?: return
+            if (config.icons.isEmpty()) return
+            coroutineScope {
+                config.icons.values.forEach { path ->
+                    launch(Dispatchers.IO) { runCatching { loadIconDrawable(context, path) } }
+                }
+            }
         }
 
         /** 生成图标缓存 key：基于文件路径、最后修改时间和大小 */
@@ -173,12 +228,28 @@ data class NavigationBarConfig(
         }
 
         /**
+         * [loadConfigs] 的解析结果缓存。
+         *
+         * 主界面每次 onResume、底栏配置签名比对（[currentSignature]）、菜单图标应用
+         * （[applyToMenu]）都会走到 [activeConfig] → 这里，而它要 `getPrefString` +
+         * 逐个 `GSON.fromJson` 解析用户的每份自定义底栏——进出主界面/切页时这份解析完全是重复劳动。
+         * 缓存键直接用原始 JSON 字符串（比字符串比解析便宜得多），任何写入
+         * （[saveConfigs]、旧格式迁移、主题导入）都会让键失效。
+         */
+        @Volatile
+        private var cachedConfigs: Pair<String, List<NavigationBarConfig>>? = null
+
+        /**
          * 加载所有底栏配置：内置配置（日间/夜间）+ 用户自定义配置。
          * 支持从旧版 JSON 对象格式自动迁移到数组格式。
          */
         fun loadConfigs(context: Context): MutableList<NavigationBarConfig> {
+            val stored = context.getPrefString(PREF_KEY_CUSTOM_CONFIGS).orEmpty()
+            cachedConfigs?.takeIf { it.first == stored }?.let { cached ->
+                // 返回副本：调用方（配置管理页、主题导入）会直接改这些实例
+                return cached.second.mapTo(mutableListOf()) { it.copySelf() }
+            }
             val configs = mutableListOf(createDefaultDay(), createDefaultNight())
-            val stored = context.getPrefString(PREF_KEY_CUSTOM_CONFIGS)
             var shouldMigrate = false
             when {
                 stored.isNullOrBlank() -> Unit
@@ -197,6 +268,10 @@ data class NavigationBarConfig(
             if (shouldMigrate) {
                 saveConfigs(context, configs)
             }
+            // 只缓存"未被迁移改写"的形态：迁移会重写偏好，下一次调用键不同、自然重新解析
+            if (!shouldMigrate) {
+                cachedConfigs = stored to configs.map { it.copySelf() }
+            }
             return configs
         }
 
@@ -208,6 +283,8 @@ data class NavigationBarConfig(
                     GSON.toJson(configs.filter { !it.isBuiltin })
                 )
             }
+            // 写盘后键本就变了，这里再显式清一次，兜住失败/时序异常
+            cachedConfigs = null
         }
 
         private fun parseConfigArray(stored: String): List<NavigationBarConfig> {
@@ -343,23 +420,60 @@ data class NavigationBarConfig(
         /** 生成图标存储 key："{itemKey}_{state}" */
         fun iconKey(itemKey: String, state: String): String = "${itemKey}_$state"
 
+        /**
+         * 读取自定义图标，结果进 [iconDrawableCache]（键含文件修改时间与大小，换图即失效）。
+         *
+         * SVG 用 [SvgUtils] 解析（[Drawable.createFromPath] 不支持 SVG）；
+         * 位图图标用 [Drawable.createFromPath] 原样解码后缓存。
+         */
         private fun loadIconDrawable(context: Context, path: String?): Drawable? {
             if (path.isNullOrBlank()) return null
+            val cacheKey = iconCacheKey(path)
+            synchronized(iconDrawableCache) {
+                iconDrawableCache[cacheKey]?.let { return it }
+            }
             val file = java.io.File(path)
-            // SVG 文件需要用 SvgUtils 解析，Drawable.createFromPath 不支持 SVG
             if (file.extension.equals("svg", ignoreCase = true)) {
                 val targetSize = (context.resources.displayMetrics.density * 48).toInt()
-                val cacheKey = iconCacheKey(path)
-                val bitmap = synchronized(iconBitmapCache) {
-                    iconBitmapCache[cacheKey]?.takeIf { !it.isRecycled }
-                        ?: SvgUtils.createBitmapFromFile(path, targetSize, targetSize)?.also {
-                            iconBitmapCache.put(cacheKey, it)
-                        }
-                }
-                return bitmap?.let { BitmapDrawable(context.resources, it) }
+                return SvgUtils.createBitmapFromFile(path, targetSize, targetSize)
+                    ?.let { drawableOf(cacheKey, it) }
             }
-            return Drawable.createFromPath(path)
+            val bitmap = synchronized(iconBitmapCache) {
+                iconBitmapCache[cacheKey]?.takeIf { !it.isRecycled }
+                    ?: decodeIconBitmap(path, iconDecodeTarget(context)).also {
+                        if (it != null) iconBitmapCache.put(cacheKey, it)
+                    }
+            }
+            return bitmap?.let { drawableOf(cacheKey, it) }
         }
+
+        /**
+         * 图标解码目标尺寸（px）：底栏图标按 22-23dp 绘制，取 96dp 留 4 倍余量。
+         *
+         * 用户常直接从相册选图，动辄一两千像素、十几 MB。底栏只显示几十像素，
+         * 整张解码既慢（实测单张 80-140ms，10 张近 1 秒、首屏还会做两遍）
+         * 又会因为单张超出缓存上限而根本留不住；先按目标尺寸降采样再交给 ImageView，
+         * 时间与内存都成倍下降。
+         */
+        private fun iconDecodeTarget(context: Context): Int =
+            (context.resources.displayMetrics.density * 96).toInt().coerceAtLeast(1)
+
+        /** 按目标尺寸降采样解码图标位图 */
+        private fun decodeIconBitmap(path: String, targetSize: Int): Bitmap? = runCatching {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
+            var sampleSize = 1
+            while (bounds.outWidth / (sampleSize * 2) >= targetSize &&
+                bounds.outHeight / (sampleSize * 2) >= targetSize
+            ) {
+                sampleSize *= 2
+            }
+            BitmapFactory.decodeFile(
+                path,
+                BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            )
+        }.getOrNull()
 
         private fun defaultDrawable(context: Context, @DrawableRes resId: Int, selected: Boolean, bgColor: Int? = null): Drawable {
             val drawable = ContextCompat.getDrawable(context, resId)!!.mutate()

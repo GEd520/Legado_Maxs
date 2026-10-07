@@ -34,7 +34,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.legado.app.R
@@ -53,7 +52,7 @@ internal fun BookTagAddDialog(
     reusableTags: List<String>,
     onDismiss: () -> Unit,
     onAdd: (List<String>) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     var newTagInput by rememberSaveable(group.groupId) { mutableStateOf("") }
     var query by rememberSaveable(group.groupId) { mutableStateOf("") }
@@ -70,12 +69,12 @@ internal fun BookTagAddDialog(
     val tagsToAdd = remember(reusableTags, selectedTags, newTags) {
         BookTagManagement.mergeTags(
             configured = reusableTags.filter { it in selectedTags },
-            existing = newTags
+            existing = newTags,
         )
     }
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
             modifier = modifier
@@ -83,14 +82,14 @@ internal fun BookTagAddDialog(
                 .fillMaxHeight(0.82f)
                 .widthIn(max = 620.dp),
             shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface
+            color = MaterialTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = stringResource(R.string.bookshelf_tag_add_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(modifier = Modifier.height(3.dp))
                 Text(
@@ -98,7 +97,7 @@ internal fun BookTagAddDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
@@ -107,7 +106,7 @@ internal fun BookTagAddDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text(stringResource(R.string.bookshelf_tag_new_label)) },
-                    placeholder = { Text(stringResource(R.string.bookshelf_tag_new_hint)) }
+                    placeholder = { Text(stringResource(R.string.bookshelf_tag_new_hint)) },
                 )
                 if (reusableTags.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -116,17 +115,17 @@ internal fun BookTagAddDialog(
                         onValueChange = { query = it },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        placeholder = { Text(stringResource(R.string.bookshelf_tag_search_existing)) }
+                        placeholder = { Text(stringResource(R.string.bookshelf_tag_search_existing)) },
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = stringResource(
                             R.string.bookshelf_tag_reusable_summary,
                             reusableTags.size,
-                            selectedTags.size
+                            selectedTags.size,
                         ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -134,22 +133,22 @@ internal fun BookTagAddDialog(
                     reusableTags.isEmpty() -> {
                         Box(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = stringResource(R.string.bookshelf_tag_no_reusable),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                     visibleTags.isEmpty() -> {
                         Box(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
-                            contentAlignment = Alignment.Center
+                            contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = stringResource(R.string.bookshelf_tag_no_matching_existing),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
@@ -159,7 +158,7 @@ internal fun BookTagAddDialog(
                                 .weight(1f)
                                 .fillMaxWidth()
                                 .heightIn(min = 120.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
                             items(visibleTags, key = { it.lowercase() }) { tag ->
                                 val selected = tag in selectedTags
@@ -167,7 +166,7 @@ internal fun BookTagAddDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 2.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Checkbox(
                                         checked = selected,
@@ -177,13 +176,13 @@ internal fun BookTagAddDialog(
                                             } else {
                                                 selectedTags + tag
                                             }
-                                        }
+                                        },
                                     )
                                     Text(
                                         text = tag,
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = MaterialTheme.colorScheme.onSurface,
-                                        modifier = Modifier.weight(1f)
+                                        modifier = Modifier.weight(1f),
                                     )
                                 }
                             }
@@ -193,18 +192,18 @@ internal fun BookTagAddDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TextButton(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
                     ) {
                         Text(stringResource(R.string.cancel))
                     }
                     androidx.compose.material3.Button(
                         onClick = { if (tagsToAdd.isNotEmpty()) onAdd(tagsToAdd) },
                         modifier = Modifier.weight(1f),
-                        enabled = tagsToAdd.isNotEmpty()
+                        enabled = tagsToAdd.isNotEmpty(),
                     ) {
                         Text(stringResource(R.string.add))
                     }
@@ -222,7 +221,7 @@ internal fun BookTagAssignmentDialog(
     assignment: BookTagAssignmentUi,
     onDismiss: () -> Unit,
     onSave: (Set<String>) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable(assignment.groupId, assignment.tag) { mutableStateOf("") }
     var filter by rememberSaveable(assignment.groupId, assignment.tag) {
@@ -247,13 +246,13 @@ internal fun BookTagAssignmentDialog(
             }
             .sortedWith(
                 compareByDescending<BookTagInfo> { it.bookUrl in selectedUrls }
-                    .thenBy { it.name.lowercase() }
+                    .thenBy { it.name.lowercase() },
             )
             .toList()
     }
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Surface(
             modifier = modifier
@@ -261,7 +260,7 @@ internal fun BookTagAssignmentDialog(
                 .fillMaxHeight(0.90f)
                 .widthIn(max = 700.dp),
             shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface
+            color = MaterialTheme.colorScheme.surface,
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
@@ -270,7 +269,7 @@ internal fun BookTagAssignmentDialog(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
@@ -278,46 +277,46 @@ internal fun BookTagAssignmentDialog(
                     onValueChange = { query = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text(stringResource(R.string.bookshelf_tag_search_book)) }
+                    placeholder = { Text(stringResource(R.string.bookshelf_tag_search_book)) },
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     FilterChip(
                         text = stringResource(R.string.bookshelf_tag_filter_all),
                         selected = filter == BookSelectionFilter.All,
                         modifier = Modifier.weight(1f),
-                        onClick = { filter = BookSelectionFilter.All }
+                        onClick = { filter = BookSelectionFilter.All },
                     )
                     FilterChip(
                         text = stringResource(R.string.bookshelf_tag_filter_selected),
                         selected = filter == BookSelectionFilter.Selected,
                         modifier = Modifier.weight(1f),
-                        onClick = { filter = BookSelectionFilter.Selected }
+                        onClick = { filter = BookSelectionFilter.Selected },
                     )
                     FilterChip(
                         text = stringResource(R.string.bookshelf_tag_filter_unselected),
                         selected = filter == BookSelectionFilter.Unselected,
                         modifier = Modifier.weight(1f),
-                        onClick = { filter = BookSelectionFilter.Unselected }
+                        onClick = { filter = BookSelectionFilter.Unselected },
                     )
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         text = stringResource(
                             R.string.bookshelf_tag_selected_count,
                             selectedUrls.size,
-                            assignment.books.size
+                            assignment.books.size,
                         ),
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TextButton(onClick = {
                         selectedUrls = selectedUrls + visibleBooks.map { it.bookUrl }
@@ -334,30 +333,30 @@ internal fun BookTagAssignmentDialog(
                 if (visibleBooks.isEmpty()) {
                     Box(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             text = stringResource(R.string.bookshelf_tag_no_matching_books),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 } else {
                     LazyColumn(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(visibleBooks, key = { it.bookUrl }) { book ->
                             val selected = book.bookUrl in selectedUrls
                             val tags = BookTagHelper.parse(book.customTag)
                             val description = listOfNotNull(
                                 book.author.takeIf { it.isNotBlank() },
-                                tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+                                tags.takeIf { it.isNotEmpty() }?.joinToString(" · "),
                             ).joinToString("  ·  ")
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Checkbox(
                                     checked = selected,
@@ -367,20 +366,20 @@ internal fun BookTagAssignmentDialog(
                                         } else {
                                             selectedUrls + book.bookUrl
                                         }
-                                    }
+                                    },
                                 )
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = book.name,
                                         style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = MaterialTheme.colorScheme.onSurface,
                                     )
                                     if (description.isNotEmpty()) {
                                         Text(
                                             text = description,
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
                                 }
@@ -391,17 +390,17 @@ internal fun BookTagAssignmentDialog(
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     TextButton(
                         onClick = onDismiss,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
                     ) {
                         Text(stringResource(R.string.cancel))
                     }
                     androidx.compose.material3.Button(
                         onClick = { onSave(selectedUrls) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
                     ) {
                         Text(stringResource(R.string.bookshelf_tag_save))
                     }
@@ -416,14 +415,12 @@ internal fun BookTagAssignmentDialog(
  */
 @Composable
 internal fun BookTagRenameDialog(
-    groupId: Long,
-    groupName: String,
     oldTag: String,
     onDismiss: () -> Unit,
     onRename: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    var newName by rememberSaveable(groupId, oldTag) { mutableStateOf(oldTag) }
+    var newName by rememberSaveable(oldTag) { mutableStateOf(oldTag) }
     val canRename = newName.trim().isNotBlank() &&
         !newName.trim().equals(oldTag, ignoreCase = true)
     androidx.compose.material3.AlertDialog(
@@ -433,9 +430,9 @@ internal fun BookTagRenameDialog(
         text = {
             Column {
                 Text(
-                    text = stringResource(R.string.bookshelf_tag_rename_group, groupName),
+                    text = stringResource(R.string.bookshelf_tag_rename_scope, oldTag),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
@@ -444,14 +441,14 @@ internal fun BookTagRenameDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text(stringResource(R.string.bookshelf_tag_rename_label)) },
-                    isError = newName.trim().isBlank()
+                    isError = newName.trim().isBlank(),
                 )
             }
         },
         confirmButton = {
             androidx.compose.material3.TextButton(
                 onClick = { if (canRename) onRename(newName.trim()) },
-                enabled = canRename
+                enabled = canRename,
             ) {
                 Text(stringResource(R.string.confirm))
             }
@@ -460,7 +457,7 @@ internal fun BookTagRenameDialog(
             androidx.compose.material3.TextButton(onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
             }
-        }
+        },
     )
 }
 
@@ -469,7 +466,7 @@ private fun FilterChip(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
@@ -483,14 +480,14 @@ private fun FilterChip(
             MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
-        }
+        },
     ) {
         Text(
             text = text,
             modifier = Modifier
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
         )
     }
 }

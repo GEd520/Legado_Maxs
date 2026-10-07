@@ -2,7 +2,6 @@ package io.legado.app.ui.book.read.config.highlight
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
 import io.legado.app.ui.book.read.page.entities.TextLine
 import java.io.File
 
@@ -67,10 +66,5 @@ object HighlightRuleBackgroundManager {
 
     fun getBitmap(path: String): Bitmap? {
         return TextLine.getBgBitmap(path)
-    }
-
-    /** 点九图（.9.png）背景返回 NinePatchDrawable，用于预览控件直接作为 background 拉伸显示 */
-    fun getNinePatchDrawable(path: String): Drawable? {
-        return TextLine.getBgNinePatchDrawable(path)
     }
 }

@@ -34,6 +34,20 @@ interface BookChapterDao {
     @Query("select count(url) from chapters where bookUrl = :bookUrl")
     fun getChapterCount(bookUrl: String): Int
 
+    @Query("select bookUrl, count(url) as count from chapters where isVolume = 0 group by bookUrl")
+    suspend fun getChapterCounts(): List<BookChapterCount>
+
+    /**
+     * 单本的真实章节数（不含卷标题）
+     *
+     * 与 [getChapterCounts] 同口径：列表里的"已缓存 x/y"两侧都不该把卷标题算进去
+     */
+    @Query("select count(url) from chapters where bookUrl = :bookUrl and isVolume = 0")
+    fun getChapterCountWithoutVolume(bookUrl: String): Int
+
+    /** 每本书的章节数（一次查全，避免逐本读章节表） */
+    data class BookChapterCount(val bookUrl: String, val count: Int)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(vararg bookChapter: BookChapter)
 
@@ -45,5 +59,9 @@ interface BookChapterDao {
 
     @Query("update chapters set wordCount = :wordCount where bookUrl = :bookUrl and url = :url")
     fun upWordCount(bookUrl: String, url: String, wordCount: String)
+
+    /** 视频书源解析出的真实媒体地址，离线缓存的判定与播放都依赖它 */
+    @Query("update chapters set resourceUrl = :resourceUrl where bookUrl = :bookUrl and url = :url")
+    fun upResourceUrl(bookUrl: String, url: String, resourceUrl: String)
 
 }

@@ -24,6 +24,44 @@ data class HighlightRule(
     var bgImage: String? = null,
     var bgImageFit: Int = 0,
     var bgImageScale: Float = 1f,
+    /** 九宫格分割比例（0-1，占图片宽/高的百分比；左右相加、上下相加不超过 1），适配方式为九宫格时生效 */
+    var npLeft: Float = 0.1f,
+    var npTop: Float = 0.1f,
+    var npRight: Float = 0.1f,
+    var npBottom: Float = 0.1f,
+    /**
+     * 九宫格外扩策略，取值 [BLEED_STRICT] / [BLEED_SMART] / [BLEED_FORCE]。
+     * 为空表示 [BLEED_SMART]（智能）：可空是为了区分"用户显式选了严格"与"老规则没有这个字段"。
+     */
+    var bgBleedMode: Int? = null,
+    /**
+     * 旧版"左右间距"（em）：间距已按四边拆分，本字段只为兼容老规则保留，
+     * 由 [HighlightRuleStore.sanitizeRule] 迁移到 [bgSpacingLeft]/[bgSpacingRight] 后清零。
+     */
+    var bgSpacingH: Float = 0f,
+
+    /**
+     * 旧版"上下间距"（em）：同上，迁移到 [bgSpacingTop]/[bgSpacingBottom] 后清零。
+     */
+    var bgSpacingV: Float = 0f,
+    /** 背景图左间距（em，随字号缩放）：正数把背景向外撑大、离文字更远，负数向内收 */
+    var bgSpacingLeft: Float = 0f,
+    /** 背景图右间距（em）：正数向外撑大，负数向内收 */
+    var bgSpacingRight: Float = 0f,
+    /** 背景图上间距（em）：正数向外撑大，负数向内收 */
+    var bgSpacingTop: Float = 0f,
+    /** 背景图下间距（em）：正数向外撑大，负数向内收 */
+    var bgSpacingBottom: Float = 0f,
+    /** 命中字距（px）：命中段左侧邻字之间额外留出的空白，0 表示不留白 */
+    var letterSpacingBefore: Float = 0f,
+    /** 命中字距（px）：命中段右侧邻字之间额外留出的空白，0 表示不留白 */
+    var letterSpacingAfter: Float = 0f,
+    /** 命中行上下行距：是否只给包含命中的行加行距 */
+    var lineSpacingEnabled: Boolean = false,
+    /** 命中行上方行距（px），[lineSpacingEnabled] 为 true 时生效 */
+    var lineSpacingTop: Float = 0f,
+    /** 命中行下方行距（px），[lineSpacingEnabled] 为 true 时生效 */
+    var lineSpacingBottom: Float = 0f,
     /** 作用范围，书名或书源URL，分号分隔，为空则对所有书籍生效 */
     var scope: String? = null,
     /** 排除范围，书名或书源URL，分号分隔，匹配的书籍不应用该规则 */
@@ -75,11 +113,18 @@ data class HighlightRule(
                 when (bgImageFit) {
                     1 -> "背景图(拉伸)"
                     2 -> "背景图(裁剪)"
+                    3 -> "背景图(九宫格)"
                     else -> "背景图(平铺)"
                 },
             )
         } else if (bgColor != null) {
             parts.add("背景色 ${bgColor!!.toHexColor()}")
+        }
+        if (letterSpacingBefore > 0f || letterSpacingAfter > 0f) {
+            parts.add("命中字距 ${letterSpacingBefore.formatDistance()} / ${letterSpacingAfter.formatDistance()}px")
+        }
+        if (lineSpacingEnabled && (lineSpacingTop > 0f || lineSpacingBottom > 0f)) {
+            parts.add("命中行行距 ${lineSpacingTop.formatDistance()} / ${lineSpacingBottom.formatDistance()}px")
         }
         if (parts.isEmpty()) {
             parts.add("无样式")
@@ -187,6 +232,25 @@ data class HighlightRule(
         const val THEME_DARK = 2
         const val THEME_ALL = 3
 
+        /** 严格：不自动外扩，背景只覆盖匹配到的文字 */
+        const val BLEED_STRICT = 0
+
+        /** 智能（默认）：只占用邻接的空白——水平借邻接空白字符的宽度，垂直吃掉一半行距 */
+        const val BLEED_SMART = 1
+
+        /** 强制：按四角厚度向外扩展，即原来的"向外包裹文字"行为，可能压到相邻文字 */
+        const val BLEED_FORCE = 2
+
+        fun resolvedBleedMode(mode: Int?): Int = when (mode) {
+            BLEED_STRICT, BLEED_SMART, BLEED_FORCE -> mode
+            else -> BLEED_SMART
+        }
+
         fun Int.toHexColor(): String = String.format("#%08X", this)
     }
+}
+
+/** 规则摘要里的 px 数值展示：整数不带小数，其余保留两位 */
+private fun Float.formatDistance(): String {
+    return if (this % 1f == 0f) toInt().toString() else String.format(java.util.Locale.US, "%.2f", this)
 }

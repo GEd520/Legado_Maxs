@@ -11,8 +11,12 @@ import io.legado.app.data.entities.BookSource
 import io.legado.app.exception.ConcurrentException
 import io.legado.app.help.ConcurrentRateLimiter
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.CacheManifestHelper
+import io.legado.app.help.book.isAudio
 import io.legado.app.help.book.isLocal
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.help.coroutine.CompositeCoroutine
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.model.webBook.WebBook
@@ -264,8 +268,12 @@ object CacheBook {
         private val waitDownloadSet = linkedSetOf<Int>()
         private val onDownloadSet = linkedSetOf<Int>()
         private val tasks = CompositeCoroutine()
+        @Volatile
         private var isStopped = false
         private var waitingRetry = false
+
+        /** 下载进度回调线程会读，用 @Volatile 保证可见性 */
+        @Volatile
         private var isLoading = false
 
         val waitCount get() = waitDownloadSet.size
@@ -417,6 +425,8 @@ object CacheBook {
             if (waitDownloadSet.isEmpty() && onDownloadSet.isEmpty()) {
                 cacheBookMap.remove(book.bookUrl)
                 downloadingBySource.remove(bookSource.bookSourceUrl)
+                //缓存任务收尾时统一刷新清单：中途可能成功/失败了很多章
+                CacheManifestHelper.refreshAsync(book)
             }
             postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
         }
@@ -446,6 +456,21 @@ object CacheBook {
                 /** 修正下载计数 */
                 postEvent(EventBus.SAVE_CONTENT, Pair(book, chapter))
                 waitDownloadSet.remove(chapterIndex)
+                return
+            }
+            if (book.isVideo || book.isAudio) {
+                // 音视频章节的离线内容是媒体文件，不落正文文本。
+                // 注意：这里同样要完成待下载/下载中的记账，否则并发下载会重复进入
+                val useVideoCache = book.isVideo
+                waitDownloadSet.remove(chapterIndex)
+                onDownloadSet.add(chapterIndex)
+                val cached = CacheManifestHelper.cachedMediaUrl(book, chapter) != null
+                if (cached) {
+                    onSuccess(chapter)
+                    onFinally()
+                } else {
+                    downloadMedia(chapter, useVideoCache, scope, context)
+                }
                 return
             }
             if (bookSource.nextPageLazyLoad) {
@@ -518,6 +543,65 @@ object CacheBook {
             }
             tasks.add(task)
             task.start()
+        }
+
+        /**
+         * 下载音视频章节的媒体文件
+         *
+         * 音视频书源的正文规则返回媒体地址（可能是地址数组），这里解析出地址与请求头后
+         * 整章下载进书级媒体缓存目录（视频 video_media / 音频 audio_media），
+         * 并把解析到的地址写回章节，供离线播放与缓存判定复用
+         * @param chapter 书籍章节
+         * @param useVideoCache true 缓存进视频目录，false 缓存进音频目录
+         * @param scope 协程作用域
+         * @param context 协程上下文
+         */
+        @Synchronized
+        private fun downloadMedia(
+            chapter: BookChapter,
+            useVideoCache: Boolean,
+            scope: CoroutineScope,
+            context: CoroutineContext
+        ) {
+            val task = Coroutine.async(scope, context, executeContext = context) {
+                val request = ExoPlayerHelper.resolveMediaRequest(bookSource, book, chapter)
+                if (chapter.resourceUrl != request.url) {
+                    chapter.resourceUrl = request.url
+                    appDb.bookChapterDao.upResourceUrl(chapter.bookUrl, chapter.url, request.url)
+                }
+                //进度回调很密集，节流后再刷新界面
+                var lastPostTime = 0L
+                ExoPlayerHelper.cacheMedia(
+                    request = request,
+                    useVideoCache = useVideoCache,
+                    book = book,
+                    progress = { _, _ ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastPostTime > 500) {
+                            lastPostTime = now
+                            postEvent(EventBus.UP_DOWNLOAD_STATE, book.bookUrl)
+                            //媒体缓存进度靠事件刷新（界面要重新扫缓存文件算占用）
+                            postEvent(EventBus.UP_DOWNLOAD, book.bookUrl)
+                        }
+                    },
+                    shouldCancel = { isStopped }
+                )
+            }.onSuccess {
+                onSuccess(chapter)
+            }.onError {
+                onPreError(chapter, it)
+                //出现错误等待一秒后重新加入待下载列表
+                delay(1000)
+                onPostError(chapter, it)
+            }.onCancel {
+                onCancel(chapter.index)
+            }.onFinally {
+                onFinally()
+            }
+            task.invokeOnCompletion {
+                tasks.delete(task)
+            }
+            tasks.add(task)
         }
 
         /**

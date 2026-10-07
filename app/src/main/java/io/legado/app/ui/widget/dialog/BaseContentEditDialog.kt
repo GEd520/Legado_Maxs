@@ -18,6 +18,7 @@ import io.legado.app.databinding.DialogContentEditBinding
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.disableEdit
 import io.legado.app.utils.sendToClip
@@ -65,7 +66,7 @@ abstract class BaseContentEditDialog :
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            result.data?.getStringExtra("text")?.let {
+            CodeEditLauncher.readText(result.data)?.let {
                 binding.contentView.setText(it)
                 originalContent = null
             }
@@ -165,7 +166,7 @@ abstract class BaseContentEditDialog :
         val text = binding.contentView.text?.toString() ?: return
         val title = binding.toolBar.title?.toString() ?: "content"
         val intent = Intent(requireContext(), CodeEditActivity::class.java).apply {
-            putExtra("text", text)
+            CodeEditLauncher.putText(this, text)
             putExtra("title", title)
             putExtra("sourceType", getSourceType())
             putExtra("sourceKey", getSourceKey())

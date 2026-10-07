@@ -14,8 +14,8 @@
     <io.legado.app.lib.prefs.Preference
         android:icon="@drawable/ic_storage_black_24dp"
         android:key="storageManage"
-        android:summary="@string/storage_manage_summary"
-        android:title="@string/storage_manage"
+        android:summary="@string/cache_manage_summary"
+        android:title="@string/cache_manage_title"
         app:iconSpaceReserved="false" />
 
     <io.legado.app.lib.prefs.Preference

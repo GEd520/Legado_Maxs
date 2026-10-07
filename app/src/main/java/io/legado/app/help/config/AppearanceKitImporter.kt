@@ -121,12 +121,9 @@ internal object AppearanceKitImporter {
         @SerializedName("name") val name: String = "",
         @SerializedName("isNightMode") val isNightMode: Boolean = false,
         @SerializedName("layoutMode") val layoutMode: String = "floating",
-        @SerializedName("sidebarGravity") val sidebarGravity: String = "start",
         @SerializedName("effectMode") val effectMode: String = "glass",
         @SerializedName("opacity") val opacity: Int = 72,
         @SerializedName("updatedAt") val updatedAt: Long = System.currentTimeMillis(),
-        @SerializedName("sidebarBackgroundPath") val sidebarBackgroundPath: String? = null,
-        @SerializedName("wallpaperPath") val wallpaperPath: String? = null,
         @SerializedName("borderColor") val borderColor: Int? = null,
         @SerializedName("borderAlpha") val borderAlpha: Int = 100,
         @SerializedName("hideSearchInFloatingStyle") val hideSearchInFloatingStyle: Boolean = false,
@@ -307,33 +304,6 @@ internal object AppearanceKitImporter {
                                     opacity = source.opacity,
                                     borderColor = source.borderColor,
                                     borderAlpha = source.borderAlpha,
-                                    wallpaperPath = source.wallpaperPath?.let { wpPath ->
-                                        val wpFile: File? = File(navBarDir, wpPath).takeIf { it.isFile }
-                                            ?: File(subTemp, wpPath).takeIf { it.isFile }
-                                            ?: navBarDir.walkTopDown().firstOrNull { it.isFile && it.name == wpPath.substringAfterLast(File.separator) }
-                                            ?: subTemp.walkTopDown().firstOrNull { it.isFile && it.name == wpPath.substringAfterLast(File.separator) }
-                                        wpFile?.let { file ->
-                                            val wpDir = appCtx.externalFiles
-                                                .getFile("navigationBarWallpapers", UUID.randomUUID().toString()).apply { mkdirs() }
-                                            val wpTarget = wpDir.getFile("wp_${UUID.randomUUID()}.${file.extension.ifBlank { "png" }}")
-                                            file.copyTo(wpTarget, overwrite = true)
-                                            wpTarget.absolutePath
-                                        }
-                                    },
-                                    sidebarBackgroundPath = source.sidebarBackgroundPath?.let { sbPath ->
-                                        val sbFile: File? = File(navBarDir, sbPath).takeIf { it.isFile }
-                                            ?: File(subTemp, sbPath).takeIf { it.isFile }
-                                            ?: navBarDir.walkTopDown().firstOrNull { it.isFile && it.name == sbPath.substringAfterLast(File.separator) }
-                                            ?: subTemp.walkTopDown().firstOrNull { it.isFile && it.name == sbPath.substringAfterLast(File.separator) }
-                                        sbFile?.let { file ->
-                                            val sbDir = appCtx.externalFiles
-                                                .getFile("navigationBarSidebars", UUID.randomUUID().toString()).apply { mkdirs() }
-                                            val sbTarget = sbDir.getFile("sb_${UUID.randomUUID()}.${file.extension.ifBlank { "png" }}")
-                                            file.copyTo(sbTarget, overwrite = true)
-                                            sbTarget.absolutePath
-                                        }
-                                    },
-                                    sidebarGravity = source.sidebarGravity,
                                     icons = icons
                                 )
                                 val existing = NavigationBarConfig.loadConfigs(appCtx)

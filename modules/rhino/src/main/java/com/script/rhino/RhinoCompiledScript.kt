@@ -32,7 +32,6 @@ import kotlinx.coroutines.asContextElement
 import kotlinx.coroutines.withContext
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContinuationPending
-import org.mozilla.javascript.JavaScriptException
 import org.mozilla.javascript.RhinoException
 import org.mozilla.javascript.Script
 import org.mozilla.javascript.Scriptable
@@ -47,7 +46,9 @@ import kotlin.coroutines.CoroutineContext
  */
 internal class RhinoCompiledScript(
     private val engine: RhinoScriptEngine,
-    private val script: Script
+    private val script: Script,
+    private val source: String,
+    private val sourceName: String,
 ) : CompiledScript() {
 
     override fun getEngine(): ScriptEngine {
@@ -71,15 +72,7 @@ internal class RhinoCompiledScript(
             val ret = script.exec(cx, scope)
             result = engine.unwrapReturnValue(ret)
         } catch (re: RhinoException) {
-            val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
-            val msg: String = if (re is JavaScriptException) {
-                re.value.toString()
-            } else {
-                re.toString()
-            }
-            val se = ScriptException(msg, re.sourceName(), line)
-            se.initCause(re)
-            throw se
+            throw RhinoScriptEngine.createScriptException(re, source, sourceName)
         } finally {
             cx.coroutineContext = previousCoroutineContext
             cx.allowScriptRun = false
@@ -117,15 +110,7 @@ internal class RhinoCompiledScript(
                     }
                 }
             } catch (re: RhinoException) {
-                val line = if (re.lineNumber() == 0) -1 else re.lineNumber()
-                val msg: String = if (re is JavaScriptException) {
-                    re.value.toString()
-                } else {
-                    re.toString()
-                }
-                val se = ScriptException(msg, re.sourceName(), line)
-                se.initCause(re)
-                throw se
+                throw RhinoScriptEngine.createScriptException(re, source, sourceName)
             } catch (var14: IOException) {
                 throw ScriptException(var14)
             } finally {

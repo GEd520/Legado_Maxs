@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅 debug 构建变体参与合并的 Manifest。
+  作用：把「书源调试 / 订阅源调试」页标记为 exported，使 adb shell am start 能以 -n 指定组件、并用字符串 extra "key" 传入源 URL
+  直接从 shell 拉起这两个内部页，实现免 UI 点击的端到端验证（详见 docs/architecture/Web服务端到端测试方法.md 第十节）。
+  其余导出页均为免点击验证目标（extra 形态见各条注释；方法论见 docs/architecture/adb免点击验证数据驱动功能.md）。
+  release 构建不含本文件，以下页面保持默认未导出状态，对外不可启动。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <activity
+            android:name=".ui.book.source.debug.BookSourceDebugActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ui.rss.source.debug.RssSourceDebugActivity"
+            android:exported="true" />
+        <!-- extra："text"/"title"/"languageName" 等；shell 单参数上限约 128KB，超长文本仍走 UI 路径
+             （见 docs/archive/代码编辑器大文本Intent超限修复计划.md 第六节） -->
+        <activity
+            android:name=".ui.code.CodeEditActivity"
+            android:exported="true" />
+        <!-- extra："name"/"urlRule"/"showRule" -->
+        <activity
+            android:name=".ui.dict.rule.DictRuleDebugActivity"
+            android:exported="true" />
+        <!-- extra："ttsId"（httpTts 表记录 id，可 run-as 查库获取） -->
+        <activity
+            android:name=".ui.book.read.config.TtsDebugActivity"
+            android:exported="true" />
+        <!-- extra："sourceUrl" -->
+        <activity
+            android:name=".ui.book.source.usedapi.SourceUsedApiActivity"
+            android:exported="true" />
+        <!-- 无参直起 -->
+        <activity
+            android:name=".ui.module.ModuleStatusActivity"
+            android:exported="true" />
+        <!-- extra："uri"，可选 "mimeType"/"sourceOrigin"/"sourceName"/"sourceType" -->
+        <activity
+            android:name=".ui.association.OpenUrlConfirmActivity"
+            android:exported="true" />
+    </application>
+
+</manifest>

@@ -73,6 +73,29 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     // ==================== 主题与界面配置 ====================
     var themeMode = appCtx.getPrefString(PreferKey.themeMode, "0")
     var useDefaultCover = appCtx.getPrefBoolean(PreferKey.useDefaultCover, false)
+
+    // ==================== 新版发现 / 新版订阅 ====================
+
+    /** 发现主界面显示新版（源选择行 + 分类标签 + 内容列表） */
+    var exploreModernPage: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.exploreModernPage, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.exploreModernPage, value)
+
+    /** 订阅主界面显示新版（源选择行 + 分类标签 + 文章列表） */
+    var rssModernPage: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.rssModernPage, false)
+        set(value) = appCtx.putPrefBoolean(PreferKey.rssModernPage, value)
+
+    /** 新版发现上次选中的书源 */
+    var modernExploreSourceUrl: String?
+        get() = appCtx.getPrefString(PreferKey.exploreModernSourceUrl)
+        set(value) = appCtx.putPrefString(PreferKey.exploreModernSourceUrl, value)
+
+    /** 新版订阅上次选中的订阅源 */
+    var modernRssSourceUrl: String?
+        get() = appCtx.getPrefString(PreferKey.rssModernSourceUrl)
+        set(value) = appCtx.putPrefString(PreferKey.rssModernSourceUrl, value)
+
     var optimizeRender = CanvasRecorderFactory.isSupport &&
         appCtx.getPrefBoolean(PreferKey.optimizeRender, false)
     var recordLog = appCtx.getPrefBoolean(PreferKey.recordLog)
@@ -1061,6 +1084,13 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
         get() = appCtx.getPrefBoolean(PreferKey.audioPlayWakeLock)
         set(value) {
             appCtx.putPrefBoolean(PreferKey.audioPlayWakeLock, value)
+        }
+
+    /**  音频边播放边缓存：开启后播放的音频会写进书籍音频缓存目录（听完即可离线），默认关闭  **/
+    var audioPlayCacheEnabled: Boolean
+        get() = appCtx.getPrefBoolean(PreferKey.audioPlayCache)
+        set(value) {
+            appCtx.putPrefBoolean(PreferKey.audioPlayCache, value)
         }
 
     var brightnessVwPos: Boolean

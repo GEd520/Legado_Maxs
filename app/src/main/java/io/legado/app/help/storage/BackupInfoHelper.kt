@@ -134,8 +134,10 @@ object BackupInfoHelper {
         CoverGalleryRepository.backupDirName to CoverGalleryRepository.backupDirName
     )
 
-    fun getBackupOverview(): BackupOverview {
-        return buildOverview(::isFileSelectedForBackup)
+    fun getBackupOverview(
+        scope: BackupSelectorConfig.Scope = BackupSelectorConfig.Scope.Local
+    ): BackupOverview {
+        return buildOverview { isFileSelectedForBackup(it, scope) }
     }
 
     fun getRestoreOverview(): BackupOverview {
@@ -257,19 +259,22 @@ object BackupInfoHelper {
         addItem(CoverGalleryRepository.backupDirName, imageSize + estimatedDataSize)
     }
 
-    private fun isFileSelectedForBackup(fileName: String): Boolean {
+    private fun isFileSelectedForBackup(
+        fileName: String,
+        scope: BackupSelectorConfig.Scope
+    ): Boolean {
         return when (fileName) {
             "book_cache",
             "bookChapterCache.json",
             "bookCacheBooks.json",
-            "bookCacheIndex.json" -> BackupSelectorConfig.isSelected("bookCache")
+            "bookCacheIndex.json" -> BackupSelectorConfig.isSelected("bookCache", scope)
 
-            "backgroundImages" -> BackupSelectorConfig.isSelected("backgroundImages")
+            "backgroundImages" -> BackupSelectorConfig.isSelected("backgroundImages", scope)
             else -> {
                 val key = BackupSelectorConfig.allItems.find {
                     it.fileName == fileName || it.fileName == selectorFileAliases[fileName]
                 }?.key ?: return true
-                BackupSelectorConfig.isSelected(key)
+                BackupSelectorConfig.isSelected(key, scope)
             }
         }
     }

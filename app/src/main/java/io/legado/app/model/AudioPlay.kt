@@ -14,6 +14,7 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookChapter
 import io.legado.app.constant.AppConst
 import io.legado.app.data.entities.BookSource
+import io.legado.app.help.book.CacheManifestHelper
 import io.legado.app.help.book.ContentProcessor
 import io.legado.app.help.book.getBookSource
 import io.legado.app.help.book.readSimulating
@@ -225,6 +226,21 @@ object AudioPlay : CoroutineScope by MainScope() {
                 if (chapter.isVolume) {
                     skipTo(index + 1)
                     removeLoading(index)
+                    return
+                }
+                // 已离线缓存的章节直接播本地缓存，不再解析链接（断网也能播，且链接可能已过期）；
+                // 缓存按缓存当时的地址做 key，所以这里取"确实有缓存的地址"，与视频播放链路口径一致；
+                // 清单功能之前边播边缓存留下的老缓存没有留地址，只有一章有时按缓存内容反推一次
+                val cachedUrl = CacheManifestHelper.cachedMediaUrl(book, chapter)
+                    ?: CacheManifestHelper.recoverLegacyMediaUrl(book)
+                if (cachedUrl != null) {
+                    removeLoading(index)
+                    if (chapter.index == durChapterIndex) {
+                        durPlayUrl = cachedUrl
+                        durLyric = chapter.getVariable("lyric")
+                        callback?.upLyric(durLyric)
+                        upPlayUrl()
+                    }
                     return
                 }
                 upLoading(true)

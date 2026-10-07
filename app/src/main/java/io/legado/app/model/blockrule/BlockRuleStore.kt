@@ -1,6 +1,8 @@
 package io.legado.app.model.blockrule
 
 import android.content.Context
+import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.entities.RssArticle
@@ -49,9 +51,21 @@ object BlockRuleStore {
         if (stored.isNullOrBlank()) {
             return mutableListOf()
         }
-        // 混淆版本遗留数据：键名是 a/b 等混淆名，反序列化后 pattern 等字段全为空，
-        // 表现为规则列表还在但屏蔽不生效；数据不可恢复，直接清除
+        // 混淆版本遗留数据：release 包未 keep BlockRule 时 GSON 以 a/b 等混淆名序列化，
+        // 键名无法映射到当前字段；但字段写出顺序遵循声明顺序且 null 字段省略，
+        // 可按「位置 + 类型签名」恢复。恢复失败时备份原始数据后再清除。
         if (isObfuscatedLegacyJson(stored)) {
+            val recovered = recoverObfuscatedLegacyJson(stored)
+            if (recovered != null) {
+                val sanitized = recovered.map { sanitizeRule(it) }
+                cachedRules = sanitized
+                // 立即以规范字段名回写，避免下次加载再次走恢复流程
+                context.putPrefString(PreferKey.blockRuleItems, GSON.toJson(sanitized))
+                BlockRuleGroupStore.ensureFromRules(context, sanitized)
+                return sanitized.toMutableList()
+            }
+            // 无法恢复：保留原始备份，避免数据彻底丢失
+            context.putPrefString(PreferKey.blockRuleItemsLegacyBackup, stored)
             context.removePref(PreferKey.blockRuleItems)
             return mutableListOf()
         }
@@ -338,7 +352,7 @@ object BlockRuleStore {
      *
      * 历史版本未 keep BlockRule 字段名，release 包里 GSON 以 a/b 等混淆名写出到
      * SharedPreferences；升级后这些键无法映射到当前字段。只要所有条目都不含任何
-     * 规范字段名，即判定为不可恢复的损坏数据（正常数据至少会有 id/name/pattern 键）。
+     * 规范字段名，即判定为混淆版本遗留数据（正常数据至少会有 id/name/pattern 键）。
      */
     private fun isObfuscatedLegacyJson(stored: String): Boolean {
         return runCatching {
@@ -350,5 +364,115 @@ object BlockRuleStore {
                 !entry.isJsonObject || entry.asJsonObject.keySet().none { it in canonicalFieldNames }
             }
         }.getOrDefault(false)
+    }
+
+    /**
+     * 混淆版本遗留数据的字段声明顺序（历史版本）。
+     *
+     * GSON 反射序列化按字段声明顺序写出、null 字段省略，混淆只改键名不改顺序，
+     * 因此可按「位置 + 类型签名」唯一还原字段含义：
+     * - BlockRule（09e7460e9e 起）：id,name,pattern,isRegex,group,targetScope,
+     *   rssTargetScope,enabled,scope?,rssScope? → sssbsiib + 尾部 0~2 个 s
+     * - ExploreBlockRule（更早版本）：id,name,pattern,isRegex,group,targetScope,
+     *   enabled,scope? → sssbsib + 尾部 0~1 个 s
+     *
+     * 两种签名的布尔/整型位置互不重叠，不会混淆。
+     * 缺失的尾部字段只可能是可空的 scope/rssScope。
+     */
+    private val legacyShapes: List<List<String>> = listOf(
+        listOf(
+            "id", "name", "pattern", "isRegex", "group",
+            "targetScope", "rssTargetScope", "enabled", "scope", "rssScope",
+        ),
+        listOf(
+            "id", "name", "pattern", "isRegex", "group",
+            "targetScope", "enabled", "scope",
+        ),
+    )
+
+    /** 可空字符串字段，允许在序列化时因 null 而缺失 */
+    private val nullableShapeFields = setOf("scope", "rssScope")
+
+    /** JsonPrimitive 的类型签名字符：s=字符串 b=布尔 i=整型 ?=其他（不匹配） */
+    private fun typeCharOf(value: JsonElement?): Char {
+        if (value == null || !value.isJsonPrimitive) return '?'
+        val prim = value.asJsonPrimitive
+        return when {
+            prim.isBoolean -> 'b'
+            prim.isNumber -> 'i'
+            prim.isString -> 's'
+            else -> '?'
+        }
+    }
+
+    /**
+     * 尝试恢复混淆版本遗留的规则 JSON。
+     *
+     * 逐条按「位置 + 类型签名」匹配历史字段布局并还原字段值；
+     * 任意一条无法识别则整体放弃（返回 null），由调用方走备份+清除路径，
+     * 避免产生半恢复的混合数据。
+     */
+    private fun recoverObfuscatedLegacyJson(stored: String): List<BlockRule>? {
+        return runCatching {
+            val element = JsonParser.parseString(stored)
+            if (!element.isJsonArray) return@runCatching null
+            val recovered = ArrayList<BlockRule>()
+            for (entry in element.asJsonArray) {
+                if (!entry.isJsonObject) return@runCatching null
+                val obj = entry.asJsonObject
+                val shape = matchLegacyShape(obj) ?: return@runCatching null
+                recovered.add(buildFromShape(obj, shape))
+            }
+            recovered
+        }.getOrNull()
+    }
+
+    /** 匹配条目的字段布局；无匹配返回 null */
+    private fun matchLegacyShape(obj: JsonObject): List<String>? {
+        val types = obj.keySet().map { typeCharOf(obj.get(it)) }
+        for (shape in legacyShapes) {
+            val n = types.size
+            if (n > shape.size) continue
+            if (n == 0) continue
+            // 已写出的字段必须逐位匹配声明顺序上的类型
+            if ((0 until n).any { typeCharOfShapeField(shape[it]) != types[it] }) continue
+            // 缺失的尾部字段必须全部是可空字符串字段（GSON 省略 null）
+            if ((n until shape.size).all { shape[it] in nullableShapeFields }) return shape
+        }
+        return null
+    }
+
+    /** shape 字段名对应的期望类型签名 */
+    private fun typeCharOfShapeField(field: String): Char = when (field) {
+        "isRegex", "enabled" -> 'b'
+        "targetScope", "rssTargetScope" -> 'i'
+        else -> 's'
+    }
+
+    /** 按匹配到的布局，从混淆键名条目还原 BlockRule */
+    private fun buildFromShape(obj: JsonObject, shape: List<String>): BlockRule {
+        val values = HashMap<String, JsonElement?>()
+        obj.keySet().forEachIndexed { index, key ->
+            values[shape[index]] = obj.get(key)
+        }
+        fun stringOf(name: String): String? =
+            values[name]?.takeIf { it.isJsonPrimitive }?.asString
+        fun booleanOf(name: String): Boolean =
+            values[name]?.takeIf { it.isJsonPrimitive }?.asBoolean ?: false
+        fun intOf(name: String): Int =
+            values[name]?.takeIf { it.isJsonPrimitive }?.asInt ?: 0
+
+        return BlockRule(
+            id = stringOf("id").orEmpty(),
+            name = stringOf("name").orEmpty(),
+            pattern = stringOf("pattern").orEmpty(),
+            isRegex = booleanOf("isRegex"),
+            group = stringOf("group").orEmpty(),
+            targetScope = intOf("targetScope"),
+            rssTargetScope = intOf("rssTargetScope"),
+            enabled = booleanOf("enabled"),
+            scope = stringOf("scope"),
+            rssScope = stringOf("rssScope"),
+        )
     }
 }

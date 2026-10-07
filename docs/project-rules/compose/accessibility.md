@@ -38,7 +38,7 @@ Row(
 
 ### 15.4 字体缩放（强制）
 
-- 禁止 Composable 内硬编码 `.sp`，全部走 `MaterialTheme.typography`（`theme-styles.md` §7.4 口径，本节重申：系统"显示大小"拉到 200% 时裸 `.sp` 不跟随缩放，布局直接碎）。
+- 禁止 Composable 内硬编码 `.sp`，全部走 `MaterialTheme.typography`（选档对照表见 `theme-styles.md` §7.4；本节重申：系统"显示大小"拉到 200% 时裸 `.sp` 不跟随缩放，布局直接碎）。
 - 允许 `maxLines` + `overflow` 截断，但**禁止**配合固定高度容器（`Modifier.height(20.dp)` 之类）硬裁文字——放大场景下文字溢出容器且用户看不到截断提示。
 
 ### 15.5 自绘 View 无障碍（强制）

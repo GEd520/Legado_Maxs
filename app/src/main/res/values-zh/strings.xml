@@ -102,6 +102,8 @@
     <string name="web_service_auth_summary">要求API请求携带Token认证，在公共网络下建议开启</string>
     <string name="web_service_token_title">Web服务Token</string>
     <string name="web_service_token_summary">设置Web服务认证令牌</string>
+    <string name="local_network_permission_rationale">Android 17 起限制了局域网访问，授予「附近的设备」权限后其他设备才能连接 Web 服务</string>
+    <string name="local_network_permission_denied">未授予本地网络权限，Web 服务已停止</string>
     <string name="web_edit_source">Web 编辑书源</string>
     <string name="offline_cache">离线缓存</string>
     <string name="offline_cache_t">离线缓存</string>
@@ -514,6 +516,7 @@
 
     <string name="source_http_header">请求头（header）</string>
     <string name="debug_source">调试源</string>
+    <string name="stop_debug">停止调试</string>
     <string name="import_by_qr_code">二维码导入</string>
     <string name="share_selected_source">分享选中源</string>
     <string name="scan_qr_code">扫描二维码</string>
@@ -667,9 +670,48 @@
     <string name="bookshelf_tag_save">保存</string>
     <string name="bookshelf_tag_rename">重命名</string>
     <string name="bookshelf_tag_rename_title">重命名标签</string>
-    <string name="bookshelf_tag_rename_group">在"%1$s"中重命名标签</string>
+    <string name="bookshelf_tag_rename_scope">在所有分组中重命名"%1$s"</string>
     <string name="bookshelf_tag_rename_label">标签名</string>
     <string name="bookshelf_tag_all">全部</string>
+
+    <!-- 智能标签 -->
+    <string name="smart_tag_manage">智能标签管理</string>
+    <string name="smart_tag_enable">智能标签</string>
+    <string name="smart_tag_enable_summary">根据书籍类型、阅读进度、章节数量和更新状态自动匹配标签</string>
+    <string name="smart_tag_sub_title">子标签</string>
+    <string name="smart_tag_sub_summary">仅在智能标签开启时生效</string>
+    <string name="smart_tag_book_count">%1$d 本</string>
+    <string name="smart_tag_rule_audio">有声</string>
+    <string name="smart_tag_rule_audio_desc">音频书籍</string>
+    <string name="smart_tag_rule_image">漫画</string>
+    <string name="smart_tag_rule_image_desc">图片或漫画书籍</string>
+    <string name="smart_tag_rule_video">视频</string>
+    <string name="smart_tag_rule_video_desc">视频书籍</string>
+    <string name="smart_tag_rule_local">本地</string>
+    <string name="smart_tag_rule_local_desc">本地书籍</string>
+    <string name="smart_tag_rule_online">网络书</string>
+    <string name="smart_tag_rule_online_desc">来自网络书源</string>
+    <string name="smart_tag_rule_update_error">更新异常</string>
+    <string name="smart_tag_rule_update_error_desc">最近一次更新失败</string>
+    <string name="smart_tag_rule_finished">已读完</string>
+    <string name="smart_tag_rule_finished_desc">已阅读到最后一章</string>
+    <string name="smart_tag_rule_reading">在读</string>
+    <string name="smart_tag_rule_reading_desc">有阅读进度且未读完</string>
+    <string name="smart_tag_rule_unread">未开始</string>
+    <string name="smart_tag_rule_unread_desc">尚未产生阅读进度</string>
+    <string name="smart_tag_rule_very_long">超长篇</string>
+    <string name="smart_tag_rule_very_long_desc">章节数不少于 1000 章</string>
+    <string name="smart_tag_rule_long">长篇</string>
+    <string name="smart_tag_rule_long_desc">章节数 500 到 999 章</string>
+    <string name="smart_tag_rule_medium">中长篇</string>
+    <string name="smart_tag_rule_medium_desc">章节数 200 到 499 章</string>
+    <string name="smart_tag_rule_short">短篇</string>
+    <string name="smart_tag_rule_short_desc">章节数少于 50 章</string>
+    <string name="smart_tag_rule_has_update">有更新</string>
+    <string name="smart_tag_rule_has_update_desc">最近一次检查发现新章节</string>
+    <string name="smart_tag_rule_cannot_update">不可更新</string>
+    <string name="smart_tag_rule_cannot_update_desc">已关闭自动更新</string>
+
     <string name="show_bookshelf_tag_bar">显示标签栏</string>
     <string name="group_edit">编辑分组</string>
     <string name="move_to_group">移入分组</string>
@@ -1025,6 +1067,7 @@
     <string name="search_content_size">搜索结果</string>
     <string name="search_content_empty">搜索内容为空，请检查净化或简繁设置</string>
     <string name="rss_source_empty">RSS 源目前为空！</string>
+    <string name="open_rss_source">打开%1$s</string>
     <string name="explore_empty">当前没有发现源！</string>
     <string name="page_key_set_help">将焦点放到输入框按下物理按键会自动录入键值，多个按键会自动用英文逗号隔开。</string>
     <string name="theme_name">主题名称</string>
@@ -1384,6 +1427,9 @@
     <string name="show_last_update_time">显示上次更新时间</string>
     <string name="refresh_list">刷新列表</string>
     <string name="tip_divider_color">分隔线颜色</string>
+    <string name="reader_info_template">信息模板</string>
+    <string name="reader_info_template_hint">可输入文字并插入下方占位符</string>
+    <string name="reader_info_placeholders">占位符</string>
     <string name="same_title_removed">移除重复标题</string>
     <string name="update_book_fail">更新失败</string>
     <string name="notification_permission_rationale">阅读需要发送通知来显示朗读控制和下载进度</string>
@@ -1409,6 +1455,7 @@
     <string name="query_hint">输入要查询的内容</string>
     <string name="find_prev_match">上一个匹配</string>
     <string name="find_next_match">下一个匹配</string>
+    <string name="find_text">查找文本</string>
     <string name="query_result">找到 %1$d 个匹配项</string>
     <string name="query_no_result">未找到匹配内容</string>
     <string name="please_focus_cursor_on_textbox">请将光标聚焦在文本框</string>
@@ -1448,7 +1495,9 @@
     <string name="only_latest_backup_t">仅保留最新备份</string>
     <string name="only_latest_backup_s">本地备份仅保留最新备份文件</string>
     <string name="backup_selector">备份选择器</string>
-    <string name="backup_selector_summary">选择需要备份的内容</string>
+    <string name="backup_selector_summary">分别选择本地与 WebDAV 云备份的内容</string>
+    <string name="backup_scope_local">本地备份</string>
+    <string name="backup_scope_webdav">WebDAV 云备份</string>
     <string name="book_cache_selector">书籍缓存选择</string>
     <string name="book_cache_selector_summary">选择要备份缓存的书籍</string>
     <string name="view_backup_info_t">查看备份信息</string>
@@ -1529,6 +1578,11 @@
     <string name="beta_releaseA_version">共存版</string>
     <string name="video_setting">视频设置</string>
     <string name="video_setting_summary">自动播放、全屏播放等配置</string>
+    <string name="video_play_settings">播放</string>
+    <string name="video_cache_settings">缓存</string>
+    <string name="video_play_cache">边播放边缓存</string>
+    <string name="video_play_cache_summary">播放时缓存视频，看完可离线播放；关闭则只播放不缓存</string>
+    <string name="audio_play_cache">边播放边缓存</string>
     <string name="auto_play">自动播放</string>
     <string name="start_full">直接全屏播放</string>
     <string name="history">历史</string>
@@ -1600,6 +1654,7 @@
     <string name="manga_color_filter">滤镜</string>
     <string name="hide_manga_title">隐藏漫画列表标题</string>
     <string name="refresh_explore">刷新发现</string>
+    <string name="local_debug">本地调试</string>
     <string name="padding_display_cutouts">填充刘海区域</string>
     <string name="read_aloud_pause_resume">朗读暂停/继续</string>
     <string name="manga_epaper">墨水屏</string>
@@ -1976,6 +2031,15 @@
 
     <!-- Explore Show Column Layout -->
     <string name="switch_layout">切换布局</string>
+    <string name="switch_layout_current">切换布局(当前:%1$s)</string>
+    <string name="switch_to_new_explore">切换到新版发现</string>
+    <string name="switch_to_old_explore">切换到经典发现</string>
+    <string name="switch_to_new_rss">切换到新版订阅</string>
+    <string name="switch_to_old_rss">切换到经典订阅</string>
+    <string name="source_not_exist">源不存在</string>
+    <string name="select">选择</string>
+    <string name="expand">展开</string>
+    <string name="error_view_detail">点击查看详情</string>
     <string name="select_column">选择分列(%d)</string>
     <string name="select_column_count">选择列数</string>
     <string name="switch_layout_list">列表</string>
@@ -2536,6 +2600,7 @@
     <string name="storage_cache_temp_name">临时文件缓存</string>
     <string name="storage_cache_tts_name">TTS 语音缓存</string>
     <string name="storage_cache_acache_name">ACache 磁盘缓存</string>
+    <string name="storage_cache_internal_name">内部缓存</string>
     <string name="storage_cache_db_name">数据库缓存</string>
     <string name="storage_cache_log_name">日志文件</string>
     <string name="storage_cache_webview_name">WebView 缓存</string>
@@ -2544,6 +2609,7 @@
     <string name="storage_cache_temp_desc">下载临时文件、解压临时目录等</string>
     <string name="storage_cache_tts_desc">在线朗读引擎下载的语音文件</string>
     <string name="storage_cache_acache_desc">书源变量、用户信息等运行时缓存</string>
+    <string name="storage_cache_internal_desc">Cronet 下载临时文件、导出临时文件、WebView 网络缓存等</string>
     <string name="storage_cache_db_desc">CacheDao 存储的临时数据记录</string>
     <string name="storage_cache_log_desc">应用运行日志、错误日志等</string>
     <string name="storage_cache_webview_desc">WebView 页面数据、本地缓存、Cookie 等持久化内容</string>
@@ -2556,4 +2622,48 @@
     <string name="storage_cache_item_count">%1$d 项缓存</string>
     <!-- 精准管理：文件管理 -->
     <string name="file_delete_confirm">确定要删除 \"%1$s\" 吗？</string>
+
+    <!-- 缓存管理：书籍/音频/视频/漫画缓存 -->
+    <string name="cache_manage_title">缓存管理</string>
+    <string name="cache_manage_summary">统一管理书籍、音频、视频、漫画的离线缓存</string>
+    <string name="cache_manage_books">书籍</string>
+    <string name="cache_manage_audio">音频</string>
+    <string name="cache_manage_video">视频</string>
+    <string name="cache_manage_manga">漫画</string>
+    <string name="cache_manage_stats">统计</string>
+    <string name="cache_manage_empty">暂无%1$s缓存</string>
+    <string name="cache_manage_cached_count_with_size">已缓存 %1$d/%2$d · %3$s</string>
+    <string name="cache_manage_size_calculating">计算中…</string>
+    <string name="cache_manage_chapters">已缓存章节</string>
+    <string name="cache_manage_search_chapter">搜索章节</string>
+    <string name="cache_manage_all_chapters">全部</string>
+    <string name="cache_manage_cached">已缓存</string>
+    <string name="cache_manage_not_cached">未缓存</string>
+    <string name="cache_manage_long_press_hint">长按章节可多选，之后可批量缓存或删除</string>
+    <string name="cache_manage_selected_count">已选 %1$d 章</string>
+    <string name="cache_manage_cache_selected">缓存</string>
+    <string name="cache_manage_cache_selected_done">已加入缓存队列 %1$d 章</string>
+    <string name="cache_manage_add_bookshelf">加入书架</string>
+    <string name="cache_manage_use_cache">使用缓存</string>
+    <string name="cache_manage_add_bookshelf_success">已按缓存加入书架</string>
+    <string name="cache_manage_use_cache_success">已按缓存同步章节</string>
+    <string name="cache_manage_upload">上传</string>
+    <string name="cache_manage_upload_all">上传全部</string>
+    <string name="cache_manage_uploading">正在上传…</string>
+    <string name="cache_manage_upload_success">上传成功</string>
+    <string name="cache_manage_upload_failed">上传失败：%1$s</string>
+    <string name="cache_manage_delete_all">删除全部</string>
+    <string name="cache_manage_delete_all_confirm">删除当前列表 %1$d 本书的全部缓存？</string>
+    <string name="cache_manage_delete_book_confirm">删除《%1$s》的全部缓存？</string>
+    <string name="cache_manage_delete_selected_confirm">删除所选 %1$d 章的缓存？</string>
+    <string name="cache_manage_delete_chapter_failed">删除章节缓存失败：%1$s</string>
+    <string name="cache_manage_delete_failed">删除缓存失败：%1$s</string>
+    <string name="cache_manage_chapter_load_failed">读取章节失败：%1$s</string>
+    <string name="cache_manage_no_cache">没有可上传的缓存</string>
+    <string name="cache_manage_use_cache_failed">找不到这本书的缓存清单，无法把它加回书架</string>
+    <string name="cache_manage_search_empty">没有匹配的书籍</string>
+    <string name="cache_manage_pack_failed">打包缓存失败</string>
+    <string name="cache_manage_batch_empty">没有可操作的缓存</string>
+    <string name="cache_manage_batch_upload_done">批量上传完成：成功 %1$d 个，失败 %2$d 个</string>
+    <string name="delete_success">已删除</string>
 </resources>

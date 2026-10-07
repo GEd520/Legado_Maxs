@@ -1,7 +1,10 @@
 module.exports = {
-  // 历史遗留（commit-msg 钩子生效前）的每日「更新日志」裸提交没有规范格式，
-  // 仅精确放行该消息本身，其余提交仍按常规规则校验
-  ignores: [(message) => message.split("\n")[0].trim() === "更新日志"],
+  // 历史遗留（commit-msg 钩子生效前）的每日「更新日志」「调整日志」裸提交没有规范格式，
+  // 仅精确放行这两条消息本身，其余提交仍按常规规则校验
+  ignores: [
+    (message) =>
+      ["更新日志", "调整日志"].includes(message.split("\n")[0].trim()),
+  ],
   extends: ["@commitlint/config-conventional"],
   rules: {
     "type-enum": [

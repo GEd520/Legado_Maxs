@@ -12,12 +12,12 @@
 @Json: json规则,直接写时以$.开头可省略@Json
 : regex规则,不可省略,只可以用在书籍列表和目录列表
 ```
+
 - 下一页懒加载
 
 > 正文下一页必须填写规则才能启用。启用后正文下一页无法调试，需要在阅读器中阅读百分之80的内容后会开始加载下一页，自动拼接。防止正文下一页并发加载导致网站压力过大。
 
 > 人话：此开关只适合文本源使用，其他类型源未适配。只要正文有下一页，就可以选择开启。因为阅读以前必须把一章正文和正文下一页全部加载好才能看，时间等待过长，而且疯狂并发请求下一页，有时会被封IP。基于此原因做出了此功能。
-
 
 - 目录懒加载
 
@@ -58,16 +58,16 @@
 - book.type控制书源类型
 
 > 通过 book.type 参数控制书籍 / 书源类型，原版只能在目录列表控制，经过lyc修改后正文规则也可以控制，book.type=几就对应数值含义
- 4: 音频  
- 8: 文本  
- 16: 更新失败  
- 32: 音频  
- 64: 图片  
- 128: 只提供下载服务的网站  
- 256: 本地  
- 512: 压缩包 表明书籍文件是从压缩包内解压来的  
- 1024: 未正式加入到书架的临时阅读书籍  
-[具体源码](app\src\main\java\io\legado\app\constant\BookType.kt)
+> 4: 音频  
+> 8: 文本  
+> 16: 更新失败  
+> 32: 音频  
+> 64: 图片  
+> 128: 只提供下载服务的网站  
+> 256: 本地  
+> 512: 压缩包 表明书籍文件是从压缩包内解压来的  
+> 1024: 未正式加入到书架的临时阅读书籍  
+> [具体源码](app\src\main\java\io\legado\app\constant\BookType.kt)
 
 - CookieJar
 
@@ -186,9 +186,9 @@ getResponse(): Response //返回访问结果,网络朗读引擎采用的是这�
 //读取值
 var input = infoMap["关键词"];
 //修改值
-infoMap["关键词"]="系统";
+infoMap["关键词"] = "系统";
 //替换infoMap
-infoMap.set({"键":"值"});
+infoMap.set({ 键: "值" });
 //保存infoMap
 infoMap.save();
 ```
@@ -325,29 +325,29 @@ let options = {
 > 字符串变量`event`的值对应事件名称，目前的事件有
 
 ```js
-"clickBookName" //点击详情页书名
-"longClickBookName" //长按详情页书名
-"clickAuthor" //点击详情页作者
-"longClickAuthor" //长按详情页作者
-"clickCustomButton" //点击书源自定义按钮
-"longClickCustomButton" //长按书源自定义按钮（只存在小说的正文界面）
-"clickShareBook" //点击详情页分享按钮
-"clickClearCache" //点击详情页清理缓存按钮
-"clickCopyBookUrl" //点击详情页拷贝书籍URl按钮
-"clickCopyTocUrl" //点击详情页拷贝目录URl按钮
-"clickCopyPlayUrl" //音频、视频界面点击拷贝播放URL按钮
-"clickBookLabel" //点击详情页标签
-"longClickBookLabel" //长按详情页标签
+"clickBookName"; //点击详情页书名
+"longClickBookName"; //长按详情页书名
+"clickAuthor"; //点击详情页作者
+"longClickAuthor"; //长按详情页作者
+"clickCustomButton"; //点击书源自定义按钮
+"longClickCustomButton"; //长按书源自定义按钮（只存在小说的正文界面）
+"clickShareBook"; //点击详情页分享按钮
+"clickClearCache"; //点击详情页清理缓存按钮
+"clickCopyBookUrl"; //点击详情页拷贝书籍URl按钮
+"clickCopyTocUrl"; //点击详情页拷贝目录URl按钮
+"clickCopyPlayUrl"; //音频、视频界面点击拷贝播放URL按钮
+"clickBookLabel"; //点击详情页标签
+"longClickBookLabel"; //长按详情页标签
 //上面的事件回调执行结果返回true会消费事件，原本的软件操作不会再执行
 
 //下面的事件无法被回调结果消费
-"addBookShelf" //添加到书架
-"delBookShelf" //移除书架
-"saveRead" //保存阅读进度
-"startRead" //开始阅读
-"endRead" //结束阅读
-"startShelfRefresh" //开始书架刷新
-"endShelfRefresh" //结束书架刷新
+"addBookShelf"; //添加到书架
+"delBookShelf"; //移除书架
+"saveRead"; //保存阅读进度
+"startRead"; //开始阅读
+"endRead"; //结束阅读
+"startShelfRefresh"; //开始书架刷新
+"endShelfRefresh"; //结束书架刷新
 ```
 
 - 图片解密
@@ -356,21 +356,21 @@ let options = {
 > 部分变量说明：java（仅支持[js扩展类](https://github.com/gedoor/legado/blob/master/app/src/main/java/io/legado/app/help/JsExtensions.kt)），result为待解密图片的`ByteArray`，src为图片链接
 
 ```js
-java.createSymmetricCrypto("AES/CBC/PKCS5Padding", key, iv).decrypt(result)
+java.createSymmetricCrypto("AES/CBC/PKCS5Padding", key, iv).decrypt(result);
 ```
 
 ```js
 function decodeImage(data, key) {
-  var input = new Packages.java.io.ByteArrayInputStream(data)
-  var out = new Packages.java.io.ByteArrayOutputStream()
-  var byte
+  var input = new Packages.java.io.ByteArrayInputStream(data);
+  var out = new Packages.java.io.ByteArrayOutputStream();
+  var byte;
   while ((byte = input.read()) != -1) {
-    out.write(byte ^ key)
+    out.write(byte ^ key);
   }
-  return out.toByteArray()
+  return out.toByteArray();
 }
 
-decodeImage(result, key)
+decodeImage(result, key);
 ```
 
 - 封面解密
@@ -378,20 +378,20 @@ decodeImage(result, key)
 > 同图片解密 其中result为待解密封面的`inputStream`
 
 ```js
-java.createSymmetricCrypto("AES/CBC/PKCS5Padding", key, iv).decrypt(result)
+java.createSymmetricCrypto("AES/CBC/PKCS5Padding", key, iv).decrypt(result);
 ```
 
 ```js
 function decodeImage(data, key) {
-  var out = new Packages.java.io.ByteArrayOutputStream()
-  var byte
+  var out = new Packages.java.io.ByteArrayOutputStream();
+  var byte;
   while ((byte = data.read()) != -1) {
-    out.write(byte ^ key)
+    out.write(byte ^ key);
   }
-  return out.toByteArray()
+  return out.toByteArray();
 }
 
-decodeImage(result, key)
+decodeImage(result, key);
 ```
 
 - 网页JS
@@ -405,9 +405,10 @@ decodeImage(result, key)
 > 异步执行阅读函数，并返回字符串结果
 
 ```js
-window.run("java.toast('执行成功');'成功'")
-.then(r=>alert(r))
-.catch(e=>alert("执行出错:"+e));
+window
+  .run("java.toast('执行成功');'成功'")
+  .then((r) => alert(r))
+  .catch((e) => alert("执行出错:" + e));
 ```
 
 - 图片链接控制样式
@@ -492,11 +493,17 @@ result = `<img src = "${url}">`;
 ```html
 <useweb>
   <div style="padding:12px">
-    <br>
+    <br />
     <button onclick="set()">刷新</button>
   </div>
 </useweb>
 ```
+
+> `useweb` 内联页面只有同步函数（`java.ajax()`、`java.get()` 等），没有 `ajaxAwait` 这类异步桥。\
+> 需要异步请求能力时，用 `java.showBrowser(url, html, preloadJs, config)` 弹出底部 WebView 对话框：\
+> `url` 为加载内容的基础地址，`html` 为要加载的页面内容，`preloadJs`、`config` 可选。\
+> 传入 `preloadJs` 时对话框内会注入完整 JS 桥，可直接使用 `ajaxAwait`、`getAwait`、`run` 等异步函数；\
+> 不传 `preloadJs` 时对话框内只有与内联页面相同的同步函数。
 
 - 发现页 useweb
 
@@ -559,7 +566,7 @@ var html = `
       }
       java.open("explore", url, title);
     }
-    
+
     var grid = document.getElementById("grid");
     items.forEach(function(item) {
       var button = document.createElement("button");
@@ -577,3 +584,13 @@ html;
 </js>
 ```
 
+---
+
+## URL 规则的本地调试
+
+书源/订阅源调试界面开启「本地调试」后，URL 规则（searchUrl 等）立即在本地执行：`@js:`、`<js></js>`、`{{key}}/{{page}}` 替换与 URL 选项（method/headers/body 等）解析照常进行，但不再按结果发起网络请求：
+
+- 结果是网址（`http(s)://`、`data:`、`/` 开头）→ 把算出的请求打进调试日志，以空内容继续跑解析规则（纯 JS 规则照常执行，依赖网页内容的规则解析结果为空）
+- 其余结果视为内容（JSON/HTML/文本）→ 直接交给后续解析规则；规则内部 `java.ajax()` 等取内容调用照常联网
+
+判定先按 `,{...}` 切掉尾部 URL 选项段，再按前缀启发式，极端写法可能误判。

@@ -24,29 +24,28 @@ import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookGroup
 import io.legado.app.databinding.FragmentBookshelf1Binding
-import io.legado.app.help.book.BookTagHelper
 import io.legado.app.help.book.BookTagManagement
-import io.legado.app.constant.BookType
 import io.legado.app.help.config.AppConfig
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.group.GroupEditDialog
 import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.main.bookshelf.BaseBookshelfFragment
+import io.legado.app.ui.main.bookshelf.BookshelfTagSelection
+import io.legado.app.ui.main.bookshelf.loadBookshelfTagBarData
+import io.legado.app.ui.main.bookshelf.observeBookshelfTagSource
+import io.legado.app.ui.main.bookshelf.restoreTagSelection
 import io.legado.app.ui.main.bookshelf.style1.books.BooksFragment
 import io.legado.app.ui.widget.RoundedTagBarView
 import io.legado.app.utils.isCreated
 import io.legado.app.utils.MenuExtensions
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.observeEvent
-import io.legado.app.utils.postEvent
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlin.collections.set
 
 /**
@@ -55,7 +54,8 @@ import kotlin.collections.set
  * 1. TabLayout 模式（下拉选择分组开关未勾选）：显示所有分组标签，可滑动点击切换
  * 2. 下拉选择模式（下拉选择分组开关勾选）：点击标题栏弹出下拉选择分组菜单
  */
-class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1),
+class BookshelfFragment1() :
+    BaseBookshelfFragment(R.layout.fragment_bookshelf1),
     TabLayout.OnTabSelectedListener,
     SearchView.OnQueryTextListener {
 
@@ -67,16 +67,25 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
 
     private val binding by viewBinding(FragmentBookshelf1Binding::bind)
     private val adapter by lazy { TabFragmentPageAdapter(childFragmentManager) }
+
     // 下拉选择模式相关控件
     private var titleSelect: LinearLayout? = null
     private var tvGroupName: TextView? = null
     private var ivArrow: ImageView? = null
+
     // TabLayout 模式相关控件
     private var tabLayout: TabLayout? = null
+
     // 二级标签栏
     private var tagBar: RoundedTagBarView? = null
     private var tagSelectedIndex = -1
     private var currentTagList: List<String> = emptyList()
+
+    /** 最近一次提交到标签栏的命中数量，用于判断重算结果是否与上次完全一致（见 [loadTagBar]） */
+    private var tagBarCounts: Map<String, Int> = emptyMap()
+
+    /** [tagSelectedIndex] 所属的分组；切分组时选中态要回到「全部」，同一分组内重载则保留 */
+    private var tagBarGroupId: Long? = null
     private val bookGroups = mutableListOf<BookGroup>()
     private val fragmentMap = hashMapOf<Long, BooksFragment>()
     private var currentPosition = 0
@@ -96,11 +105,14 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
                 override fun onFragmentDestroyed(fm: FragmentManager, fragment: Fragment) {
                     fragmentMap.entries.removeIf { it.value === fragment }
                 }
-            }, true
+            },
+            true,
         )
         setSupportToolbar(binding.titleBar.toolbar)
         initView()
         initBookGroupData()
+        // 智能标签数量随阅读进度等字段变化，写入方多且分散，靠事件必然漏发（见该函数说明）
+        observeBookshelfTagSource { loadTagBar() }
     }
 
     private val selectedGroup: BookGroup?
@@ -114,6 +126,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         tagBar?.setOnTagClickListener { index ->
             tagSelectedIndex = index
             tagBar?.setSelectedIndex(index)
+            BookshelfTagSelection.remember(groupId, currentTagList.getOrNull(index))
             refreshBooksByTag()
         }
         // 根据"下拉选择分组"开关动态添加布局到 TitleBar
@@ -129,12 +142,12 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             ivArrow = groupSelectorView.findViewById(R.id.iv_arrow)
             // 监听 ViewPager 页面切换，更新当前分组名称显示
             binding.viewPagerBookshelf.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
-            override fun onPageSelected(position: Int) {
-                currentPosition = position
-                AppConfig.saveTabPosition = position
-                tvGroupName?.text = bookGroups.getOrNull(position)?.groupName ?: ""
-                loadTagBar()
-            }
+                override fun onPageSelected(position: Int) {
+                    currentPosition = position
+                    AppConfig.saveTabPosition = position
+                    tvGroupName?.text = bookGroups.getOrNull(position)?.groupName ?: ""
+                    loadTagBar()
+                }
                 override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {}
                 override fun onPageScrollStateChanged(state: Int) {}
             })
@@ -192,9 +205,9 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
     private class GroupSelectorAdapter(
         context: android.content.Context,
         items: List<String>,
-        private val selectedPosition: Int
+        private val selectedPosition: Int,
     ) : ArrayAdapter<String>(context, android.R.layout.simple_spinner_dropdown_item, items) {
-        
+
         override fun getView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View {
             val view = super.getView(position, convertView, parent)
             if (view is TextView) {
@@ -221,9 +234,7 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         return false
     }
 
-    override fun onQueryTextChange(newText: String?): Boolean {
-        return false
-    }
+    override fun onQueryTextChange(newText: String?): Boolean = false
 
     @Synchronized
     override fun upGroup(data: List<BookGroup>) {
@@ -317,73 +328,52 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
             tagBar?.visibility = View.GONE
             tagSelectedIndex = -1
             currentTagList = emptyList()
+            tagBarGroupId = null
             fragmentMap[groupId]?.filterByTag(null)
             return
         }
         val currentGroupId = groupId
+        val context = requireContext()
+        // 同一分组内重载（详情页改标签、改主题等都会触发）要保留用户选中的标签，
+        // 无条件回到「全部」会把筛选状态冲掉；跨主界面重建的恢复由 BookshelfTagSelection 承载，
+        // 分组确实换了则不再沿用（别的分组的标签列表不是同一套）
+        val previousTag = if (tagBarGroupId == currentGroupId) {
+            currentTagList.getOrNull(tagSelectedIndex)
+        } else {
+            BookshelfTagSelection.consume(currentGroupId)
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             val allText = getString(R.string.bookshelf_tag_all)
-            val tags = withContext(Dispatchers.IO) {
-                val configured = AppConfig.bookshelfGroupTags[currentGroupId].orEmpty()
-                val hidden = AppConfig.bookshelfHiddenTags[currentGroupId].orEmpty()
-                val allBooks = appDb.bookDao.allTagInfos
-                val groupBooks = filterBooksByGroup(allBooks, currentGroupId)
-                val existing = groupBooks.flatMap { BookTagHelper.parse(it.customTag) }
-                val merged = BookTagManagement.mergeTags(configured, existing)
-                merged.filter { tag -> hidden.none { it.equals(tag, ignoreCase = true) } }
-            }
+            val (tags, tagCounts) = loadBookshelfTagBarData(context, currentGroupId)
             // 在标签列表前插入空字符串作为“全部”标签，显示时转为 allText
-            currentTagList = listOf("") + tags
-            tagSelectedIndex = 0
-            tagBar?.visibility = View.VISIBLE
-            tagBar?.applyTopBarStyle(force = true)
-            tagBar?.submitItems(
-                currentTagList.map { RoundedTagBarView.Item(it.ifBlank { allText }) },
-                0
-            )
-            tagBar?.setSelectedIndex(0, false)
-            refreshBooksByTag()
-        }
-    }
-
-    /**
-     * 根据 groupId 过滤书籍，逻辑与 [BookshelfTagManageViewModel.booksInGroup] 一致。
-     * 默认分组（负数 ID）基于 [BookType] 筛选，用户分组（正数 ID）基于 group 位掩码筛选。
-     */
-    private fun filterBooksByGroup(
-        books: List<io.legado.app.data.dao.BookTagInfo>,
-        currentGroupId: Long
-    ): List<io.legado.app.data.dao.BookTagInfo> {
-        return when (currentGroupId) {
-            BookGroup.IdAll -> books
-            BookGroup.IdLocal -> books.filter { it.type and BookType.local > 0 }
-            BookGroup.IdAudio -> books.filter { it.type and BookType.audio > 0 }
-            BookGroup.IdVideo -> books.filter { it.type and BookType.video > 0 }
-            BookGroup.IdError -> books.filter { it.type and BookType.updateError > 0 }
-            else -> {
-                val userGroupMask = appDb.bookGroupDao.all
-                    .filter { it.groupId > 0 }
-                    .fold(0L) { acc, group -> acc or group.groupId }
-                when (currentGroupId) {
-                    BookGroup.IdNetNone -> books.filter {
-                        it.type and BookType.audio == 0 &&
-                            it.type and BookType.video == 0 &&
-                            it.type and BookType.local == 0 &&
-                            (it.group and userGroupMask) == 0L
-                    }
-                    BookGroup.IdLocalNone -> books.filter {
-                        it.type and BookType.audio == 0 &&
-                            it.type and BookType.video == 0 &&
-                            it.type and BookType.local > 0 &&
-                            (it.group and userGroupMask) == 0L
-                    }
-                    else -> if (currentGroupId > 0) {
-                        books.filter { it.group and currentGroupId > 0 }
-                    } else {
-                        emptyList()
-                    }
-                }
+            val newTagList = listOf("") + tags
+            val selectedIndex = newTagList.restoreTagSelection(previousTag)
+            // 标签源每次变化都会走到这里，但重算结果往往和上次完全一样（例如只改了与标签无关的
+            // 计数）。整份重建 chip、强制重刷样式、再走一遍筛选既没有视觉差异，又会在
+            // 每次阅读进度写入时白干一遍，所以内容未变就只更新状态、不碰视图。
+            val unchanged = tagBarGroupId == currentGroupId &&
+                newTagList == currentTagList &&
+                selectedIndex == tagSelectedIndex &&
+                tagCounts == tagBarCounts
+            currentTagList = newTagList
+            tagSelectedIndex = selectedIndex
+            tagBarGroupId = currentGroupId
+            tagBarCounts = tagCounts
+            BookshelfTagSelection.remember(currentGroupId, currentTagList.getOrNull(selectedIndex))
+            if (!unchanged) {
+                tagBar?.visibility = View.VISIBLE
+                tagBar?.applyTopBarStyle()
+                tagBar?.submitItems(
+                    currentTagList.map { tag ->
+                        RoundedTagBarView.Item(
+                            BookTagManagement.tagBarLabel(tag, allText, tagCounts[tag] ?: 0),
+                        )
+                    },
+                    selectedIndex,
+                )
+                tagBar?.setSelectedIndex(selectedIndex, false)
             }
+            refreshBooksByTag()
         }
     }
 
@@ -405,19 +395,19 @@ class BookshelfFragment1() : BaseBookshelfFragment(R.layout.fragment_bookshelf1)
         fragmentMap[groupId]?.gotoTop()
     }
 
-@SuppressLint("NotifyDataSetChanged")
-override fun observeLiveBus() {
-    super.observeLiveBus()
-    observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
-        loadTagBar()
-    }
-    // 顶栏配置变更时，同步刷新二级标签栏样式
-    observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) { isNightMode ->
-        if (isNightMode == AppConfig.isNightTheme) {
-            tagBar?.applyTopBarStyle(force = true)
+    @SuppressLint("NotifyDataSetChanged")
+    override fun observeLiveBus() {
+        super.observeLiveBus()
+        observeEvent<String>(EventBus.BOOKSHELF_REFRESH) {
+            loadTagBar()
+        }
+        // 顶栏配置变更时，同步刷新二级标签栏样式
+        observeEvent<Boolean>(EventBus.TOP_BAR_CHANGED) { isNightMode ->
+            if (isNightMode == AppConfig.isNightTheme) {
+                tagBar?.applyTopBarStyle(force = true)
+            }
         }
     }
-}
 
     override fun updateMainBottomPadding(bottomPadding: Int) {
         if (view == null) return
@@ -428,8 +418,7 @@ override fun observeLiveBus() {
         }
     }
 
-    private inner class TabFragmentPageAdapter(fm: FragmentManager) :
-        FragmentStatePagerAdapter(fm, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
+    private inner class TabFragmentPageAdapter(fm: FragmentManager) : FragmentStatePagerAdapter(fm, BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT) {
 
         /**
          * 确定视图位置是否更改时调用
@@ -453,17 +442,14 @@ override fun observeLiveBus() {
         override fun getItem(position: Int): Fragment {
             val group = bookGroups[position]
             onlyUpdateRead = group.onlyUpdateRead
-            return BooksFragment(position, group)
+            // 主界面重建后待恢复的选中标签：首帧就带上，列表不必先渲染未筛选内容再纠正
+            return BooksFragment(position, group, BookshelfTagSelection.peek(group.groupId))
         }
 
-        override fun getCount(): Int {
-            return bookGroups.size
-        }
+        override fun getCount(): Int = bookGroups.size
 
         // TabLayout 模式：返回分组名称作为 Tab 标题
-        override fun getPageTitle(position: Int): CharSequence {
-            return bookGroups[position].groupName
-        }
+        override fun getPageTitle(position: Int): CharSequence = bookGroups[position].groupName
 
         override fun instantiateItem(container: ViewGroup, position: Int): Any {
             var fragment = super.instantiateItem(container, position) as BooksFragment
@@ -478,6 +464,5 @@ override fun observeLiveBus() {
             fragmentMap[group.groupId] = fragment
             return fragment
         }
-
     }
 }

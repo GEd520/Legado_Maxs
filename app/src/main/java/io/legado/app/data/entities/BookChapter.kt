@@ -55,7 +55,7 @@ data class BookChapter(
     var index: Int = 0, // 章节序号
     var isVip: Boolean = false, // 是否VIP
     var isPay: Boolean = false, // 是否已购买
-    var resourceUrl: String? = null, // 音频真实URL
+    var resourceUrl: String? = null, // 音视频真实URL（书源解析出的媒体直链，离线缓存与播放判定用）
     var tag: String? = null, // 更新时间或其他章节附加信息
     var wordCount: String? = null, // 本章节字数
     var start: Long? = null, // 章节起始位置

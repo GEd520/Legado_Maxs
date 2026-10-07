@@ -4,6 +4,10 @@ import io.legado.app.constant.AppLog
 import io.legado.app.data.appDb
 import io.legado.app.data.entities.Book
 import io.legado.app.help.book.BookHelp
+import io.legado.app.help.book.CacheManifestHelper
+import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
+import io.legado.app.help.exoplayer.ExoPlayerHelper
 import io.legado.app.utils.ACache
 import io.legado.app.utils.ConvertUtils
 import io.legado.app.utils.FileUtils
@@ -23,7 +27,7 @@ import java.util.concurrent.atomic.AtomicLong
 
 // - 作用 ：缓存计算器，负责计算各类缓存大小和执行清理操作
 // - 主要功能 ：
-//   - 计算7种缓存类型的大小（书籍、Epub、临时文件、TTS、ACache、数据库、日志）
+//   - 计算9种缓存类型的大小（书籍、Epub、临时文件、TTS、ACache、内部缓存、数据库、WebView、日志）
 //   - 计算可展开缓存的详情列表（如每本书的缓存、每个TTS引擎的缓存）
 //   - 执行缓存清理操作（支持整体清理和单独清理）
 
@@ -40,9 +44,14 @@ data class CacheDetail(
 object StorageCalculator {
 
     private const val LOG_CACHE_DIR_NAME = "log"
+    private const val TTS_CACHE_DIR_NAME = "httpTTS"
+    private const val ACACHE_DIR_NAME = "ACache"
     private const val ACACHE_OTHER_ID = "__other__"
     private const val WEBVIEW_DIR_NAME = "app_webview"
     private const val HWS_WEBVIEW_DIR_NAME = "app_hws_webview"
+
+    // 内部缓存（cacheDir 根）扫描时跳过已单列统计的子目录，避免与 TTS/ACache 类重复计数
+    private val INTERNAL_EXCLUDED_ROOT_NAMES = setOf(TTS_CACHE_DIR_NAME, ACACHE_DIR_NAME)
 
     private val runtimeCachePrefixes = listOf(
         "v_" to "书源变量缓存",
@@ -62,6 +71,7 @@ object StorageCalculator {
     private var cachedBookSize = AtomicLong(-1L)
     private var cachedEpubSize = AtomicLong(-1L)
     private var cachedTempSize = AtomicLong(-1L)
+    private var cachedInternalSize = AtomicLong(-1L)
     private var cachedTtsSize = AtomicLong(-1L)
     private var cachedACacheSize = AtomicLong(-1L)
     private var cachedDbSize = AtomicLong(-1L)
@@ -85,6 +95,7 @@ object StorageCalculator {
         cachedBookSize.set(-1L)
         cachedEpubSize.set(-1L)
         cachedTempSize.set(-1L)
+        cachedInternalSize.set(-1L)
         cachedTtsSize.set(-1L)
         cachedACacheSize.set(-1L)
         cachedDbSize.set(-1L)
@@ -142,7 +153,7 @@ object StorageCalculator {
                 val book = folderMap[bookDir.name]
                 val size = calculateDirSizeFast(bookDir)
                 if (size > 0) {
-                    val chapterCount = countCachedChapters(bookDir)
+                    val chapterCount = countCachedChapters(bookDir, book)
                     val name = book?.name ?: bookDir.name
                     val meta = if (book != null) {
                         "${chapterCount}章 · 最后阅读: ${formatLastRead(book)}"
@@ -185,7 +196,17 @@ object StorageCalculator {
         return map
     }
 
-    private fun countCachedChapters(bookDir: File): Int {
+    private fun countCachedChapters(bookDir: File, book: Book? = null): Int {
+        if (book != null && (book.isVideo || book.isAudio)) {
+            // 音视频书缓存的是一章一个媒体文件，按各自的媒体缓存判定
+            val useVideoCache = book.isVideo
+            return runCatching {
+                //按"确实有缓存的地址"统计：章节表里的地址过期后不该被算成没缓存
+                val manifest = CacheManifestHelper.read(book)
+                appDb.bookChapterDao.getChapterList(book.bookUrl)
+                    .count { CacheManifestHelper.cachedMediaUrl(book, it, manifest) != null }
+            }.getOrDefault(0)
+        }
         return bookDir.listFiles()?.count { it.isFile && it.extension == "nb" } ?: 0
     }
 
@@ -228,7 +249,7 @@ object StorageCalculator {
         if (isCacheValid() && cachedTtsSize.get() >= 0) {
             return@withContext cachedTtsSize.get()
         }
-        val ttsDir = appCtx.cacheDir.getFile("httpTTS")
+        val ttsDir = appCtx.cacheDir.getFile(TTS_CACHE_DIR_NAME)
         val size = calculateDirSizeFast(ttsDir)
         cachedTtsSize.set(size)
         markCacheTime()
@@ -236,7 +257,7 @@ object StorageCalculator {
     }
 
     suspend fun calculateTtsCacheDetails(): List<CacheDetail> = withContext(Dispatchers.IO) {
-        val ttsDir = appCtx.cacheDir.getFile("httpTTS")
+        val ttsDir = appCtx.cacheDir.getFile(TTS_CACHE_DIR_NAME)
         val details = mutableListOf<CacheDetail>()
         
         ttsDir.listFiles()?.forEach { engineDir ->
@@ -282,7 +303,7 @@ object StorageCalculator {
 
     fun clearTtsCache(engineId: String? = null) {
         invalidateCache()
-        val ttsDir = appCtx.cacheDir.getFile("httpTTS")
+        val ttsDir = appCtx.cacheDir.getFile(TTS_CACHE_DIR_NAME)
         if (engineId == null) {
             FileUtils.delete(ttsDir.absolutePath)
         } else {
@@ -294,7 +315,7 @@ object StorageCalculator {
         if (isCacheValid() && cachedACacheSize.get() >= 0) {
             return@withContext cachedACacheSize.get()
         }
-        val aCacheDir = File(appCtx.cacheDir, "ACache")
+        val aCacheDir = File(appCtx.cacheDir, ACACHE_DIR_NAME)
         val size = calculateDirSizeFast(aCacheDir)
         cachedACacheSize.set(size)
         markCacheTime()
@@ -306,7 +327,7 @@ object StorageCalculator {
      * 优化：只遍历一次目录，同时计算所有前缀的统计信息
      */
     suspend fun calculateACacheDetails(): List<CacheDetail> = withContext(Dispatchers.IO) {
-        val aCacheDir = File(appCtx.cacheDir, "ACache")
+        val aCacheDir = File(appCtx.cacheDir, ACACHE_DIR_NAME)
         if (!aCacheDir.exists()) return@withContext emptyList()
         
         val prefixes = listOf(
@@ -358,7 +379,7 @@ object StorageCalculator {
         if (prefix == null) {
             ACache.get().clear()
         } else {
-            val aCacheDir = File(appCtx.cacheDir, "ACache")
+            val aCacheDir = File(appCtx.cacheDir, ACACHE_DIR_NAME)
             aCacheDir.listFiles()?.forEach { file ->
                 if (file.isFile && file.name.startsWith(prefix)) {
                     file.delete()
@@ -368,7 +389,7 @@ object StorageCalculator {
     }
 
     suspend fun calculateACacheDetailsAccurate(): List<CacheDetail> = withContext(Dispatchers.IO) {
-        val aCacheDir = File(appCtx.cacheDir, "ACache")
+        val aCacheDir = File(appCtx.cacheDir, ACACHE_DIR_NAME)
         if (!aCacheDir.exists()) return@withContext emptyList()
 
         val prefixStats = mutableMapOf<String, Pair<Long, Int>>()
@@ -430,7 +451,7 @@ object StorageCalculator {
             ACache.get().clear()
             return
         }
-        val aCacheDir = File(appCtx.cacheDir, "ACache")
+        val aCacheDir = File(appCtx.cacheDir, ACACHE_DIR_NAME)
         aCacheDir.listFiles()?.forEach { file ->
             val shouldDelete = if (prefix == ACACHE_OTHER_ID) {
                 file.isFile && runtimeCachePrefixes.none { (knownPrefix, _) ->
@@ -585,8 +606,34 @@ object StorageCalculator {
 
     fun clearTempCache() {
         invalidateCache()
-        appCtx.externalCache.listFiles()?.forEach { 
-            if (it.name == LOG_CACHE_DIR_NAME) return@forEach
+        clearDirChildren(appCtx.externalCache, setOf(LOG_CACHE_DIR_NAME))
+    }
+
+    /**
+     * 计算内部缓存大小（cacheDir 根，跳过已单列统计的 httpTTS/ACache）
+     * 覆盖 Cronet 下载残留、导出临时文件、WebView 网络缓存等
+     */
+    suspend fun calculateInternalCacheSize(): Long = withContext(Dispatchers.IO) {
+        if (isCacheValid() && cachedInternalSize.get() >= 0) {
+            return@withContext cachedInternalSize.get()
+        }
+        val size = calculateDirSizeFast(appCtx.cacheDir, excludedRootNames = INTERNAL_EXCLUDED_ROOT_NAMES)
+        cachedInternalSize.set(size)
+        markCacheTime()
+        size
+    }
+
+    fun clearInternalCache() {
+        invalidateCache()
+        clearDirChildren(appCtx.cacheDir, INTERNAL_EXCLUDED_ROOT_NAMES)
+    }
+
+    /**
+     * 删除目录根下的全部条目（跳过 excludedRootNames 命中的根级条目）
+     */
+    private fun clearDirChildren(dir: File, excludedRootNames: Set<String> = emptySet()) {
+        dir.listFiles()?.forEach {
+            if (it.name in excludedRootNames) return@forEach
             if (it.isDirectory) {
                 FileUtils.delete(it.absolutePath)
             } else {
@@ -747,7 +794,7 @@ object StorageCalculator {
         if (isCacheValid() && cachedTtsCount >= 0) {
             return@withContext cachedTtsCount
         }
-        val ttsDir = appCtx.cacheDir.getFile("httpTTS")
+        val ttsDir = appCtx.cacheDir.getFile(TTS_CACHE_DIR_NAME)
         val count = ttsDir.listFiles()?.count { it.isDirectory } ?: 0
         cachedTtsCount = count
         markCacheTime()
@@ -758,7 +805,7 @@ object StorageCalculator {
         if (isCacheValid() && cachedACacheCount >= 0) {
             return@withContext cachedACacheCount
         }
-        val aCacheDir = File(appCtx.cacheDir, "ACache")
+        val aCacheDir = File(appCtx.cacheDir, ACACHE_DIR_NAME)
         val count = if (!aCacheDir.exists()) 0 else aCacheDir.listFiles()?.count { it.isFile } ?: 0
         cachedACacheCount = count
         markCacheTime()

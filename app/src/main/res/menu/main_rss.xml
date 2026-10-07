@@ -32,4 +32,11 @@
         app:showAsAction="always"
         tools:ignore="AlwaysShowAction" />
 
+    <!-- 三点菜单：切换新版/旧版订阅；新版模式下的分类页菜单项 -->
+    <item
+        android:id="@+id/menu_more"
+        android:icon="@drawable/ic_more_vert"
+        android:title="@string/more"
+        app:showAsAction="always" />
+
 </menu>

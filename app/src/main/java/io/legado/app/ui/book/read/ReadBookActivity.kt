@@ -116,11 +116,11 @@ import io.legado.app.utils.LogUtils
 import io.legado.app.utils.NetworkUtils
 import io.legado.app.utils.StartActivityContract
 import io.legado.app.utils.applyOpenTint
+import io.legado.app.utils.argbHexString
 import io.legado.app.utils.buildMainHandler
 import io.legado.app.utils.dismissDialogFragment
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.getPrefString
-import io.legado.app.utils.hexString
 import io.legado.app.utils.iconItemOnLongClick
 import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
@@ -135,6 +135,7 @@ import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
 import io.legado.app.utils.startActivity
 import io.legado.app.utils.startActivityForBook
+import io.legado.app.utils.sysBattery
 import io.legado.app.utils.sysScreenOffTime
 import io.legado.app.utils.throttle
 import io.legado.app.utils.toastOnUi
@@ -248,6 +249,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         set(value) {
             field = value && isShowingSearchResult
         }
+    // 两个选择手柄所在行的顶部，用于把放大镜对准手柄所指的文字
+    private var cursorLeftLineTop = 0f
+    private var cursorRightLineTop = 0f
     private val timeBatteryReceiver = TimeBatteryReceiver()
     private var screenTimeOut: Long = 0
     private var loadStates: Boolean = false
@@ -255,6 +259,7 @@ class ReadBookActivity : BaseReadBookActivity(),
     override val pageDelegate get() = binding.readView.pageDelegate
     override val headerHeight: Int get() = binding.readView.curPage.headerHeight
     override val imgBgPaddingStart: Int get() = binding.readView.curPage.imgBgPaddingStart
+    override val pageAnimationSpeed: Int get() = binding.readView.defaultAnimationSpeed
     private val nextPageDebounce by lazy { Debounce { keyPage(PageDirection.NEXT) } }
     private val prevPageDebounce by lazy { Debounce { keyPage(PageDirection.PREV) } }
     private var bookChanged = false
@@ -286,6 +291,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         binding.cursorRight.setColorFilter(accentColor)
         binding.cursorLeft.setOnTouchListener(this)
         binding.cursorRight.setOnTouchListener(this)
+        // 选区放大镜由浮层自绘，接上阅读视图（浮层在手柄之上，布局里位于手柄后面）
+        binding.selectionMagnifier.readView = binding.readView
+        binding.readView.magnifierOverlay = binding.selectionMagnifier
         window.setBackgroundDrawable(null)
         upScreenTimeOut()
         ReadBook.register(this)
@@ -404,6 +412,9 @@ class ReadBookActivity : BaseReadBookActivity(),
         upSystemUiVisibility()
         registerReceiver(timeBatteryReceiver, timeBatteryReceiver.filter)
         binding.readView.upTime()
+        // 粘性广播经 LiveEventBus 传递初始电量在部分机型上不可靠，直接查一次系统电量，
+        // 保证进入/回到阅读界面时页眉页脚立刻显示真实电量而不是默认值
+        binding.readView.upBattery(sysBattery)
         screenOffTimerStart()
         // 网络监听，当从无网切换到网络环境时同步进度（注意注册的同时就会收到监听，因此界面激活时无需重复执行同步操作）
         networkChangedListener.register()
@@ -850,8 +861,12 @@ class ReadBookActivity : BaseReadBookActivity(),
         when (event.action) {
             MotionEvent.ACTION_DOWN -> textActionMenu.dismiss()
             MotionEvent.ACTION_MOVE -> {
+                val reverseStart = readView.curPage.getReverseStartCursor()
+                val reverseEnd = readView.curPage.getReverseEndCursor()
+                // 反向拖动时两个手柄角色互换，手指实际驱动的是另一个端点
+                val byStartCursor = if (v.id == R.id.cursor_left) !reverseStart else reverseEnd
                 when (v.id) {
-                    R.id.cursor_left -> if (!readView.curPage.getReverseStartCursor()) {
+                    R.id.cursor_left -> if (!reverseStart) {
                         readView.curPage.selectStartMove(
                             event.rawX + cursorLeft.width,
                             event.rawY - cursorLeft.height
@@ -863,7 +878,7 @@ class ReadBookActivity : BaseReadBookActivity(),
                         )
                     }
 
-                    R.id.cursor_right -> if (readView.curPage.getReverseEndCursor()) {
+                    R.id.cursor_right -> if (reverseEnd) {
                         readView.curPage.selectStartMove(
                             event.rawX + cursorLeft.width,
                             event.rawY - cursorLeft.height
@@ -875,14 +890,41 @@ class ReadBookActivity : BaseReadBookActivity(),
                         )
                     }
                 }
+                showCursorMagnifier(byStartCursor)
+                // 手柄拖到屏幕上下边缘时自动翻页，实现跨页选择
+                readView.curPage.checkSelectAutoPage(event.rawX, event.rawY, byStartCursor)
             }
 
             MotionEvent.ACTION_UP -> {
+                readView.dismissSelectionMagnifier()
+                // 松手时取消排队中的跨页翻页，避免手指已经抬起还继续翻
+                readView.curPage.cancelSelectAutoPage()
                 readView.curPage.resetReverseCursor()
                 showTextActionMenu()
             }
+
+            MotionEvent.ACTION_CANCEL -> {
+                readView.dismissSelectionMagnifier()
+                readView.curPage.cancelSelectAutoPage()
+            }
         }
         return true
+    }
+
+    /**
+     * 拖动手柄时显示放大镜，放大镜对准手指正在移动的那个端点所指的文字
+     */
+    private fun showCursorMagnifier(byStartCursor: Boolean) = binding.run {
+        val x: Float
+        val centerY: Float
+        if (byStartCursor) {
+            x = cursorLeft.x + cursorLeft.width
+            centerY = (cursorLeft.y + cursorLeftLineTop) / 2f
+        } else {
+            x = cursorRight.x
+            centerY = (cursorRight.y + cursorRightLineTop) / 2f
+        }
+        readView.showSelectionMagnifier(x, centerY)
     }
 
     /**
@@ -892,17 +934,41 @@ class ReadBookActivity : BaseReadBookActivity(),
         cursorLeft.x = x - cursorLeft.width
         cursorLeft.y = y
         cursorLeft.visible(true)
+        cursorLeftLineTop = top
         textMenuPosition.x = x
-        textMenuPosition.y = top
+        // 锚点被翻页带到屏幕外时不要把菜单定位点也带出去，否则菜单会跑到屏幕外
+        textMenuPosition.y = top.coerceAtLeast(headerHeight.toFloat())
     }
 
     /**
      * 更新文字选择结束位置
      */
-    override fun upSelectedEnd(x: Float, y: Float) = binding.run {
+    override fun upSelectedEnd(x: Float, y: Float, top: Float) = binding.run {
         cursorRight.x = x
         cursorRight.y = y
         cursorRight.visible(true)
+        cursorRightLineTop = top
+    }
+
+    /**
+     * 页窗口位移（跨页选择翻页）后同步选择锚点
+     */
+    override fun onSelectPageShift(offset: Int) {
+        binding.readView.shiftSelectAnchor(offset)
+    }
+
+    /**
+     * 跨页选择自动翻页后端点落到新页，放大镜跟着移到新的端点行
+     */
+    override fun onSelectAutoPageTurned(dragStartPoint: Boolean) {
+        showCursorMagnifier(dragStartPoint)
+    }
+
+    /**
+     * 跨页选择开始翻页：翻页动画期间先收起放大镜，动画结束再按新端点显示
+     */
+    override fun onSelectPageTurnStart() {
+        binding.readView.dismissSelectionMagnifier()
     }
 
     /**
@@ -925,14 +991,18 @@ class ReadBookActivity : BaseReadBookActivity(),
         val navigationBarHeight =
             if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
                 binding.navigationBar.height else 0
+        // 跨页选择时锚点手柄可能停在屏幕外，菜单定位点夹回屏幕内，避免菜单跑到屏幕外
+        val menuTop = binding.cursorLeft.y.toInt().coerceIn(0, binding.root.height)
+        val menuBottom = (binding.cursorRight.y.toInt() + binding.cursorRight.height)
+            .coerceIn(0, binding.root.height)
         textActionMenu.show(
             binding.textMenuPosition,
             binding.root.height + navigationBarHeight,
             binding.textMenuPosition.x.toInt(),
             binding.textMenuPosition.y.toInt(),
-            binding.cursorLeft.y.toInt(),
+            menuTop,
             binding.cursorRight.x.toInt(),
-            binding.cursorRight.y.toInt() + binding.cursorRight.height
+            menuBottom
         )
     }
 
@@ -1907,7 +1977,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
 
             BG_COLOR -> {
-                setCurBg(0, "#${color.hexString}")
+                setCurBg(0, color.argbHexString)
                 postEvent(EventBus.UP_CONFIG, arrayListOf(1))
                 if (AppConfig.readBarStyleFollowPage) {
                     postEvent(EventBus.UPDATE_READ_ACTION_BAR, true)

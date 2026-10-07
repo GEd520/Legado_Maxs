@@ -18,6 +18,12 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/menu_audio_cache"
+        android:icon="@drawable/ic_download"
+        android:title="@string/offline_cache"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/menu_login"
         android:title="@string/login"
         app:showAsAction="never" />
@@ -35,6 +41,12 @@
     <item
         android:id="@+id/menu_wake_lock"
         android:title="@string/audio_play_wake_lock"
+        android:checkable="true"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_audio_play_cache"
+        android:title="@string/audio_play_cache"
         android:checkable="true"
         app:showAsAction="never" />
 

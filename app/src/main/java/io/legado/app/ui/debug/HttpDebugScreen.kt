@@ -223,7 +223,7 @@ fun HttpDebugScreen(
                                         sb.append(response.body)
                                         
                                         val intent = android.content.Intent(context, io.legado.app.ui.code.CodeEditActivity::class.java).apply {
-                                            putExtra("text", sb.toString())
+                                            io.legado.app.ui.code.CodeEditLauncher.putText(this, sb.toString())
                                             putExtra("title", context.getString(R.string.debug_response_src))
                                         }
                                         context.startActivity(intent)

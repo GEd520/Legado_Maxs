@@ -1,16 +1,29 @@
 package io.legado.app.ui.book.read.config.highlight
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.PorterDuff
+import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.ArrayAdapter
+import android.widget.EditText
+import android.widget.LinearLayout
 import android.widget.SeekBar
+import android.widget.TextView
 import androidx.annotation.ColorInt
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.viewModels
 import com.jaredrummler.android.colorpicker.ColorPickerDialog
@@ -25,14 +38,18 @@ import io.legado.app.lib.theme.getPrimaryTextColor
 import io.legado.app.lib.theme.getSecondaryTextColor
 import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.RealPathUtil
+import io.legado.app.utils.dpToPx
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.setLayout
 import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
+import io.legado.app.utils.windowSize
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.font.FontSelectDialog
 import io.legado.app.utils.showDialogFragment
+import splitties.systemservices.windowManager
+import kotlin.math.roundToInt
 
 /**
  * 高亮规则单条编辑弹窗。
@@ -67,6 +84,53 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
             viewModel.isRegexMode = value
         }
 
+    /** 命中字距是否已排入下一帧的预览刷新：拖动滑块时按帧合并，避免每格都重建预览 */
+    private var spacingPreviewPending = false
+
+    private val spacingPreviewUpdate = Runnable {
+        spacingPreviewPending = false
+        if (isAdded && view != null) updatePreview()
+    }
+
+    /** 最近一次构建的预览规则，悬浮预览层出现时用它同步内容 */
+    private var lastPreviewRule: HighlightRule? = null
+
+    /** 上次布局时的输入法可见性，用来判断可视区是否因键盘变化 */
+    private var imeVisible = false
+
+    /** 上次布局时的滚动区尺寸，尺寸变化说明可视区变了，需要把正在编辑的输入框重新顶回可视区 */
+    private var editorViewportHeight = 0
+    private var editorViewportWidth = 0
+
+    /** 悬浮预览实测高度（含底边距），隐藏时用它推算悬浮层占位 */
+    private var floatingReserveHeight = 0
+
+    /** 已写入窗口的纵向位移，用来把窗口底边累计校正到可见区底边 */
+    private var appliedWindowOffsetY = 0
+
+    /** 滚动/布局/焦点变化时重算悬浮预览的显隐与可视区 */
+    private val floatingPreviewWatcher = object :
+        ViewTreeObserver.OnScrollChangedListener,
+        ViewTreeObserver.OnGlobalLayoutListener,
+        ViewTreeObserver.OnGlobalFocusChangeListener {
+        override fun onScrollChanged() = updateFloatingPreview()
+        override fun onGlobalLayout() = updateEditorViewport()
+        override fun onGlobalFocusChanged(oldFocus: View?, newFocus: View?) {
+            updateFloatingPreview()
+            if (newFocus is EditText) scheduleFocusedInputScroll()
+        }
+    }
+
+    /** 焦点输入框的滚动回可视区排到下一帧：切换焦点时布局还没稳定，立刻滚会算错位置 */
+    private val focusedInputScroll = Runnable {
+        if (isAdded && view != null) scrollFocusedInputIntoView()
+    }
+
+    /** 输入法弹出时按可见区重算弹窗高度与位置 */
+    private val sheetViewportWatcher = ViewTreeObserver.OnGlobalLayoutListener {
+        applyImeAwareWindowMetrics()
+    }
+
     private val selectImageResult = registerForActivityResult(HandleFileContract()) { result ->
         result.uri?.let { uri ->
             // 选择图片时，清除背景颜色
@@ -82,10 +146,15 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
 
     override fun onStart() {
         super.onStart()
-        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, 0.85f)
-        dialog?.window?.setGravity(Gravity.BOTTOM)
-        dialog?.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-        dialog?.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        // 复位上次前台期间为避让输入法写下的窗口位移，避免高度已回默认值、位移还是旧值
+        appliedWindowOffsetY = 0
+        dialog?.window?.apply {
+            attributes = attributes.apply { y = 0 }
+            setGravity(Gravity.BOTTOM)
+            setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            setBackgroundDrawableResource(android.R.color.transparent)
+        }
+        setLayout(ViewGroup.LayoutParams.MATCH_PARENT, SHEET_HEIGHT_RATIO)
     }
 
     override fun onFragmentCreated(view: View, savedInstanceState: Bundle?) {
@@ -156,7 +225,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         binding.spBgImageFit.adapter = object : ArrayAdapter<String>(
             requireContext(),
             R.layout.item_text_common,
-            listOf("平铺", "拉伸填充", "居中裁剪"),
+            listOf("平铺", "拉伸填充", "居中裁剪", "九宫格"),
         ) {
             override fun getView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View {
                 val view = super.getView(position, convertView, parent)
@@ -193,6 +262,36 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         bindData()
         bindEvents()
         updatePreview()
+        binding.scrollView.viewTreeObserver.addOnScrollChangedListener(floatingPreviewWatcher)
+        // 卡片展开/收起（如高级标题、九宫格）会改变内容高度，布局变化时也要重算
+        binding.scrollView.viewTreeObserver.addOnGlobalLayoutListener(floatingPreviewWatcher)
+        binding.scrollView.viewTreeObserver.addOnGlobalFocusChangeListener(floatingPreviewWatcher)
+        binding.root.viewTreeObserver.addOnGlobalLayoutListener(sheetViewportWatcher)
+    }
+
+    override fun onDestroyView() {
+        // 视图已销毁还挂着下一帧的预览刷新会拿到已失效的 binding
+        binding.root.removeCallbacks(spacingPreviewUpdate)
+        binding.root.removeCallbacks(focusedInputScroll)
+        spacingPreviewPending = false
+        imeVisible = false
+        editorViewportHeight = 0
+        editorViewportWidth = 0
+        floatingReserveHeight = 0
+        appliedWindowOffsetY = 0
+        binding.scrollView.viewTreeObserver.let {
+            if (it.isAlive) {
+                it.removeOnScrollChangedListener(floatingPreviewWatcher)
+                it.removeOnGlobalLayoutListener(floatingPreviewWatcher)
+                it.removeOnGlobalFocusChangeListener(floatingPreviewWatcher)
+            }
+        }
+        binding.root.viewTreeObserver.let {
+            if (it.isAlive) {
+                it.removeOnGlobalLayoutListener(sheetViewportWatcher)
+            }
+        }
+        super.onDestroyView()
     }
 
     override fun observeLiveBus() {
@@ -257,6 +356,8 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
             arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
             intArrayOf(accentColor, secondaryTextColor),
         )
+        binding.switchLineSpacing.trackTintList = binding.switchEnable.trackTintList
+        binding.switchLineSpacing.thumbTintList = binding.switchEnable.thumbTintList
 
         val cardDrawable = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
@@ -267,6 +368,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         binding.cardInfo.background = cardDrawable
         binding.cardStyle.background = makeCardDrawable(cardBg, cardStrokeColor, 24f, density)
         binding.cardPreview.background = makeCardDrawable(cardBg, cardStrokeColor, 24f, density)
+        binding.cardPreviewFloating.background = makeCardDrawable(cardBg, cardStrokeColor, 24f, density)
 
         binding.etPattern.setTextColor(primaryTextColor)
         binding.etPattern.setHintTextColor(secondaryTextColor)
@@ -290,6 +392,14 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         binding.tvFontPick.setTextColor(primaryTextColor)
         binding.etSampleText.setTextColor(primaryTextColor)
         binding.etSampleText.setHintTextColor(secondaryTextColor)
+        binding.etLetterSpacingBefore.setTextColor(primaryTextColor)
+        binding.etLetterSpacingBefore.setHintTextColor(secondaryTextColor)
+        binding.etLetterSpacingAfter.setTextColor(primaryTextColor)
+        binding.etLetterSpacingAfter.setHintTextColor(secondaryTextColor)
+        binding.etLineSpacingTop.setTextColor(primaryTextColor)
+        binding.etLineSpacingTop.setHintTextColor(secondaryTextColor)
+        binding.etLineSpacingBottom.setTextColor(primaryTextColor)
+        binding.etLineSpacingBottom.setHintTextColor(secondaryTextColor)
         binding.etScope.setTextColor(primaryTextColor)
         binding.etScope.setHintTextColor(secondaryTextColor)
         binding.etExcludeScope.setTextColor(primaryTextColor)
@@ -299,6 +409,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         binding.tvPreview.setTextColor(primaryTextColor)
         binding.tvPatternError.setTextColor(requireContext().getColor(R.color.error))
         binding.tvBgImageScale.setTextColor(secondaryTextColor)
+        binding.tvNpAdjustAction.setTextColor(accentColor)
 
         binding.tvRegexToggle.setTextColor(primaryTextColor)
         binding.tvRegexToggle.background?.mutate()?.setTint(bg)
@@ -318,6 +429,10 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         binding.etUnderlineColor.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
         binding.etSvgPath.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
         binding.tvPreview.background = previewBg
+        // 悬浮预览层只在滚动没到底时出现，颜色与卡片预览保持一致
+        binding.tvPreviewFloatingTitle.setTextColor(primaryTextColor)
+        binding.tvPreviewFloating.setTextColor(primaryTextColor)
+        binding.tvPreviewFloating.background = makeInputDrawable(inputBgColor, inputStrokeColor, 16f, density)
         binding.etBgImage.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
         binding.tvBgImagePick.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
         binding.etFont.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
@@ -328,6 +443,10 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         binding.etLayoutScope.setTextColor(primaryTextColor)
         binding.etLayoutScope.setHintTextColor(secondaryTextColor)
         binding.etLayoutScope.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
+        binding.etLetterSpacingBefore.background = makeInputDrawable(inputBgColor, inputStrokeColor, 12f, density)
+        binding.etLetterSpacingAfter.background = makeInputDrawable(inputBgColor, inputStrokeColor, 12f, density)
+        binding.etLineSpacingTop.background = makeInputDrawable(inputBgColor, inputStrokeColor, 12f, density)
+        binding.etLineSpacingBottom.background = makeInputDrawable(inputBgColor, inputStrokeColor, 12f, density)
         binding.spBgImageFit.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
         binding.spThemeScope.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
         binding.tvWidthMinus.background = makeInputDrawable(inputBgColor, inputStrokeColor, 14f, density)
@@ -364,7 +483,13 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
     private fun applyThemeToStaticLabels() {
         val staticPrimary = requireContext().getColor(R.color.primaryText)
         val staticSecondary = requireContext().getColor(R.color.secondaryText)
-        listOf(binding.cardInfo, binding.cardStyle, binding.cardPreview).forEach { card ->
+        listOf(
+            binding.cardInfo,
+            binding.cardStyle,
+            binding.cardSpacing,
+            binding.cardLineSpacing,
+            binding.cardPreview,
+        ).forEach { card ->
             applyThemeColorRecursive(card, staticPrimary, staticSecondary)
         }
     }
@@ -432,10 +557,17 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         }
         updateFontText()
         binding.etSampleText.setText(editingRule.sampleText.ifBlank { editingRule.normalizedSampleText() })
-        binding.spBgImageFit.setSelection(editingRule.bgImageFit.coerceIn(0, 2))
+        binding.spBgImageFit.setSelection(editingRule.bgImageFit.coerceIn(0, 3))
+        updateNpAdjustRow()
         binding.sbBgImageScale.progress = (editingRule.bgImageScale.coerceIn(0.1f, 5f) * 10).toInt()
         binding.tvBgImageScale.text = "${editingRule.bgImageScale.coerceIn(0.1f, 5f).formatScale()}x"
         binding.spUnderlineMode.setSelection(editingRule.underlineMode.coerceIn(0, 8))
+        // 命中字距：滑块位置与输入框内容都由 bindSpacingControl 初始化，这里只填输入框
+        binding.etLetterSpacingBefore.setText(editingRule.letterSpacingBefore.spacingInputText())
+        binding.etLetterSpacingAfter.setText(editingRule.letterSpacingAfter.spacingInputText())
+        binding.switchLineSpacing.isChecked = editingRule.lineSpacingEnabled
+        binding.etLineSpacingTop.setText(editingRule.lineSpacingTop.spacingInputText())
+        binding.etLineSpacingBottom.setText(editingRule.lineSpacingBottom.spacingInputText())
         val groupIndex = groupItems.indexOf(editingRule.group).takeIf { it >= 0 } ?: 0
         binding.spGroup.setSelection(groupIndex)
         binding.spTarget.setSelection(editingRule.targetScope.coerceIn(0, 2))
@@ -556,6 +688,9 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         binding.tvBgImagePick.setOnClickListener {
             showBgImagePicker()
         }
+        binding.llNpAdjust.setOnClickListener {
+            showNineSliceAdjustDialog()
+        }
         binding.etFont.setOnClickListener {
             showDialogFragment<FontSelectDialog> {
                 putBoolean(FontSelectDialog.ARG_FOR_RULE, true)
@@ -575,6 +710,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
                     id: Long,
                 ) {
                     editingRule.bgImageFit = position
+                    updateNpAdjustRow()
                     updatePreview()
                 }
 
@@ -592,6 +728,22 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
                 override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
             },
         )
+        bindSpacingControl(binding.sbLetterSpacingBefore, binding.etLetterSpacingBefore) {
+            editingRule.letterSpacingBefore = it
+        }
+        bindSpacingControl(binding.sbLetterSpacingAfter, binding.etLetterSpacingAfter) {
+            editingRule.letterSpacingAfter = it
+        }
+        binding.switchLineSpacing.setOnCheckedChangeListener { _, isChecked ->
+            editingRule.lineSpacingEnabled = isChecked
+            updatePreview()
+        }
+        bindSpacingControl(binding.sbLineSpacingTop, binding.etLineSpacingTop) {
+            editingRule.lineSpacingTop = it
+        }
+        bindSpacingControl(binding.sbLineSpacingBottom, binding.etLineSpacingBottom) {
+            editingRule.lineSpacingBottom = it
+        }
         binding.spUnderlineMode.onItemSelectedListener =
             object : android.widget.AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(
@@ -737,6 +889,53 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         }
     }
 
+    /**
+     * 命中字距的滑块 + 数值框双向绑定。
+     *
+     * 滑块一格 0.1px（[HighlightRuleStore.MAX_MATCH_SPACING] 对应 max 1200）；
+     * 两个方向都只在用户操作时回写，避免初始化阶段互相触发。
+     */
+    private fun bindSpacingControl(seekBar: SeekBar, input: android.widget.EditText, apply: (Float) -> Unit) {
+        seekBar.progress = (input.spacingValue() * 10).roundToInt()
+        input.doAfterTextChanged {
+            val value = input.spacingValue()
+            seekBar.progress = (value * 10).roundToInt()
+            apply(value)
+            scheduleSpacingPreview()
+        }
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                // 程序化更新滑块不能反过来把输入框里更精确的值抹平
+                if (fromUser) input.setText((progress / 10f).spacingInputText())
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                if (spacingPreviewPending) updatePreview()
+            }
+        })
+    }
+
+    /** 拖动/输入过程中按帧合并预览刷新，松手或停下后由 [spacingPreviewUpdate] 补一次 */
+    private fun scheduleSpacingPreview() {
+        if (spacingPreviewPending) return
+        spacingPreviewPending = true
+        binding.root.postOnAnimation(spacingPreviewUpdate)
+    }
+
+    private fun android.widget.EditText.spacingValue(): Float = text?.toString()?.toFloatOrNull()
+        ?.takeIf { it.isFinite() }
+        ?.coerceIn(HighlightRuleStore.MIN_MATCH_SPACING, HighlightRuleStore.MAX_MATCH_SPACING)
+        ?: 0f
+
+    private fun Float.spacingInputText(): String {
+        val value = takeIf { it.isFinite() }
+            ?.coerceIn(HighlightRuleStore.MIN_MATCH_SPACING, HighlightRuleStore.MAX_MATCH_SPACING)
+            ?: 0f
+        return if (value % 1f == 0f) value.toInt().toString() else value.toString()
+    }
+
     private fun adjustWidth(delta: Float) {
         val current = binding.etUnderlineWidth.text?.toString()?.toFloatOrNull() ?: 1f
         val newValue = (current + delta).coerceIn(0.1f, 10f)
@@ -767,11 +966,6 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
         // 如果有背景图片，显示图片预览
         val bgImage = editingRule.bgImage.orEmpty()
         if (bgImage.isNotBlank()) {
-            // 点九图优先以 NinePatchDrawable 预览，保证拉伸效果与正文渲染一致
-            HighlightRuleBackgroundManager.getNinePatchDrawable(bgImage)?.let {
-                binding.viewBgImagePreview.background = it
-                return
-            }
             val bitmap = HighlightRuleBackgroundManager.getBitmap(bgImage)
             if (bitmap != null) {
                 val drawable = android.graphics.drawable.BitmapDrawable(resources, bitmap)
@@ -825,6 +1019,403 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
+    }
+
+    /** 九宫格调整入口行：仅在适配方式为九宫格且已设置背景图时显示 */
+    private fun updateNpAdjustRow() {
+        val isNineSlice = binding.spBgImageFit.selectedItemPosition == 3
+        val hasImage = editingRule.bgImage?.isNotBlank() == true
+        binding.llNpAdjust.visibility = if (isNineSlice && hasImage) View.VISIBLE else View.GONE
+        if (isNineSlice && hasImage) {
+            binding.tvNpSummary.text = formatNpSummary()
+        }
+    }
+
+    private fun formatNpSummary(): String {
+        fun Float.percent() = "${(this * 100).roundToInt()}%"
+        val strategy = when (HighlightRule.resolvedBleedMode(editingRule.bgBleedMode)) {
+            HighlightRule.BLEED_STRICT -> "严格"
+            HighlightRule.BLEED_FORCE -> "强制"
+            else -> "智能"
+        }
+        return "左${editingRule.npLeft.percent()} 上${editingRule.npTop.percent()} " +
+            "右${editingRule.npRight.percent()} 下${editingRule.npBottom.percent()}\n" +
+            "$strategy 间距 左${formatEm(editingRule.bgSpacingLeft)} 右${formatEm(editingRule.bgSpacingRight)} " +
+            "上${formatEm(editingRule.bgSpacingTop)} 下${formatEm(editingRule.bgSpacingBottom)}"
+    }
+
+    /** 间距的展示格式：固定两位小数并带 em 单位 */
+    private fun formatEm(value: Float): String = String.format(java.util.Locale.US, "%.2fem", value)
+
+    /**
+     * 九宫格调整弹窗：上方预览图叠加四条红色分割线，下方为调整区。
+     *
+     * 四条分割比例滑条（左/上/右/下）含义与 .9.png 的拉伸标记一致：分割线一侧为固定不拉伸的
+     * 边框区；左右两侧相加、上下两侧相加均不超过 100%，拖动超限时压回当前滑条自身。
+     *
+     * 另有「外扩策略」开关（严格/智能/强制）与左右/上下四边的间距滑条：策略决定自动外扩量
+     * （严格不外扩、智能只占用邻接空白、强制按四角厚度外扩并推开邻字），
+     * 间距按四个方向独立可调，为正表示把背景向外撑大、为负向内收。
+     *
+     * 「重置」占框架按钮行的 neutral 位（在取消左边，与确定/取消同一行）：把本弹窗内的全部取值
+     * 回退到默认（分割比例 0.1、智能外扩、四边间距 0），只改弹窗内的临时值，仍需「确定」才写入规则。
+     *
+     * 注意**不要在按钮行里插带权重的占位视图**去把它顶到最左：ButtonBarLayout 在按钮放不下时会
+     * 自行改成竖排，会被这类子视图误导而把"取消/确定"挤成一上一下（2026-09-19 踩过）。
+     */
+    private fun showNineSliceAdjustDialog() {
+        val bgImage = editingRule.bgImage?.takeIf { it.isNotBlank() } ?: return
+        val bitmap = HighlightRuleBackgroundManager.getBitmap(bgImage)
+        val density = resources.displayMetrics.density
+        var npLeft = editingRule.npLeft.coerceIn(0f, 1f)
+        var npTop = editingRule.npTop.coerceIn(0f, 1f)
+        var npRight = editingRule.npRight.coerceIn(0f, 1f)
+        var npBottom = editingRule.npBottom.coerceIn(0f, 1f)
+        var bleedMode = HighlightRule.resolvedBleedMode(editingRule.bgBleedMode)
+        var spacingLeft = editingRule.bgSpacingLeft
+        var spacingRight = editingRule.bgSpacingRight
+        var spacingTop = editingRule.bgSpacingTop
+        var spacingBottom = editingRule.bgSpacingBottom
+
+        val preview = NineSlicePreviewView(requireContext(), bitmap, npLeft, npTop, npRight, npBottom).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (200 * density).toInt(),
+            ).apply { bottomMargin = (8 * density).toInt() }
+        }
+
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding((24 * density).toInt(), (16 * density).toInt(), (24 * density).toInt(), 0)
+            addView(preview)
+        }
+
+        // 已创建的滑条按 key 记录，供对侧滑条查询上限（左右/上下两两联动）
+        val bars = HashMap<String, SeekBar>(4)
+        // 重置时四个比例要一起归位，中途会被"相加不超过 100%"压回，故重置期间跳过该限制
+        var resetting = false
+        // 各间距滑条的回退动作，供重置按钮统一调用
+        val resetActions = ArrayList<() -> Unit>(4)
+        fun limitOf(oppositeKey: String): Int {
+            val opposite = bars[oppositeKey] ?: return 100
+            return 100 - opposite.progress
+        }
+
+        fun sliderRow(
+            label: String,
+            key: String,
+            oppositeKey: String,
+            initial: Float,
+            onValue: (Float) -> Unit,
+        ) {
+            val percentText = TextView(requireContext()).apply {
+                text = "${(initial * 100).roundToInt()}%"
+                textSize = 13f
+                setTextColor(primaryTextColor)
+            }
+            val seekBar = SeekBar(requireContext()).apply {
+                max = 100
+                progress = (initial * 100).roundToInt()
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { marginStart = (6 * density).toInt() }
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                        val limit = limitOf(oppositeKey)
+                        if (!resetting && progress > limit) {
+                            // 压回后再次触发本回调（fromUser=false），在该分支完成刷新
+                            sb?.progress = limit
+                            return
+                        }
+                        onValue(progress / 100f)
+                        percentText.text = "$progress%"
+                        preview.invalidate()
+                    }
+                    override fun onStartTrackingTouch(sb: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(sb: SeekBar?) = Unit
+                })
+            }
+            bars[key] = seekBar
+            fun adjustButton(text: String, delta: Int) = TextView(requireContext()).apply {
+                this.text = text
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTextColor(primaryTextColor)
+                setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+                setOnClickListener { seekBar.progress = (seekBar.progress + delta).coerceIn(0, limitOf(oppositeKey)) }
+            }
+            container.addView(LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, (8 * density).toInt(), 0, (8 * density).toInt())
+                addView(TextView(requireContext()).apply {
+                    text = label
+                    textSize = 13f
+                    setTextColor(primaryTextColor)
+                })
+                addView(adjustButton("−", -1))
+                addView(seekBar)
+                addView(adjustButton("+", 1))
+                addView(percentText.apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { width = (40 * density).toInt(); gravity = Gravity.CENTER }
+                })
+            })
+        }
+
+        sliderRow("左", "left", "right", npLeft) { npLeft = it; preview.npLeft = it }
+        sliderRow("右", "right", "left", npRight) { npRight = it; preview.npRight = it }
+        sliderRow("上", "top", "bottom", npTop) { npTop = it; preview.npTop = it }
+        sliderRow("下", "bottom", "top", npBottom) { npBottom = it; preview.npBottom = it }
+
+        // em 滑条：以 0.01em 为一格，[rangeMin, rangeMax] 为可调区间，[default] 为重置回退值
+        fun emSliderRow(
+            label: String,
+            initial: Float,
+            rangeMin: Float,
+            rangeMax: Float,
+            default: Float,
+            onValue: (Float) -> Unit,
+        ) {
+            fun toProgress(value: Float) = ((value - rangeMin) * 100).roundToInt()
+            fun toValue(progress: Int) = progress / 100f + rangeMin
+            val valueText = TextView(requireContext()).apply {
+                text = formatEm(initial)
+                textSize = 13f
+                setTextColor(primaryTextColor)
+            }
+            val seekBar = SeekBar(requireContext()).apply {
+                max = ((rangeMax - rangeMin) * 100).roundToInt()
+                progress = toProgress(initial).coerceIn(0, max)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { marginStart = (6 * density).toInt() }
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, progress: Int, fromUser: Boolean) {
+                        val value = toValue(progress)
+                        onValue(value)
+                        valueText.text = formatEm(value)
+                    }
+
+                    override fun onStartTrackingTouch(sb: SeekBar?) = Unit
+                    override fun onStopTrackingTouch(sb: SeekBar?) = Unit
+                })
+            }
+            resetActions.add { seekBar.progress = toProgress(default).coerceIn(0, seekBar.max) }
+            fun adjustButton(text: String, delta: Int) = TextView(requireContext()).apply {
+                this.text = text
+                textSize = 22f
+                gravity = Gravity.CENTER
+                setTextColor(primaryTextColor)
+                setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+                setOnClickListener {
+                    seekBar.progress = (seekBar.progress + delta).coerceIn(0, seekBar.max)
+                }
+            }
+            container.addView(LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, (8 * density).toInt(), 0, (8 * density).toInt())
+                addView(
+                    TextView(requireContext()).apply {
+                        text = label
+                        textSize = 13f
+                        setTextColor(primaryTextColor)
+                    },
+                    LinearLayout.LayoutParams(
+                        (60 * density).toInt(),
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+                addView(adjustButton("−", -1))
+                addView(seekBar)
+                addView(adjustButton("+", 1))
+                addView(valueText.apply {
+                    layoutParams = LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ).apply { width = (52 * density).toInt(); gravity = Gravity.CENTER }
+                })
+            })
+        }
+
+        // 外扩策略：严格 / 智能 / 强制，用 −/+ 循环切换，切换时同步刷新下面的一行说明
+        val strategyNames = arrayOf("严格", "智能", "强制")
+        val strategyHints = arrayOf(
+            "严格：背景只覆盖匹配到的文字，绝不向外扩。",
+            "智能（默认）：只占用邻接的空白——左右借用空格，上下吃掉一半行距，不会压到相邻文字。",
+            "强制：按四边分割比例向外扩展，并把左右邻字自动推开一个正文字距，文字会整体仍保持两端对齐。",
+        )
+        val strategyText = TextView(requireContext()).apply {
+            text = strategyNames[bleedMode]
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(primaryTextColor)
+        }
+        val strategyHint = TextView(requireContext()).apply {
+            text = strategyHints[bleedMode]
+            textSize = 11f
+            setTextColor(primaryTextColor)
+        }
+        fun strategyButton(text: String, delta: Int) = TextView(requireContext()).apply {
+            this.text = text
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setTextColor(primaryTextColor)
+            setPadding((14 * density).toInt(), 0, (14 * density).toInt(), 0)
+            setOnClickListener {
+                bleedMode = (bleedMode + delta + strategyNames.size) % strategyNames.size
+                strategyText.text = strategyNames[bleedMode]
+                strategyHint.text = strategyHints[bleedMode]
+            }
+        }
+        container.addView(LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, (8 * density).toInt(), 0, 0)
+            addView(
+                TextView(requireContext()).apply {
+                    text = "外扩策略"
+                    textSize = 13f
+                    setTextColor(primaryTextColor)
+                },
+                LinearLayout.LayoutParams(
+                    (60 * density).toInt(),
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(strategyButton("−", -1))
+            addView(
+                strategyText,
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            addView(strategyButton("+", 1))
+        })
+        container.addView(strategyHint.apply {
+            setPadding(0, (4 * density).toInt(), 0, (8 * density).toInt())
+        })
+
+        container.addView(TextView(requireContext()).apply {
+            text = "间距：四个方向分别可调，正数把背景向外撑大、离文字更远，负数让背景向内收，" +
+                "0 表示紧贴文字边界。间距与策略的外扩量叠加，可用它补偿图片自带的透明留白。"
+            textSize = 11f
+            setTextColor(primaryTextColor)
+            setPadding(0, (8 * density).toInt(), 0, 0)
+        })
+        emSliderRow(
+            "左间距", spacingLeft,
+            HighlightRuleStore.MIN_BG_SPACING_H, HighlightRuleStore.MAX_BG_SPACING_H, 0f,
+        ) { spacingLeft = it }
+        emSliderRow(
+            "右间距", spacingRight,
+            HighlightRuleStore.MIN_BG_SPACING_H, HighlightRuleStore.MAX_BG_SPACING_H, 0f,
+        ) { spacingRight = it }
+        emSliderRow(
+            "上间距", spacingTop,
+            HighlightRuleStore.MIN_BG_SPACING_V, HighlightRuleStore.MAX_BG_SPACING_V, 0f,
+        ) { spacingTop = it }
+        emSliderRow(
+            "下间距", spacingBottom,
+            HighlightRuleStore.MIN_BG_SPACING_V, HighlightRuleStore.MAX_BG_SPACING_V, 0f,
+        ) { spacingBottom = it }
+
+        // 重置：弹窗内所有值回到默认（四边分割比例 0.1、智能外扩、四边间距 0）
+        fun applyDefaults() {
+            resetting = true
+            val defaultNp = (HighlightRuleStore.DEFAULT_NP_RATIO * 100).roundToInt()
+            // 顺序与限制无关（重置期间跳过"相加不超过 100%"的压回），只求四个都落到默认值
+            bars["right"]?.progress = defaultNp
+            bars["left"]?.progress = defaultNp
+            bars["bottom"]?.progress = defaultNp
+            bars["top"]?.progress = defaultNp
+            resetting = false
+            resetActions.forEach { it() }
+            bleedMode = HighlightRule.BLEED_SMART
+            strategyText.text = strategyNames[bleedMode]
+            strategyHint.text = strategyHints[bleedMode]
+            preview.invalidate()
+        }
+
+        val dialog = android.app.AlertDialog.Builder(requireContext())
+            .setTitle("九宫格调整")
+            // 行数较多，套一层滚动容器，小屏上不会挤掉确定/取消按钮
+            .setView(android.widget.ScrollView(requireContext()).apply { addView(container) })
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                editingRule.npLeft = npLeft
+                editingRule.npTop = npTop
+                editingRule.npRight = npRight
+                editingRule.npBottom = npBottom
+                editingRule.bgBleedMode = bleedMode
+                editingRule.bgSpacingLeft = spacingLeft
+                editingRule.bgSpacingRight = spacingRight
+                editingRule.bgSpacingTop = spacingTop
+                editingRule.bgSpacingBottom = spacingBottom
+                // 四边间距已成为唯一来源，旧字段清零，避免下次加载又被当成"未设置"再迁移一次
+                editingRule.bgSpacingH = 0f
+                editingRule.bgSpacingV = 0f
+                updateNpAdjustRow()
+                updatePreview()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            // 重置与确定/取消同一行、位于取消左边：占按钮行的 neutral 位。
+            // 不要在按钮行里插占位视图去"顶到最左"——ButtonBarLayout 放不下时会自行竖排，
+            // 会被带权重的子视图误导而把确定/取消挤成一上一下
+            .setNeutralButton(R.string.reset, null)
+            .create()
+        // neutral 的默认点击行为是关闭弹窗，这里手动接管成"只回退取值"
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_NEUTRAL)
+                ?.setOnClickListener { applyDefaults() }
+        }
+        dialog.show()
+    }
+
+    /** 九宫格调整预览：居中显示背景图并叠加四条红色分割线，分割线随滑条实时移动 */
+    private class NineSlicePreviewView(
+        context: Context,
+        private val bitmap: Bitmap?,
+        npLeft: Float,
+        npTop: Float,
+        npRight: Float,
+        npBottom: Float,
+    ) : View(context) {
+
+        var npLeft = npLeft
+        var npTop = npTop
+        var npRight = npRight
+        var npBottom = npBottom
+
+        private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            isFilterBitmap = true
+        }
+        private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFFE53935.toInt()
+            strokeWidth = 2f * resources.displayMetrics.density
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            canvas.drawColor(0x1F888888)
+            val bm = bitmap ?: return
+            val cw = width.toFloat()
+            val ch = height.toFloat()
+            val aspect = bm.width.toFloat() / bm.height
+            val (iw, ih, ox, oy) = if (aspect > cw / ch) {
+                val h = cw / aspect
+                listOf(cw, h, 0f, (ch - h) / 2f)
+            } else {
+                val w = ch * aspect
+                listOf(w, ch, (cw - w) / 2f, 0f)
+            }
+            canvas.drawBitmap(bm, null, RectF(ox, oy, ox + iw, oy + ih), bitmapPaint)
+            val leftX = ox + iw * npLeft
+            canvas.drawLine(leftX, oy, leftX, oy + ih, linePaint)
+            val rightX = ox + iw * (1f - npRight)
+            canvas.drawLine(rightX, oy, rightX, oy + ih, linePaint)
+            val topY = oy + ih * npTop
+            canvas.drawLine(ox, topY, ox + iw, topY, linePaint)
+            val bottomY = oy + ih * (1f - npBottom)
+            canvas.drawLine(ox, bottomY, ox + iw, bottomY, linePaint)
+        }
     }
 
     private fun saveRule() {
@@ -887,8 +1478,7 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
             binding.tvPatternError.visibility = View.VISIBLE
             binding.tvPatternError.text = patternError
         }
-        binding.tvPreview.text = HighlightRulePreview.build(
-            editingRule.copy(
+        val previewRule = editingRule.copy(
                 name = binding.etName.text?.toString().orEmpty(),
                 pattern = pattern,
                 isRegex = isRegexMode,
@@ -909,8 +1499,146 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
                 bgImageFit = binding.spBgImageFit.selectedItemPosition,
                 bgImageScale = (binding.sbBgImageScale.progress.coerceAtLeast(1) / 10f).coerceIn(0.1f, 5f),
                 font = editingRule.font?.takeIf { it.isNotBlank() },
-            ),
-        )
+            )
+        // 预览按控件实际宽度重新断行，命中字距/行距才能如实体现
+        binding.tvPreview.setPreview(previewRule, primaryTextColor)
+        lastPreviewRule = previewRule
+        if (binding.cardPreviewFloating.isVisible) {
+            binding.tvPreviewFloating.setPreview(previewRule, primaryTextColor)
+        }
+    }
+
+    /**
+     * 弹窗窗口高度是按屏高算死的，输入法弹出时它不会跟着缩短，而 sheet 底边始终贴在
+     * 窗口底边，于是预览卡片与悬浮预览会落到键盘后面。这里按窗口可见区重算高度，
+     * 并把窗口顶到可见区底边（输入法上沿）之上。
+     *
+     * 窗口位移按「当前底边与可见区底边的差值」累加校正：没有输入法（或窗口本来就没被
+     * 挡住）时差值为 0，不做任何改动；被挡住多少就上移多少。窗口 y 是相对 gravity 的
+     * 偏移（正数下移），底边位移与 y 同向，所以校正一步就能落到目标位置，不会来回抖动。
+     */
+    private fun applyImeAwareWindowMetrics() {
+        if (!isAdded || view == null) return
+        val window = dialog?.window ?: return
+        val root = binding.root
+        if (root.height == 0) return
+        val visibleFrame = Rect()
+        root.getWindowVisibleDisplayFrame(visibleFrame)
+        // 拿不到可信可见区（部分机型/瞬态会给出空矩形或异常边界）时宁可不动，避免把窗口顶飞
+        if (visibleFrame.isEmpty || visibleFrame.bottom <= 0) return
+        val location = IntArray(2)
+        root.getLocationOnScreen(location)
+        val rootBottom = location[1] + root.height
+        val defaultHeight =
+            (requireContext().windowManager.windowSize.heightPixels * SHEET_HEIGHT_RATIO).toInt()
+        val offsetY = (appliedWindowOffsetY - (rootBottom - visibleFrame.bottom))
+            .coerceIn(-defaultHeight, 0)
+        val height = minOf(defaultHeight, visibleFrame.height())
+        val attributes = window.attributes
+        if (attributes.height == height && attributes.y == offsetY) return
+        appliedWindowOffsetY = offsetY
+        attributes.y = offsetY
+        window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, height)
+        // 窗口高度/位置变了就是可视区变了：此时滚动区尺寸可能没变（如候选栏高度变化），
+        // 单靠 updateEditorViewport 的变化判定会漏掉，这里补一次焦点输入框回滚
+        scheduleFocusedInputScroll()
+    }
+
+    /**
+     * 可视区尺寸或输入法可见性变化后，把正在编辑的输入框重新顶回可视区。
+     */
+    private fun updateEditorViewport() {
+        if (!isAdded || view == null) return
+        val scrollView = binding.scrollView
+        val keyboardVisible = ViewCompat.getRootWindowInsets(binding.root)
+            ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+        val viewportChanged = editorViewportHeight != scrollView.height ||
+            editorViewportWidth != scrollView.width || imeVisible != keyboardVisible
+        editorViewportHeight = scrollView.height
+        editorViewportWidth = scrollView.width
+        imeVisible = keyboardVisible
+        updateFloatingPreview()
+        if (viewportChanged) scheduleFocusedInputScroll()
+    }
+
+    private fun scheduleFocusedInputScroll() {
+        binding.root.removeCallbacks(focusedInputScroll)
+        binding.root.post(focusedInputScroll)
+    }
+
+    private fun scrollFocusedInputIntoView() {
+        val input = binding.scrollView.findFocus() as? EditText ?: return
+        val gap = 12.dpToPx()
+        val availableHeight = binding.scrollView.height - gap * 2
+        if (availableHeight <= 0) return
+        // 预览文本和它的预览结果挨着，放得下就整体滚入，放不下优先保证输入框可见
+        val target = if (input === binding.etSampleText &&
+            binding.cardPreview.height <= availableHeight
+        ) binding.cardPreview else input
+        val bounds = Rect()
+        target.getDrawingRect(bounds)
+        bounds.inset(0, -gap)
+        // 悬浮预览盖在滚动区底部，目标矩形往下多留出它的高度，滚完不会正好停在它下面
+        if (binding.cardPreviewFloating.isVisible && target !== binding.cardPreview) {
+            bounds.bottom += floatingReserveHeight
+        }
+        target.requestRectangleOnScreen(bounds, true)
+    }
+
+    /**
+     * 焦点输入框在可视区内的部分是否会被悬浮预览盖住。
+     * 用几何关系兜底，不依赖 IME 可见性判断（低版本拿不到、部分机型不准）。
+     */
+    private fun focusedInputOverlapsFloating(): Boolean {
+        val scrollView = binding.scrollView
+        val input = scrollView.findFocus() as? EditText ?: return false
+        // 用缓存高度而不是当前高度：隐藏后 height 会变，拿它做判断会来回横跳
+        val reserve = floatingReserveHeight.takeIf { it > 0 } ?: DEFAULT_FLOATING_RESERVE.dpToPx()
+        val floatingTop = scrollView.height - reserve
+        if (floatingTop <= 0) return true
+        val bounds = Rect(0, 0, input.width, input.height)
+        scrollView.offsetDescendantRectToMyCoords(input, bounds)
+        bounds.offset(0, -scrollView.scrollY)
+        return bounds.bottom > floatingTop && bounds.top < scrollView.height
+    }
+
+    /**
+     * 预览卡片是滚动内容的最后一项，调参时常被输入区挡住看不到效果。
+     * 没滑到底时在底部悬浮一份同步预览，滑到底（原卡片已露出来）或原卡片底边已进入可视区就收起，
+     * 避免同一份内容出现两次。
+     */
+    private fun updateFloatingPreview() {
+        if (!isAdded || view == null) return
+        val scrollView = binding.scrollView
+        val card = binding.cardPreview
+        val floating = binding.cardPreviewFloating
+        if (card.height == 0 || scrollView.height == 0) return
+        val bounds = Rect(0, 0, card.width, card.height)
+        scrollView.offsetDescendantRectToMyCoords(card, bounds)
+        // bounds 是滚动内容坐标，减去 scrollY 得到原卡片底边在可视区内的位置
+        val cardBottom = bounds.bottom - scrollView.scrollY
+        // 已经滑到底，或原卡片底边已进入可视区，都说明原卡片看得见了，不用再悬浮
+        // 键盘弹出时若悬浮层正好压住正在编辑的输入框，让位给输入框
+        val shouldFloat = scrollView.canScrollVertically(1) && cardBottom > scrollView.height &&
+            !binding.etSampleText.hasFocus() && !focusedInputOverlapsFloating()
+        if (shouldFloat == floating.isVisible) {
+            if (shouldFloat) rememberFloatingReserve()
+            return
+        }
+        floating.isVisible = shouldFloat
+        if (shouldFloat) {
+            lastPreviewRule?.let { binding.tvPreviewFloating.setPreview(it, primaryTextColor) }
+            // 显示后量一次高度存起来，供 focusedInputOverlapsFloating 在隐藏状态下判断
+            floating.post { rememberFloatingReserve() }
+        }
+    }
+
+    private fun rememberFloatingReserve() {
+        val floating = binding.cardPreviewFloating
+        if (floating.height <= 0) return
+        val bottomMargin =
+            (floating.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
+        floatingReserveHeight = floating.height + bottomMargin
     }
 
     private fun validatePattern(pattern: String): String? {
@@ -985,5 +1713,13 @@ class HighlightRuleEditDialog @JvmOverloads constructor(
 
     override fun onDialogDismissed(dialogId: Int) {
         // no-op
+    }
+
+    private companion object {
+        /** 弹窗默认高度占屏高的比例，与 onStart 的初始布局保持一致 */
+        const val SHEET_HEIGHT_RATIO = 0.85f
+
+        /** 悬浮预览还没量到高度时的保守估值（dp），偏大只会让悬浮层更早让位给输入框 */
+        const val DEFAULT_FLOATING_RESERVE = 120
     }
 }

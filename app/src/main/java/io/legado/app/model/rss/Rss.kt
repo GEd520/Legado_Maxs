@@ -124,6 +124,7 @@ object Rss {
             coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
+        analyzeUrl.localDebug = Debug.isLocalDebug(rssSource.sourceUrl)
         val checkJs = rssSource.loginCheckJs
         val res = kotlin.runCatching {
             analyzeUrl.getStrResponseAwait().let {
@@ -231,6 +232,7 @@ object Rss {
             coroutineContext = currentCoroutineContext(),
             hasLoginHeader = false
         )
+        analyzeUrl.localDebug = Debug.isLocalDebug(rssSource.sourceUrl)
         val checkJs = rssSource.loginCheckJs
         val res = kotlin.runCatching {
             analyzeUrl.getStrResponseAwait().let {

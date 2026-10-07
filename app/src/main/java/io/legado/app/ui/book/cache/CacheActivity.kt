@@ -29,7 +29,7 @@ import io.legado.app.databinding.DialogSelectSectionExportBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.contains
 import io.legado.app.help.book.getExportFileName
-import io.legado.app.help.book.isAudio
+import io.legado.app.help.book.isVideo
 import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.tryParesExportFileName
 import io.legado.app.help.config.AppConfig
@@ -277,8 +277,9 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
         booksFlowJob?.cancel()
         booksFlowJob = lifecycleScope.launch {
             appDb.bookDao.flowByGroup(groupId).map { books ->
+                //音视频书都是媒体缓存（音频已支持），这里不再按类型排除
                 val booksDownload = books.filter {
-                    !it.isAudio
+                    !it.isLocal
                 }
                 when (AppConfig.getBookSortByGroupId(groupId)) {
                     1 -> booksDownload.sortedByDescending { it.latestChapterTime }
@@ -349,6 +350,7 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             notifyItemChanged(it)
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD) {
+            refreshVideoCache(it)
             notifyItemChanged(it)
         }
         observeEvent<String>(EventBus.UP_DOWNLOAD_STATE) {
@@ -367,8 +369,22 @@ class CacheActivity : VMBaseActivity<ActivityCacheBookBinding, CacheViewModel>()
             }
         }
         observeEvent<Pair<Book, BookChapter>>(EventBus.SAVE_CONTENT) { (book, chapter) ->
+            // 视频书保存的是解析出的播放地址，不能据此认为章节已离线
+            if (book.isVideo) return@observeEvent
             viewModel.cacheChapters[book.bookUrl]?.add(chapter.url)
             notifyItemChanged(book.bookUrl)
+        }
+    }
+
+    /**
+     * 视频书的已缓存状态取决于媒体文件，需要在下载过程中重新计算
+     */
+    private fun refreshVideoCache(bookUrl: String) {
+        val book = allBooks.firstOrNull { it.bookUrl == bookUrl } ?: return
+        if (!book.isVideo) return
+        lifecycleScope.launch {
+            viewModel.refreshCache(book)
+            notifyItemChanged(bookUrl)
         }
     }
 

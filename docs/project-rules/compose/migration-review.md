@@ -80,6 +80,8 @@ private fun ThemeAddBottomBar(...) { ... }
 - [ ] 卡片 / 列表项组件根容器是否 `semantics(mergeDescendants = true)`？（`accessibility.md` §15.2）
 - [ ] 可点击区域是否 ≥ 48×48 dp（小图标是否用 padding / `minimumInteractiveComponentSize` 撑命中区）？（`accessibility.md` §15.3）
 - [ ] 有无硬编码 `.sp`？有无固定高度容器硬裁文字？（`accessibility.md` §15.4）
+- [ ] 字体样式是否走 `MaterialTheme.typography` 语义档位？`fontWeight` 是否只在 Medium / SemiBold / Bold 内取值？（`theme-styles.md` §7.4）
+- [ ] 去 ripple 是否有注释说明设计理由？自定义按压形变是否走 `collectIsPressedAsState` + `graphicsLayer` + 150ms 档？（`theme-styles.md` §7.9）
 - [ ] 新增 ViewModel / 修改状态机的 PR 是否带对应单测？ViewModel 测试是否 `runTest` + Turbine，有无 `runBlocking` / 手写 collect / `Thread.sleep` / `@Ignore`？（`testing.md` §16）
 
 ### 14.3 脚手架判定依据：`AppScaffold` 的适用范围
@@ -94,6 +96,7 @@ private fun ThemeAddBottomBar(...) { ... }
 **系统栏适配责任在内容侧**：`contentWindowInsets = 0` 只影响 content，与顶栏是否延伸到状态栏无关（顶栏由 `TopAppBar` 自身的 `windowInsets` 决定）。改用 `AppScaffold` 后必须补底部内边距：
 
 - 滚动列表（LazyColumn / LazyRow 等）：`contentPadding` 底部补导航条高度（用 `navigationBarBottomInset`，见 `AppScaffold.kt`），内容滚动时可从导航条下穿过（铺满），最后一项能滚上来完整可点
+- 主界面 Tab 内容（挂在 `MainActivity` 悬浮底栏之上，如书架 / 我的 / 新版发现 / 新版订阅）：底部内边距必须并入宿主下发的 `bottomPaddingPx`（`MainActivity.mainContentBottomPadding()` = 底栏高度 + 底栏下边距），只补 `navigationBarBottomInset` 时列表末尾会被悬浮底栏压住；同一 Compose 内容既要用于独立页又要嵌入主界面时（如发现列表页的三/五种布局），取 `maxOf(navigationBarBottomInset, bottomPaddingPx)`
 - 整页可滚动列（Column + verticalScroll）：容器保持铺满，在内容末尾加 `Spacer(Modifier.navigationBarsPadding())`
 - 底部有固定控件（bottomBar / 固定按钮 / 输入框）：容器保持铺满，只给该控件加 `Modifier.navigationBarsPadding()`
 

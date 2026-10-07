@@ -326,6 +326,26 @@ class ReadRecordRepositoryTest {
     }
 
     @Test
+    fun compactSessionsHandlesFragmentCountsBeyondSqlVariableLimit() = runBlocking {
+        val dao = FakeReadRecordDao()
+        val repository = ReadRecordRepository(dao) { CURRENT_DEVICE_ID }
+        // 老用户单本书碎片可达数万条：删除被吸收碎片必须分批（旧 SQLite IN 子句上限 999），
+        // 否则抛 too many SQL variables 导致阅读记录页崩溃
+        repeat(1200) { i ->
+            dao.insertSession(
+                ReadRecordSession(deviceId = CURRENT_DEVICE_ID, bookName = "Bulk Book", bookAuthor = "Author", startTime = i * 1000L, endTime = (i + 1) * 1000L, words = 0L, durChapterTitle = "第${i}章")
+            )
+        }
+
+        repository.compactSessions()
+
+        val remaining = dao.getSessionsByBook(CURRENT_DEVICE_ID, "Bulk Book", "Author")
+        assertEquals(1, remaining.size)
+        assertEquals(0L, remaining[0].startTime)
+        assertEquals(1_200_000L, remaining[0].endTime)
+    }
+
+    @Test
     fun saveReadSessionIgnoresBlankBookName() = runBlocking {        val dao = FakeReadRecordDao()
         val repository = ReadRecordRepository(dao) { CURRENT_DEVICE_ID }
 

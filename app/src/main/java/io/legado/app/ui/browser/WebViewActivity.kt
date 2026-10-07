@@ -14,6 +14,8 @@ import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient.FileChooserParams
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.addCallback
@@ -57,6 +59,7 @@ import io.legado.app.help.http.CookieManager as AppCookieManager
 import androidx.core.net.toUri
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.webView.PooledWebView
+import io.legado.app.help.webView.WebFileChooserHelper
 import io.legado.app.help.webView.WebViewPool
 import io.legado.app.help.webView.WebViewPool.BLANK_HTML
 import io.legado.app.help.webView.WebViewPool.DATA_HTML
@@ -70,6 +73,7 @@ import io.legado.app.help.webView.WebJsExtensions.Companion.nameCache
 import io.legado.app.ui.widget.dialog.CookieViewerDialog
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.toastOnUi
+
 
 /**
  * WebView 浏览器活动
@@ -94,6 +98,9 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     private var isfullscreen = false
     private var wasScreenOff = false
     private var needClearHistory = true
+    // 网页 <input type="file"> 上传统一处理，与订阅源阅读页共用同一份实现
+    private val fileChooserHelper = WebFileChooserHelper(this)
+
     private val saveImage = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri ->
             ACache.get().put(imagePathKey, uri.toString())
@@ -458,6 +465,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
     }
 
     override fun onDestroy() {
+        // 取消挂起的文件选择回调并清理拍照临时目录
+        fileChooserHelper.onDestroy()
         WebViewPool.release(pooledWebView)
         super.onDestroy()
     }
@@ -531,6 +540,15 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
             toggleSystemBar(true)
         }
 
+        /* 处理网页 <input type="file"> 文件上传 */
+        override fun onShowFileChooser(
+            webView: WebView?,
+            filePathCallback: ValueCallback<Array<Uri>>?,
+            fileChooserParams: FileChooserParams?
+        ): Boolean {
+            return fileChooserHelper.onShowFileChooser(filePathCallback, fileChooserParams)
+        }
+
         /* 覆盖window.close() */
         override fun onCloseWindow(window: WebView?) {
             close()
@@ -580,6 +598,8 @@ class WebViewActivity : VMBaseActivity<ActivityWebViewBinding, WebViewModel>() {
                 needClearHistory = false
                 currentWebView.clearHistory() //清除历史
             }
+            // 每次进入新页面都复位，否则上次挑战标记残留会导致 window.close() 永久失效
+            isCloudflareChallenge = false
             super.onPageStarted(view, url, favicon)
             currentWebView.evaluateJavascript(basicJs, null)
         }

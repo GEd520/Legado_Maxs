@@ -1,5 +1,6 @@
 package io.legado.app.data.repository
 
+import io.legado.app.constant.AppLog
 import io.legado.app.data.dao.DailyReadStat
 import io.legado.app.data.dao.ReadRecordDao
 import io.legado.app.data.entities.readRecord.ReadRecord
@@ -30,6 +31,12 @@ class ReadRecordRepository(
 
         /** 相邻阅读片段的会话合并阈值（毫秒）：间隔 ≤ 20 分钟视为同一次阅读，与时间线视图 mergeContinuousSessions 口径一致 */
         const val SESSION_MERGE_GAP = 20 * 60 * 1000L
+
+        /**
+         * IN 子句删除的分批大小。旧 SQLite（Android 10 及以下）的
+         * SQLITE_MAX_VARIABLE_NUMBER 上限为 999，需留余量避免 too many SQL variables
+         */
+        private const val DELETE_BATCH_SIZE = 500
     }
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).apply {
@@ -614,17 +621,26 @@ class ReadRecordRepository(
      */
     suspend fun compactSessions() = withContext(Dispatchers.IO) {
         dao.getDistinctSessionIdentities().forEach { identity ->
-            val sessions = dao.getSessionsByBook(identity.deviceId, identity.bookName, identity.bookAuthor)
-            if (sessions.size <= 1) return@forEach
-            val merged = sessions
-                .groupBy { dateFormat.format(Date(it.startTime)) }
-                .flatMap { (_, daySessions) -> mergeCloseSessions(daySessions, gap = 0L) }
-            if (merged.size < sessions.size) {
-                // 先按原 id REPLACE 合并后的会话，再删除被吸收的碎片，任一步中断重跑即可收敛
-                val mergedSessions = merged.map { it.session }
-                dao.insertAllSessions(mergedSessions)
-                val mergedIds = mergedSessions.map { it.id }.toSet()
-                dao.deleteSessionsByIds(sessions.map { it.id }.filter { it !in mergedIds })
+            runCatching {
+                val sessions = dao.getSessionsByBook(identity.deviceId, identity.bookName, identity.bookAuthor)
+                if (sessions.size <= 1) return@runCatching
+                val merged = sessions
+                    .groupBy { dateFormat.format(Date(it.startTime)) }
+                    .flatMap { (_, daySessions) -> mergeCloseSessions(daySessions, gap = 0L) }
+                if (merged.size < sessions.size) {
+                    // 先按原 id REPLACE 合并后的会话，再删除被吸收的碎片，任一步中断重跑即可收敛
+                    val mergedSessions = merged.map { it.session }
+                    dao.insertAllSessions(mergedSessions)
+                    val mergedIds = mergedSessions.map { it.id }.toSet()
+                    // 旧 SQLite（Android 10 及以下）host 参数上限为 999，老用户单本书碎片可达数万条，
+                    // 必须分批删除，否则 IN 子句绑定参数超限抛 too many SQL variables
+                    sessions.map { it.id }
+                        .filter { it !in mergedIds }
+                        .chunked(DELETE_BATCH_SIZE)
+                        .forEach { dao.deleteSessionsByIds(it) }
+                }
+            }.onFailure {
+                AppLog.put("压缩阅读会话碎片失败：${identity.bookName}", it, true)
             }
         }
     }

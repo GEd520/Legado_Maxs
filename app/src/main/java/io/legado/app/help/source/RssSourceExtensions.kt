@@ -51,6 +51,14 @@ suspend fun RssSource.sortUrls(): List<Pair<String, String>> {
     }
 }
 
+/**
+ * 这类源只能按网页打开，解析不出分类与文章列表：
+ * `singleUrl` 的源本身就是"一个网址"，`ruleArticles` 为空的源则没有列表规则可解析。
+ * 新版订阅里命中这个判据时不下发分类/文章请求，改走"打开源"入口
+ * （对齐参考分支 RssFragment.opensInWebPopup）。
+ */
+fun RssSource.opensInWebPopup(): Boolean = singleUrl || ruleArticles.isNullOrBlank()
+
 suspend fun RssSource.removeSortCache() {
     withContext(Dispatchers.IO) {
         aCache.remove(getSortUrlsKey())

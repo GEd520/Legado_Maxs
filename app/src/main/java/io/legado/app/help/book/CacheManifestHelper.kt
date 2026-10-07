@@ -1,0 +1,516 @@
+package io.legado.app.help.book
+
+import io.legado.app.constant.AppLog
+import io.legado.app.data.appDb
+import io.legado.app.data.entities.Book
+import io.legado.app.data.entities.BookChapter
+import io.legado.app.help.exoplayer.ExoPlayerHelper
+import io.legado.app.help.globalExecutor
+import io.legado.app.utils.GSON
+import io.legado.app.utils.fromJsonObject
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * 书籍缓存清单（book_cache/<书>/cache_manifest.json）
+ *
+ * 存在的意义：缓存目录里的文件无法自证"属于哪本书、哪一章"。清单把书籍信息与章节列表
+ * 落在缓存目录内，于是：
+ * - 书已从书架删除、只剩缓存时，缓存管理页仍能列出书名/章节数，并支持"加回书架/使用缓存"；
+ * - 目录刷新把章节行的 resourceUrl 清掉后，可用清单里记录的历史地址把它补回来，
+ *   避免已缓存的音视频变成无法播放的孤儿缓存。
+ *
+ * 清单只在"章节列表变化、缓存完成、缓存被删"等时机刷新（见各调用点），
+ * 不在每次保存正文时写，避免大书目录频繁序列化。
+ */
+object CacheManifestHelper {
+
+    const val MANIFEST_FILE_NAME = "cache_manifest.json"
+
+    fun manifestFile(book: Book): File = File(BookHelp.getCacheDir(book), MANIFEST_FILE_NAME)
+
+    fun hasManifest(cacheDir: File): Boolean = File(cacheDir, MANIFEST_FILE_NAME).isFile
+
+    fun read(book: Book): CacheBookManifest? = read(manifestFile(book))
+
+    fun read(file: File): CacheBookManifest? {
+        if (!file.isFile) return null
+        val path = file.absolutePath
+        val modified = file.lastModified()
+        manifestMemo[path]?.let { (memoModified, manifest) ->
+            if (memoModified == modified) return manifest
+        }
+        val manifest = runCatching {
+            GSON.fromJsonObject<CacheBookManifest>(file.readText()).getOrNull()
+        }.getOrNull()
+            // 清单字段靠 GSON 反射按名字匹配，混淆包里字段被混淆（见 proguard-rules 的保留规则）
+            // 会反序列化出 LinkedTreeMap 之类的坏数据；在这里摸一遍就地失败成 null（当没有清单），
+            // 避免到迭代时才 ClassCastException 崩溃
+            ?.takeIf { parsed ->
+                runCatching { parsed.chapters.forEach { it.index >= 0 } }.isSuccess
+            }
+        manifestMemo[path] = modified to manifest
+        return manifest
+    }
+
+    /**
+     * 清单解析结果的内存记忆（文件路径 -> 最后修改时间 to 清单）
+     *
+     * 逐章判定（缓存整本、导出、缓存管理页）会反复读同一份清单，每次都做一遍整份 JSON 解析、
+     * 上千章的书就是上千次解析；清单只在缓存变动时重写，用最后修改时间判断能否复用即可。
+     * 写入与删除处会主动失效，避免同一秒内重写时时间戳不变而取到旧清单。
+     */
+    private val manifestMemo = ConcurrentHashMap<String, Pair<Long, CacheBookManifest?>>()
+
+    private fun invalidateMemo(file: File) {
+        manifestMemo.remove(file.absolutePath)
+    }
+
+    fun listManifests(): List<CacheBookManifest> = listManifests(listCacheDirs())
+
+    fun listCacheDirs(): List<File> {
+        val root = File(BookHelp.cachePath)
+        return root.listFiles()
+            ?.asSequence()
+            ?.filter { it.isDirectory }
+            ?.toList()
+            .orEmpty()
+    }
+
+    fun listManifests(cacheDirs: List<File>): List<CacheBookManifest> = cacheDirs
+        .asSequence()
+        .mapNotNull { read(File(it, MANIFEST_FILE_NAME)) }
+        .toList()
+
+    /**
+     * 重写清单。[isChapterCached] 由调用方给出该章的缓存判定（文本/漫画看文件，音视频看媒体缓存）
+     */
+    fun write(
+        book: Book,
+        chapters: List<BookChapter>,
+        isChapterCached: (BookChapter) -> Boolean,
+    ): CacheBookManifest? {
+        invalidateMemo(manifestFile(book))
+        val realChapters = chapters.filterNot { it.isVolume }
+        val cachedByIndex = realChapters.associate { it.index to isChapterCached(it) }
+        val cachedCount = cachedByIndex.values.count { it }
+        val file = manifestFile(book)
+        // 没有已缓存章节时才删清单，且必须确认缓存目录真的空了：
+        // 目录里还有内容说明缓存仍在（只是文件名对不上章节，比如书名/章节变动过），
+        // 这份清单是"这本书还有缓存"的唯一凭据，删了就再也管不到它
+        if (cachedCount <= 0 && !book.isAudio && !book.isVideo) {
+            if (!file.parentFile.hasContent()) {
+                file.delete()
+            }
+            return null
+        }
+        val cacheDir = file.parentFile ?: return null
+        if (!cacheDir.exists()) {
+            // 缓存目录已经被清掉（用户清缓存）时不重建空目录
+            if (cachedCount <= 0) return null
+            cacheDir.mkdirs()
+        }
+        val manifest = CacheBookManifest(
+            bookUrl = book.bookUrl,
+            tocUrl = book.tocUrl,
+            origin = book.origin,
+            originName = book.originName,
+            name = book.name,
+            author = book.author,
+            kind = book.kind,
+            coverUrl = book.coverUrl,
+            intro = book.intro,
+            type = book.type,
+            folderName = book.getFolderName(),
+            latestChapterTitle = book.latestChapterTitle,
+            totalChapterNum = realChapters.size.takeIf { it > 0 } ?: book.totalChapterNum,
+            updatedAt = System.currentTimeMillis(),
+            chapters = realChapters.map { chapter ->
+                CacheChapterManifest(
+                    index = chapter.index,
+                    title = chapter.title,
+                    url = chapter.url,
+                    baseUrl = chapter.baseUrl,
+                    isVip = chapter.isVip,
+                    isPay = chapter.isPay,
+                    resourceUrl = chapter.resourceUrl,
+                    tag = chapter.tag,
+                    wordCount = chapter.wordCount,
+                    start = chapter.start,
+                    end = chapter.end,
+                    startFragmentId = chapter.startFragmentId,
+                    endFragmentId = chapter.endFragmentId,
+                    variable = chapter.variable,
+                    imgUrl = chapter.imgUrl,
+                    cached = cachedByIndex[chapter.index] == true,
+                )
+            },
+        )
+        file.writeText(GSON.toJson(manifest))
+        return manifest
+    }
+
+    fun refresh(
+        book: Book,
+        chapters: List<BookChapter> = appDb.bookChapterDao.getChapterList(book.bookUrl),
+    ): CacheBookManifest? {
+        return runCatching {
+            if (chapters.isEmpty()) {
+                // 章节表里没有记录（多半是书已从书架删除、只剩缓存）：
+                // 缓存目录还在就保留清单，否则缓存管理页再也列不出这本书
+                if (!BookHelp.getCacheDir(book).hasContent()) {
+                    delete(book)
+                }
+                return@runCatching null
+            }
+            val cacheNames = if (book.isAudio || book.isVideo) {
+                emptySet()
+            } else {
+                BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
+            }
+            // 本轮要覆盖的那份清单就是旧清单，用它补回"缓存时用的那个地址"
+            val oldManifest = read(book)
+            // 清单要记的是"缓存按哪个地址存的"：章节表里的地址可能已被新解析结果覆盖、或被目录刷新清空，
+            // 直接记它就会把这个地址弄丢（之后既读不到缓存、点使用缓存也救不回来）。
+            // 同一章判定两次要花掉两遍缓存查询，这里按序号记一份结果
+            val cachedUrlByIndex = HashMap<Int, String?>()
+            val cachedUrlOf: (BookChapter) -> String? = { chapter ->
+                cachedUrlByIndex.getOrPut(chapter.index) {
+                    cachedMediaUrl(book, chapter, oldManifest)
+                }
+            }
+            val manifestChapters = if (book.isAudio || book.isVideo) {
+                chapters.map { chapter ->
+                    cachedUrlOf(chapter)?.let { chapter.copy(resourceUrl = it) } ?: chapter
+                }
+            } else {
+                chapters
+            }
+            write(book, manifestChapters) { chapter ->
+                when {
+                    book.isLocal -> false
+                    book.isAudio || book.isVideo -> cachedUrlOf(chapter) != null
+                    // 文本/漫画的缓存文件名 = 章节序号 + 标题 md5，只与章节自身有关
+                    else -> cacheNames.contains(chapter.getFileName())
+                }
+            }
+        }.onFailure {
+            AppLog.put("刷新缓存清单失败 ${book.name}\n${it.localizedMessage}", it)
+        }.getOrNull()
+    }
+
+    /**
+     * 后台刷新清单：调用点在章节列表/缓存状态变化处，不阻塞当前流程
+     */
+    fun refreshAsync(
+        book: Book,
+        chapters: List<BookChapter>? = null,
+    ) {
+        globalExecutor.execute {
+            if (chapters == null) {
+                refresh(book)
+            } else {
+                refresh(book, chapters)
+            }
+        }
+    }
+
+    fun delete(book: Book) {
+        val file = manifestFile(book)
+        file.delete()
+        invalidateMemo(file)
+    }
+
+    /**
+     * 该章节"确实还有缓存"的媒体地址
+     *
+     * 缓存是按**缓存当时的地址**做 key 的，而章节表里的 `resourceUrl` 之后可能被新解析结果覆盖、
+     * 或者地址本身带了会过期的时间签名；清单里留着缓存时用的那个地址。
+     * 两个都试一遍，只要有一个在缓存里，这章就还能离线播——否则会出现
+     * "缓存明明在磁盘上，却因为地址变了读不到、点使用缓存也救不回来"。
+     *
+     * @param manifest 已知清单时传入，避免逐章重复读文件
+     */
+    fun cachedMediaUrl(
+        book: Book,
+        chapter: BookChapter,
+        manifest: CacheBookManifest? = read(book),
+    ): String? {
+        if (!book.isAudio && !book.isVideo) return null
+        val recorded = manifest?.let { manifestMediaUrl(it, chapter) }
+        return sequenceOf(chapter.resourceUrl, recorded, contentMediaUrl(book, chapter))
+            .filterNotNull()
+            .filter { it.isNotBlank() }
+            .distinct()
+            .firstOrNull { isMediaCached(it, book) }
+    }
+
+    /**
+     * 缓存正文里记着的媒体地址
+     *
+     * 音视频章节的缓存正文就是缓存当时的媒体地址（见 BookHelp.saveContent）。清单功能之前缓存的老书、
+     * 或清单里的地址已被新解析结果覆盖时，缓存 key 是磁盘上仅存的地址痕迹，缓存正文是另一处，
+     * 靠它把地址捞回来，已下好的媒体才不会变成判定不到的孤儿缓存。
+     */
+    private fun contentMediaUrl(book: Book, chapter: BookChapter): String? {
+        // 按当前章节直接算缓存正文的文件名去读（不列目录、不查清单）：
+        // 逐章判定的热路径上，为"找回地址"多付一次目录扫描不值得，标题/序号变过的情况由清单兜底
+        val file = File(BookHelp.getCacheDir(book), chapter.getFileName())
+        if (!file.isFile) return null
+        val content = runCatching { file.readText() }.getOrNull() ?: return null
+        return ExoPlayerHelper.mediaUrlsOf(content).firstOrNull { isMediaCached(it, book) }
+    }
+
+    /** 清单里记录的该章媒体地址（缓存时缓存用的那个） */
+    fun manifestMediaUrl(manifest: CacheBookManifest, chapter: BookChapter): String? {
+        val recorded = manifest.chapters.firstOrNull { it.index == chapter.index }
+            ?: manifest.chapters.firstOrNull { it.url == chapter.url }
+            ?: return null
+        return (recorded.resourceUrl ?: recorded.url).takeIf { it.isNotBlank() }
+    }
+
+    /** 地址在该书的媒体缓存里是否完整可用 */
+    fun isMediaCached(url: String, book: Book): Boolean = when {
+        book.isVideo -> ExoPlayerHelper.isVideoCached(url, book)
+        book.isAudio -> ExoPlayerHelper.isMediaCached(url, book)
+        else -> false
+    }
+
+    /** 清单里记录的该章（缓存当时的序号与标题） */
+    fun manifestChapter(manifest: CacheBookManifest?, chapter: BookChapter): CacheChapterManifest? {
+        if (manifest == null) return null
+        return manifest.chapters.firstOrNull { it.index == chapter.index }
+            ?: manifest.chapters.firstOrNull { it.url == chapter.url }
+    }
+
+    /** 用清单记录的信息拼一个最小章节对象（只用于按清单取文件名 / 判定缓存） */
+    fun toChapter(recorded: CacheChapterManifest, bookUrl: String): BookChapter = BookChapter(
+        url = recorded.url,
+        title = recorded.title,
+        bookUrl = bookUrl,
+        index = recorded.index,
+    )
+
+    /**
+     * 文本/漫画章节已缓存时对应的文件名
+     *
+     * 文本缓存的文件名 = 章节序号 + 标题 md5，所以"目录刷新改了标题""源在中间插了章节让序号整体偏移"
+     * 之后，按当前章节算出的名字就对不上磁盘上的文件了——缓存明明还在，却判定成没缓存、还会重下。
+     * 清单里记着缓存当时的序号与标题，用它再算一遍就能找回来。
+     *
+     * @param cacheNames 该书的缓存文件集合，批量判定时传入可避免逐章列目录
+     */
+    fun cachedTextFileName(
+        book: Book,
+        chapter: BookChapter,
+        manifest: CacheBookManifest? = null,
+        cacheNames: Set<String>? = null,
+    ): String? {
+        val fileName = chapter.getFileName()
+        // 绝大多数书的标题没被目录刷新改过：按当前章节算出的文件名直接命中，
+        // 不必解析清单、也不必列目录——逐章判定的热路径上，这两步会让大书退化成上千次 IO
+        if (File(BookHelp.getCacheDir(book), fileName).isFile) return fileName
+        val names = cacheNames ?: BookHelp.getCacheDir(book).list()?.toSet().orEmpty()
+        if (names.contains(fileName)) return fileName
+        // 命中不了才动用清单：标题/序号被目录刷新改过时，按缓存当时的名字再算一遍
+        val recorded = manifestChapter(manifest ?: read(book), chapter)
+            ?.takeIf { it.cached }
+            ?: return null
+        return toChapter(recorded, chapter.bookUrl).getFileName().takeIf { names.contains(it) }
+    }
+
+    /**
+     * 找回"清单功能之前"缓存的媒体地址
+     *
+     * 那时缓存按当时的地址存，章节表里的地址之后被新解析结果覆盖了：缓存 key 虽然还是那个地址，
+     * 但"哪个 key 属于哪一章"没有任何记录可查（完成标记的文件名也只是 url 的 md5）。
+     * 该书只有一章时这份缓存必然全属于它——缓存里不管几个 key（HLS 会带一堆切片）都从里面
+     * 挑能当章节地址用的那个（[ExoPlayerHelper.pickPlayableCachedUrl]，播放列表优先）。
+     *
+     * 推断出来后把地址写回章节表并刷新清单，播放、判定、章节弹窗与缓存管理页的计数就都正常了。
+     *
+     * 注意这里有副作用：会写章节表并触发清单刷新（调用方在并行批次里也会调到，写库本身线程安全，
+     * 但同一章节可能被并发写同一个值）。若该章地址已被目录刷新换掉，更新可能命中 0 行，
+     * 此时仍返回地址——调用方直接用它读缓存，显示不会错，只是章节表要等下次播放或
+     * 打开章节弹窗时再对齐。
+     *
+     * @return 找回来的媒体地址；没能确定时返回 null
+     */
+    fun recoverLegacyMediaUrl(book: Book): String? {
+        if (!book.isVideo && !book.isAudio) return null
+        // 先做最便宜的判断：整库绝大多数书没有媒体缓存，不必为它们查章节表与缓存内容
+        if (!ExoPlayerHelper.hasDownloadedMedia(book)) return null
+        val chapters = appDb.bookChapterDao.getChapterList(book.bookUrl).filterNot { it.isVolume }
+            .ifEmpty {
+                // 书已不在书架、只剩缓存：章节按清单里的来
+                read(book)?.let { toChapters(it).filterNot { c -> c.isVolume } }.orEmpty()
+            }
+        if (chapters.size != 1) return null
+        val chapter = chapters.first()
+        val entries = ExoPlayerHelper.cachedMediaEntries(book)
+        val url = ExoPlayerHelper.pickPlayableCachedUrl(entries.map { it.second }, book) ?: return null
+        if (chapter.resourceUrl != url) {
+            appDb.bookChapterDao.upResourceUrl(book.bookUrl, chapter.url, url)
+            AppLog.put("按缓存找回媒体地址 ${book.name}\n$url")
+            // 把地址与"已缓存"记进清单：之后缓存管理页计数、使用缓存、播放都不用再反推一遍
+            refreshAsync(book)
+        }
+        return url
+    }
+
+    /** 文本/漫画章节已缓存的正文文件 */
+    fun cachedTextFile(
+        book: Book,
+        chapter: BookChapter,
+        manifest: CacheBookManifest? = null,
+    ): File? {
+        val dir = BookHelp.getCacheDir(book)
+        val name = cachedTextFileName(book, chapter, manifest) ?: return null
+        return File(dir, name)
+    }
+
+    fun delete(manifest: CacheBookManifest) {
+        val folderName = manifest.folderName.takeIf { it.isNotBlank() }
+            ?: toBook(manifest).getFolderName()
+        File(File(BookHelp.cachePath), folderName)
+            .resolve(MANIFEST_FILE_NAME)
+            .delete()
+    }
+
+    /**
+     * 清单 -> 书籍实体：书已不在书架时，缓存管理页靠它列出书名/作者/封面
+     */
+    fun toBook(manifest: CacheBookManifest): Book = Book(
+        bookUrl = manifest.bookUrl,
+        tocUrl = manifest.tocUrl,
+        origin = manifest.origin,
+        originName = manifest.originName,
+        name = manifest.name,
+        author = manifest.author,
+        kind = manifest.kind,
+        coverUrl = manifest.coverUrl,
+        intro = manifest.intro,
+        type = manifest.type,
+        latestChapterTitle = manifest.latestChapterTitle,
+        totalChapterNum = manifest.totalChapterNum,
+        canUpdate = false,
+    )
+
+    fun toChapters(
+        manifest: CacheBookManifest,
+        targetBookUrl: String = manifest.bookUrl,
+    ): List<BookChapter> = manifest.chapters
+        .sortedBy { it.index }
+        .map { chapter ->
+            BookChapter(
+                url = chapter.url,
+                title = chapter.title,
+                isVolume = false,
+                baseUrl = chapter.baseUrl,
+                bookUrl = targetBookUrl,
+                index = chapter.index,
+                isVip = chapter.isVip,
+                isPay = chapter.isPay,
+                resourceUrl = chapter.resourceUrl,
+                tag = chapter.tag,
+                wordCount = chapter.wordCount,
+                start = chapter.start,
+                end = chapter.end,
+                startFragmentId = chapter.startFragmentId,
+                endFragmentId = chapter.endFragmentId,
+                variable = chapter.variable,
+                imgUrl = chapter.imgUrl,
+            )
+        }
+
+    /**
+     * 把章节行的媒体地址对齐成"确实有缓存的地址"（缓存管理页的「使用缓存」走这里）
+     *
+     * 目录刷新会把章节行的 resourceUrl 覆盖为空或换成新的签名，已缓存的音视频会因此变成
+     * 判定不到、也播不了的孤儿缓存。地址来源与播放判定共用 [cachedMediaUrl]：章节表里的地址、
+     * 清单里记的地址、缓存正文里记的地址，取第一个确实还有缓存的。
+     *
+     * @return 是否有章节被改过
+     */
+    fun mergeResourceUrls(
+        book: Book,
+        chapters: List<BookChapter>,
+        manifest: CacheBookManifest? = read(book),
+    ): Boolean {
+        if (!book.isAudio && !book.isVideo) return false
+        var changed = false
+        // 清单与缓存正文都对不上时的兜底：清单功能之前的老缓存只能按缓存内容反推（仅一章的书能确定），
+        // 一本只反推一次
+        var legacyUrl: String? = null
+        var legacyTried = false
+        fun legacyFallback(): String? {
+            if (!legacyTried) {
+                legacyTried = true
+                legacyUrl = recoverLegacyMediaUrl(book)
+            }
+            return legacyUrl
+        }
+        chapters.forEach { chapter ->
+            val cachedUrl = cachedMediaUrl(book, chapter, manifest) ?: legacyFallback() ?: return@forEach
+            if (chapter.resourceUrl == cachedUrl) return@forEach
+            chapter.resourceUrl = cachedUrl
+            changed = true
+        }
+        return changed
+    }
+}
+
+/**
+ * 目录里除清单文件外是否还有缓存内容
+ *
+ * 只看"目录非空"会把清单自己算进去，导致清空缓存后清单永远删不掉
+ */
+private fun File?.hasContent(): Boolean {
+    if (this == null || !isDirectory) return false
+    return listFiles()?.any { it.name != CacheManifestHelper.MANIFEST_FILE_NAME } == true
+}
+
+data class CacheBookManifest(
+    val version: Int = 1,
+    val bookUrl: String = "",
+    val tocUrl: String = "",
+    val origin: String = "",
+    val originName: String = "",
+    val name: String = "",
+    val author: String = "",
+    val kind: String? = null,
+    val coverUrl: String? = null,
+    val intro: String? = null,
+    val type: Int = 0,
+    val folderName: String = "",
+    val latestChapterTitle: String? = null,
+    val totalChapterNum: Int = 0,
+    val updatedAt: Long = 0L,
+    val chapters: List<CacheChapterManifest> = emptyList(),
+) {
+    val cachedChapterCount: Int
+        get() = chapters.count { it.cached }
+
+    /** 已缓存章节的序号集合：列表计数只核对这几章，不必逐章查缓存 */
+    val cachedIndexes: Set<Int>
+        get() = chapters.asSequence().filter { it.cached }.mapTo(hashSetOf()) { it.index }
+}
+
+data class CacheChapterManifest(
+    val index: Int = 0,
+    val title: String = "",
+    val url: String = "",
+    val baseUrl: String = "",
+    val isVip: Boolean = false,
+    val isPay: Boolean = false,
+    val resourceUrl: String? = null,
+    val tag: String? = null,
+    val wordCount: String? = null,
+    val start: Long? = null,
+    val end: Long? = null,
+    val startFragmentId: String? = null,
+    val endFragmentId: String? = null,
+    val variable: String? = null,
+    val imgUrl: String? = null,
+    val cached: Boolean = false,
+)

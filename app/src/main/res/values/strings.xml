@@ -104,6 +104,8 @@
     <string name="web_service_auth_summary">Require token for API access. Recommended to enable on public networks</string>
     <string name="web_service_token_title">Web Service Token</string>
     <string name="web_service_token_summary">Set the token for web service authentication</string>
+    <string name="local_network_permission_rationale">Android 17 and above restricts local network access; grant the nearby devices permission so other devices can connect to the Web service</string>
+    <string name="local_network_permission_denied">Local network permission denied, Web service stopped</string>
     <string name="web_edit_source">Edit book sources on the web</string>
     <string name="offline_cache">Offline cache</string>
     <string name="offline_cache_t">Offline cache</string>
@@ -515,6 +517,7 @@
 
     <string name="source_http_header">HTTP Header</string>
     <string name="debug_source">Debug source</string>
+    <string name="stop_debug">Stop Debug</string>
     <string name="import_by_qr_code">Import from QR code</string>
     <string name="share_selected_source">Share selected sources</string>
     <string name="scan_qr_code">Scan QR code</string>
@@ -668,9 +671,48 @@
     <string name="bookshelf_tag_save">Save</string>
     <string name="bookshelf_tag_rename">Rename</string>
     <string name="bookshelf_tag_rename_title">Rename tag</string>
-    <string name="bookshelf_tag_rename_group">Rename tag in "%1$s"</string>
+    <string name="bookshelf_tag_rename_scope">Rename "%1$s" in all groups</string>
     <string name="bookshelf_tag_rename_label">Tag name</string>
     <string name="bookshelf_tag_all">All</string>
+
+    <!-- Smart tags -->
+    <string name="smart_tag_manage">Smart tag management</string>
+    <string name="smart_tag_enable">Smart tags</string>
+    <string name="smart_tag_enable_summary">Auto match tags by book type, reading progress, chapter count and update status</string>
+    <string name="smart_tag_sub_title">Sub tags</string>
+    <string name="smart_tag_sub_summary">Available only when smart tags are enabled</string>
+    <string name="smart_tag_book_count">%1$d books</string>
+    <string name="smart_tag_rule_audio">Audio</string>
+    <string name="smart_tag_rule_audio_desc">Audio books</string>
+    <string name="smart_tag_rule_image">Manga</string>
+    <string name="smart_tag_rule_image_desc">Image or manga books</string>
+    <string name="smart_tag_rule_video">Video</string>
+    <string name="smart_tag_rule_video_desc">Video books</string>
+    <string name="smart_tag_rule_local">Local</string>
+    <string name="smart_tag_rule_local_desc">Local books</string>
+    <string name="smart_tag_rule_online">Online</string>
+    <string name="smart_tag_rule_online_desc">From online book sources</string>
+    <string name="smart_tag_rule_update_error">Update error</string>
+    <string name="smart_tag_rule_update_error_desc">Last update failed</string>
+    <string name="smart_tag_rule_finished">Finished</string>
+    <string name="smart_tag_rule_finished_desc">Read to the last chapter</string>
+    <string name="smart_tag_rule_reading">Reading</string>
+    <string name="smart_tag_rule_reading_desc">In progress and not finished</string>
+    <string name="smart_tag_rule_unread">Not started</string>
+    <string name="smart_tag_rule_unread_desc">No reading progress yet</string>
+    <string name="smart_tag_rule_very_long">Super long</string>
+    <string name="smart_tag_rule_very_long_desc">1000 chapters or more</string>
+    <string name="smart_tag_rule_long">Long</string>
+    <string name="smart_tag_rule_long_desc">500 to 999 chapters</string>
+    <string name="smart_tag_rule_medium">Medium length</string>
+    <string name="smart_tag_rule_medium_desc">200 to 499 chapters</string>
+    <string name="smart_tag_rule_short">Short</string>
+    <string name="smart_tag_rule_short_desc">Fewer than 50 chapters</string>
+    <string name="smart_tag_rule_has_update">Has update</string>
+    <string name="smart_tag_rule_has_update_desc">New chapters found on last check</string>
+    <string name="smart_tag_rule_cannot_update">Not updatable</string>
+    <string name="smart_tag_rule_cannot_update_desc">Auto update disabled</string>
+
     <string name="show_bookshelf_tag_bar">Show tag bar</string>
     <string name="group_edit">Group editing</string>
     <string name="move_to_group">Move to group</string>
@@ -1026,6 +1068,7 @@
     <string name="sort_by_respondTime">Sort by respond time</string>
     <string name="search_content">Search content</string>
     <string name="rss_source_empty">Empty now!</string>
+    <string name="open_rss_source">Open %1$s</string>
     <string name="explore_empty">Empty now!</string>
     <string name="page_key_set_help">Focusing on the input box and pressing a physical key will automatically enter the value of the key, and multiple keys will be automatically separated by commas.</string>
     <string name="theme_name">Theme name</string>
@@ -1388,6 +1431,9 @@
     <string name="show_last_update_time">Show last updated time</string>
     <string name="refresh_list">Refresh list</string>
     <string name="tip_divider_color">Divider color</string>
+    <string name="reader_info_template">Info template</string>
+    <string name="reader_info_template_hint">Enter text and insert placeholders below</string>
+    <string name="reader_info_placeholders">Placeholders</string>
     <string name="same_title_removed">Remove duplicate title</string>
     <string name="update_book_fail">Update failed</string>
     <string name="notification_permission_rationale">Reading requires sending notifications to show reading control and download progress</string>
@@ -1441,7 +1487,9 @@
     <string name="only_latest_backup_t">Keep only the latest backup</string>
     <string name="only_latest_backup_s">Local backup keeps only the latest backup file</string>
     <string name="backup_selector">Backup Selector</string>
-    <string name="backup_selector_summary">Select items to backup</string>
+    <string name="backup_selector_summary">Set local and WebDAV backup items separately</string>
+    <string name="backup_scope_local">Local backup</string>
+    <string name="backup_scope_webdav">WebDAV cloud backup</string>
     <string name="book_cache_selector">Book Cache Selector</string>
     <string name="book_cache_selector_summary">Select books to backup cache</string>
     <string name="selected_items_total">Selected:</string>
@@ -1568,6 +1616,7 @@
     <string name="manga_color_filter">Color Filter</string>
     <string name="hide_manga_title">Hide Manga List Title</string>
     <string name="refresh_explore">Refresh Explore</string>
+    <string name="local_debug">Local Debug</string>
     <string name="padding_display_cutouts">Padding display cutouts</string>
     <string name="read_aloud_pause_resume">Pause/Resume Speech</string>
     <string name="manga_epaper">E-Paper Mode</string>
@@ -1595,6 +1644,7 @@
     <string name="query_hint">Enter content to query</string>
     <string name="find_prev_match">Previous Match</string>
     <string name="find_next_match">Next Match</string>
+    <string name="find_text">Find Text</string>
     <string name="query_result">Found %1$d matches</string>
     <string name="query_no_result">No matches found</string>
     <string name="please_focus_cursor_on_textbox">Please focus cursor on textbox</string>
@@ -1635,6 +1685,11 @@
     <string name="start_full">Start Fullscreen</string>
     <string name="video_setting">Video Settings</string>
     <string name="video_setting_summary">Auto play, fullscreen play and other settings</string>
+    <string name="video_play_settings">Playback</string>
+    <string name="video_cache_settings">Cache</string>
+    <string name="video_play_cache">Cache while playing</string>
+    <string name="video_play_cache_summary">Cache while playing for offline playback; off = no caching</string>
+    <string name="audio_play_cache">Cache while playing</string>
 
     <!-- Reading & Source Settings -->
     <string name="no_more_chapter">No More Chapters</string>
@@ -2041,6 +2096,15 @@
 
     <!-- Explore Show Column Layout -->
     <string name="switch_layout">Switch Layout</string>
+    <string name="switch_layout_current">Switch Layout (Current: %1$s)</string>
+    <string name="switch_to_new_explore">Switch to New Explore</string>
+    <string name="switch_to_old_explore">Switch to Classic Explore</string>
+    <string name="switch_to_new_rss">Switch to New RSS</string>
+    <string name="switch_to_old_rss">Switch to Classic RSS</string>
+    <string name="source_not_exist">Source does not exist</string>
+    <string name="select">Select</string>
+    <string name="expand">Expand</string>
+    <string name="error_view_detail">Tap to view details</string>
     <string name="select_column">Select Column(%d)</string>
     <string name="select_column_count">Select Column Count</string>
     <string name="switch_layout_list">List</string>
@@ -2552,6 +2616,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="storage_cache_temp_name">Temporary file cache</string>
     <string name="storage_cache_tts_name">TTS voice cache</string>
     <string name="storage_cache_acache_name">ACache disk cache</string>
+    <string name="storage_cache_internal_name">Internal cache</string>
     <string name="storage_cache_db_name">Database cache</string>
     <string name="storage_cache_log_name">Log files</string>
     <string name="storage_cache_webview_name">WebView cache</string>
@@ -2560,6 +2625,7 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="storage_cache_temp_desc">Download temporary files, extraction temp directories, etc.</string>
     <string name="storage_cache_tts_desc">Voice files downloaded by online TTS engines</string>
     <string name="storage_cache_acache_desc">Runtime cache such as source variables and user info</string>
+    <string name="storage_cache_internal_desc">Cronet download temp files, export temp files, WebView network cache, etc.</string>
     <string name="storage_cache_db_desc">Temporary data records stored by CacheDao</string>
     <string name="storage_cache_log_desc">App runtime logs, error logs, etc.</string>
     <string name="storage_cache_webview_desc">Persisted WebView page data, local caches, cookies, etc.</string>
@@ -2572,4 +2638,48 @@ Night: %5$s / %6$s / %7$s / %8$s</string>
     <string name="storage_cache_item_count">%1$d cache items</string>
     <!-- Precise manage: file management -->
     <string name="file_delete_confirm">Delete \"%1$s\"?</string>
+
+    <!-- Cache manage: book/audio/video/manga caches -->
+    <string name="cache_manage_title">Cache manager</string>
+    <string name="cache_manage_summary">Manage book, audio, video and manga caches in one place</string>
+    <string name="cache_manage_books">Books</string>
+    <string name="cache_manage_audio">Audio</string>
+    <string name="cache_manage_video">Video</string>
+    <string name="cache_manage_manga">Manga</string>
+    <string name="cache_manage_stats">Stats</string>
+    <string name="cache_manage_empty">No %1$s cache</string>
+    <string name="cache_manage_cached_count_with_size">Cached %1$d/%2$d · %3$s</string>
+    <string name="cache_manage_size_calculating">Calculating…</string>
+    <string name="cache_manage_chapters">Cached chapters</string>
+    <string name="cache_manage_search_chapter">Search chapter</string>
+    <string name="cache_manage_all_chapters">All</string>
+    <string name="cache_manage_cached">Cached</string>
+    <string name="cache_manage_not_cached">Not cached</string>
+    <string name="cache_manage_long_press_hint">Long press a chapter to select, then cache or delete in batches</string>
+    <string name="cache_manage_selected_count">%1$d selected</string>
+    <string name="cache_manage_cache_selected">Cache</string>
+    <string name="cache_manage_cache_selected_done">Queued %1$d chapter(s)</string>
+    <string name="cache_manage_add_bookshelf">Add to shelf</string>
+    <string name="cache_manage_use_cache">Use cache</string>
+    <string name="cache_manage_add_bookshelf_success">Added to bookshelf from cache</string>
+    <string name="cache_manage_use_cache_success">Chapters synced from cache</string>
+    <string name="cache_manage_upload">Upload</string>
+    <string name="cache_manage_upload_all">Upload all</string>
+    <string name="cache_manage_uploading">Uploading…</string>
+    <string name="cache_manage_upload_success">Upload successful</string>
+    <string name="cache_manage_upload_failed">Upload failed: %1$s</string>
+    <string name="cache_manage_delete_all">Delete all</string>
+    <string name="cache_manage_delete_all_confirm">Delete all cache of %1$d book(s) in the current list?</string>
+    <string name="cache_manage_delete_book_confirm">Delete all cache of "%1$s"?</string>
+    <string name="cache_manage_delete_selected_confirm">Delete cache of %1$d selected chapter(s)?</string>
+    <string name="cache_manage_delete_chapter_failed">Failed to delete chapter cache: %1$s</string>
+    <string name="cache_manage_delete_failed">Failed to delete cache: %1$s</string>
+    <string name="cache_manage_chapter_load_failed">Failed to load chapters: %1$s</string>
+    <string name="cache_manage_no_cache">No cache to upload</string>
+    <string name="cache_manage_use_cache_failed">No cache manifest for this book, so it cannot be added back to the bookshelf</string>
+    <string name="cache_manage_search_empty">No matching book</string>
+    <string name="cache_manage_pack_failed">Failed to pack cache</string>
+    <string name="cache_manage_batch_empty">No cache to operate</string>
+    <string name="cache_manage_batch_upload_done">Batch upload finished: %1$d succeeded, %2$d failed</string>
+    <string name="delete_success">Deleted</string>
 </resources>

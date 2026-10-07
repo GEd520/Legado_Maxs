@@ -1,5 +1,8 @@
 package io.legado.app.ui.book.read.page.provider
 
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Paint.FontMetrics
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -16,6 +19,7 @@ import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.page.entities.TextChapter
+import io.legado.app.utils.ColorUtils
 import io.legado.app.utils.RealPathUtil
 
 import io.legado.app.utils.dpToPx
@@ -27,6 +31,7 @@ import io.legado.app.utils.textHeight
 import kotlinx.coroutines.CoroutineScope
 import splitties.init.appCtx
 import androidx.core.net.toUri
+import kotlin.math.abs
 
 /**
  * 解析内容生成章节和页面
@@ -125,6 +130,19 @@ object ChapterProvider {
 
     @JvmStatic
     var contentPaint: TextPaint = TextPaint()
+
+    /**
+     * 标题/正文字重比所用字体实际能渲染的字面更轻时的擦除宽度
+     * （&gt;0 表示绘制阶段需用背景色描边擦掉字心边缘）。由 [getPaints] 按字号算出，
+     * 供 TextLine/TextColumn 的绘制路径消费。
+     */
+    @JvmStatic
+    var titleThinStrokeWidth: Float = 0f
+        private set
+
+    @JvmStatic
+    var contentThinStrokeWidth: Float = 0f
+        private set
 
     @JvmStatic
     var reviewPaint: TextPaint = TextPaint()
@@ -229,41 +247,35 @@ object ChapterProvider {
 
     /**
      * 创建标题和正文的画笔
-     * 
-     * 根据系统版本和字重配置创建对应的字体画笔：
-     * - Android 9+ 精细模式：支持精细字重（100~900），标题和正文分别设置
-     * - Android 9+ 粗略模式 / Android 9 以下：保持旧版行为
-     * 
+     *
+     * 两种字重模式都归到一个"有效字重"上（[ReadBookConfig.getTitleBoldWeight] / [ReadBookConfig.getTextBoldWeight]）：
+     * Android 9+ 先交给 `Typeface.create(weight)` 选静态字面，可变字体再补 `wght` 变体轴；
+     * 字体自身给不出的那部分字重（第三方字体多是单字面、系统字体的中文回退只有常规/粗体两档）
+     * 一律由 [applyStrokeWeight] 补上——比基准重就描边外扩加粗，比基准轻就记录擦除宽度、
+     * 绘制时用背景色再描一遍字擦掉字心边缘
+     *
      * @param typeface 基础字体
      * @return Pair<标题画笔, 正文画笔>
      */
     private fun getPaints(typeface: Typeface?): Pair<TextPaint, TextPaint> {
-        val bold = Typeface.create(typeface, Typeface.BOLD)
-        val normal = Typeface.create(typeface, Typeface.NORMAL)
-        
-        val (titleFont, textFont) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && AppConfig.textBoldMode == 1) {
-            // 精细模式：使用独立的标题和正文字重
-            val textWeight = ReadBookConfig.getTextBoldWeight()
-            val titleWeight = ReadBookConfig.getTitleBoldWeight()
-            Pair(Typeface.create(typeface, titleWeight, false), Typeface.create(typeface, textWeight, false))
-        } else {
-            // 粗略模式或老版本：保持旧版行为
-            when (ReadBookConfig.textBold) {
-                1 -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-                        Pair(Typeface.create(typeface, 900, false), bold)
-                    else
-                        Pair(bold, bold)
-                }
-                2 -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
-                        Pair(normal, Typeface.create(typeface, 300, false))
-                    else
-                        Pair(normal, normal)
-                }
-                else -> Pair(bold, normal)
-            }
-        }
+        val isCustomFont = ReadBookConfig.textFont.isNotEmpty()
+        val isFineMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && AppConfig.textBoldMode == 1
+        // 描边系数＝"500 个字重单位"折算成多少字高。参考实现给的是 0.10，
+        // 但按实测校准（中文常规→粗体的墨迹差 ≈ 3.4% 字高 / 300 单位）0.05 才贴合真实字面，
+        // 0.10 在中文 900 档会把字腔糊成实心块；粗略模式三档间隔更大，再收一档
+        val strokeCoefficient = if (isFineMode) 0.05f else 0.04f
+        // 第三方字体的粗略模式统一回落到 NORMAL，三档差异全部交给描边/擦除，
+        // 否则 Typeface.create 的合成粗体会和描边叠加，粗体档明显过粗
+        val useWeightAxis = !(isCustomFont && !isFineMode)
+
+        val titleWeight = ReadBookConfig.getTitleBoldWeight()
+        val textWeight = ReadBookConfig.getTextBoldWeight()
+
+        val titleFont = createWeightedTypeface(typeface, titleWeight, useWeightAxis)
+        val textFont = createWeightedTypeface(typeface, textWeight, useWeightAxis)
+        // 第三方字体是单一字面，基准恒为 400；系统字体按中文回退阶梯估算实际落到的字面
+        val titleBase = if (isCustomFont) 400 else estimateSystemRenderedWeight(titleWeight)
+        val textBase = if (isCustomFont) 400 else estimateSystemRenderedWeight(textWeight)
 
         //标题
         val tPaint = TextPaint()
@@ -275,6 +287,8 @@ object ChapterProvider {
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q && AppConfig.optimizeRender) {
             tPaint.isLinearText = true
         }
+        applyWeightAxis(tPaint, titleWeight, useWeightAxis)
+        titleThinStrokeWidth = applyStrokeWeight(tPaint, titleWeight, titleBase, strokeCoefficient)
         //正文
         val cPaint = TextPaint()
         cPaint.color = ReadBookConfig.textColor
@@ -285,7 +299,142 @@ object ChapterProvider {
         if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q && AppConfig.optimizeRender) {
             cPaint.isLinearText = true
         }
+        applyWeightAxis(cPaint, textWeight, useWeightAxis)
+        contentThinStrokeWidth = applyStrokeWeight(cPaint, textWeight, textBase, strokeCoefficient)
         return Pair(tPaint, cPaint)
+    }
+
+    /**
+     * 按字重取字体：Android 9+ 走三参数 weight，更低版本回退到两参数 style
+     */
+    private fun createWeightedTypeface(typeface: Typeface?, weight: Int, useWeightAxis: Boolean): Typeface {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            return Typeface.create(typeface, if (weight >= 600) Typeface.BOLD else Typeface.NORMAL)
+        }
+        return if (useWeightAxis) {
+            Typeface.create(typeface, weight, false)
+        } else {
+            Typeface.create(typeface, Typeface.NORMAL)
+        }
+    }
+
+    /**
+     * 补 `wght` 变体轴：可变字体（含系统可变字体）由此拿到真正的连续字重，静态字面会忽略该设置
+     */
+    private fun applyWeightAxis(paint: TextPaint, weight: Int, useWeightAxis: Boolean) {
+        if (useWeightAxis && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            paint.setFontVariationSettings("'wght' $weight")
+        }
+    }
+
+    /**
+     * 变细：用"字后面实际的颜色"把刚画过的字再描一遍，擦掉字心边缘
+     * （目标字重比字体能渲染的字面更轻时生效）。
+     * 描边宽度为 0（不需要变细）、或推不出擦除色时静默跳过。
+     * 会临时改 paint 的 style/color/strokeWidth，返回前还原，因此可以安全作用于共享画笔。
+     *
+     * @param localBg 字后面实际的颜色，来自 [io.legado.app.ui.book.read.page.entities.column.TextBaseColumn.eraseBgColor]；
+     *   null 表示字后面就是页面背景，用背景均色
+     */
+    @JvmStatic
+    fun drawThinStroke(
+        canvas: Canvas,
+        paint: Paint,
+        isTitle: Boolean,
+        text: String,
+        start: Int,
+        end: Int,
+        x: Float,
+        y: Float,
+        localBg: Int? = null
+    ) {
+        val thinStrokeWidth = if (isTitle) titleThinStrokeWidth else contentThinStrokeWidth
+        if (thinStrokeWidth <= 0f) return
+        // 系统字体的擦除量是按汉字回退阶梯估算的，而拉丁字形本来就有真实字面（Roboto 有 100~900 六级），
+        // 按汉字基准擦会在极细档把纯拉丁文本擦没，所以系统字体只对含汉字的文本生效；
+        // 第三方字体是单字面，拉丁字形同样只能靠擦除变细，不做这个限制
+        if (ReadBookConfig.textFont.isEmpty() && !hasHan(text, start, end)) return
+        // 擦除色必须等于字后面实际的颜色，否则会在字形周围留一圈错色的包边：
+        // 色块不透明直接用；半透明块色先和页面背景均色合成；没有块色用页面背景均色
+        val eraseColor = when {
+            localBg == null || Color.alpha(localBg) == 0 -> ReadBookConfig.bgMeanColor
+            Color.alpha(localBg) == 0xFF -> localBg
+            ReadBookConfig.bgMeanColor == 0 -> return
+            else -> ColorUtils.blendColors(ReadBookConfig.bgMeanColor, localBg, Color.alpha(localBg) / 255f)
+        }
+        if (eraseColor == 0) return
+        val oldStyle = paint.style
+        val oldColor = paint.color
+        val oldStrokeWidth = paint.strokeWidth
+        paint.style = Paint.Style.STROKE
+        paint.color = eraseColor
+        paint.strokeWidth = thinStrokeWidth
+        canvas.drawText(text, start, end, x, y, paint)
+        paint.style = oldStyle
+        paint.color = oldColor
+        paint.strokeWidth = oldStrokeWidth
+    }
+
+    /** [start, end) 区间内是否含汉字（含扩展区与兼容区） */
+    private fun hasHan(text: String, start: Int, end: Int): Boolean {
+        var i = start
+        while (i < end) {
+            val codePoint = text.codePointAt(i)
+            if (isHan(codePoint)) return true
+            i += Character.charCount(codePoint)
+        }
+        return false
+    }
+
+    private fun isHan(codePoint: Int): Boolean =
+        codePoint in 0x3400..0x4DBF ||      // 扩展 A
+            codePoint in 0x4E00..0x9FFF ||  // 基本区
+            codePoint in 0xF900..0xFAFF ||  // 兼容汉字
+            codePoint in 0x20000..0x3FFFF   // 扩展 B 及以后
+
+    /**
+     * 估算系统字体把某个字重实际渲染成多少，作为补差额的基准。
+     *
+     * 系统字体的中文来自回退族。本机（Android 12 / AOSP 字体集）探针实测 `sans-serif`：
+     * 中文只有 NotoSansSC-Regular(400) 与 NotoSansSC-Bold(700) 两个字面 —— 请求 ≤550 落 400、
+     * 600~800 落 700、900 落更重的一档；而拉丁字形另有 100/300/400/500/700/900 六级。
+     * 按中文这一级取基准，差额由描边/擦除补上，中文因此也连续；
+     * 混排时拉丁一侧最多被多补/少补 2% 字高（它本来有真实字面，只是补得不够准）。
+     */
+    private fun estimateSystemRenderedWeight(weight: Int): Int = when {
+        weight <= 550 -> 400
+        weight <= 800 -> 700
+        else -> 900
+    }
+
+    /**
+     * 给画笔补上"字体自身给不出"的字重差：比基准重就用描边外扩加粗，比基准轻则返回擦除宽度
+     *
+     * 两个方向用同一条线性响应：中文回退的字面间隔是 300 单位（400→700），
+     * 若变细一侧用更陡的曲线，跨过"常规→粗体"切换点（如 550→600）时会出现
+     * "往右拖反而变细"的反向抖动，所以粗细两端共用 [strokeCoefficient]。
+     *
+     * @param weight 目标字重（100~900）
+     * @param baseWeight 该字体实际能渲染到的字重（第三方字体恒为 400，见 [estimateSystemRenderedWeight]）
+     * @return 擦除宽度，0f 表示不需要擦除
+     */
+    private fun applyStrokeWeight(
+        paint: TextPaint,
+        weight: Int,
+        baseWeight: Int,
+        strokeCoefficient: Float
+    ): Float {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return 0f
+        val delta = weight - baseWeight
+        if (delta == 0) return 0f
+        val strokeWidth = abs(delta) / 500f * paint.textSize * strokeCoefficient
+        if (delta > 0) {
+            paint.style = Paint.Style.FILL_AND_STROKE
+            paint.strokeWidth = strokeWidth
+            return 0f
+        }
+        // 变细靠"用背景色把字心边缘描掉"；上限压到字号的 2%，避免重=100 时擦除过度导致文字几乎消失
+        return strokeWidth.coerceAtMost(paint.textSize * 0.02f)
     }
 
     /**

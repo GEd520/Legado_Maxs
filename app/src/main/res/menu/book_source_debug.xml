@@ -11,6 +11,12 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/menu_find_text"
+        android:icon="@drawable/ic_search"
+        android:title="@string/find_text"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/menu_search_src"
         android:title="@string/search_src"
         app:showAsAction="never" />
@@ -33,6 +39,12 @@
     <item
         android:id="@+id/menu_refresh_explore"
         android:title="@string/refresh_explore"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_local_debug"
+        android:checkable="true"
+        android:title="@string/local_debug"
         app:showAsAction="never" />
 
     <item

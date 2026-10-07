@@ -89,25 +89,37 @@ git diff --staged
 
 ### 4. 执行提交
 
+**不要写临时消息文件**。用 `-m` 直接提交即可（2026-09-16 在 PowerShell 5.1 + Windows 实测：参数传递的中文完整，不会乱码）。
+
+标题与 body 分两段，第一段是标题，第二段是 body 条目；段内换行用 `` `n ``（反引号，不是正斜杠）：
+
+```powershell
+git commit -m "fix(书架): 修复分组为空时返回 null 的问题" -m "- 新增空分组判断`n- 匹配失败返回空列表"
+```
+
+也可以先把整段消息放进 here-string 变量，再一次性交给 `-m`：
+
+```powershell
+$msg = @"
+feat(主题): 支持自定义顶栏颜色
+
+- 新增 TopBarConfig 颜色字段
+- 配置页增加取色器入口
+"@
+git commit -m $msg
+```
+
 在 Bash（Git Bash / WSL / macOS / Linux）下：
 
 ```bash
-git commit -m "$(cat <<'EOF'
-<type>(<scope>): <description>
-
-- <修改内容 1>
-- <修改内容 2>
-EOF
-)"
+git commit -m "<type>(<scope>): <description>" -m "- <修改内容 1>
+- <修改内容 2>"
 ```
 
-在 PowerShell 下（Windows 默认终端）：
+#### 禁止的写法
 
-```powershell
-git commit -m "<type>(<scope>): <description>`n`n- <修改内容 1>`n- <修改内容 2>"
-```
-
-PowerShell 中用 `` `n `` 表示换行，注意是反引号不是正斜杠。
+- **禁止 `"<消息>" | git commit -F -`**（管道喂 stdin）。PowerShell 5.1 会给管道注入 UTF-8 BOM，提交消息首字符变成 U+FEFF；改 `$OutputEncoding` 也修不掉。
+- 临时 UTF-8 文件 + `git commit -F <file>` 已是**兜底方案**：只在 `-m` 万一出现乱码时才用，用完删掉文件。正常情况不要用。
 
 ### 5. 提交后反馈
 

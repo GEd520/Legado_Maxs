@@ -3,6 +3,7 @@ package io.legado.app.ui.book.search
 import android.content.Context
 import android.os.Bundle
 import android.view.ViewGroup
+import android.widget.ImageView
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import io.legado.app.R
@@ -12,8 +13,6 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.ItemSearchBinding
 import io.legado.app.domain.model.BookShelfState
 import io.legado.app.help.config.AppConfig
-import io.legado.app.ui.book.explore.setShelfState
-import io.legado.app.ui.book.explore.setShelfStateDot
 import io.legado.app.ui.widget.image.CircleImageView
 import io.legado.app.utils.gone
 import io.legado.app.utils.visible
@@ -171,5 +170,56 @@ class SearchAdapter(context: Context, val callBack: CallBack) :
          * 长按书籍事件
          */
         fun onBookLongClick(book: SearchBook)
+    }
+}
+
+/**
+ * 根据书架状态设置 ImageView 的图标和可见性（新版样式）：
+ * - IN_SHELF: 显示 Check 图标（已加入书架）
+ * - SAME_NAME_AUTHOR: 显示 Shuffle 图标（同名同作者）
+ * - NOT_IN_SHELF: 隐藏
+ * 根据配置决定是否显示
+ */
+internal fun ImageView.setShelfState(state: BookShelfState) {
+    // 新版样式（图标）仅在配置为0时显示
+    if (AppConfig.bookshelfIconStyle == 0) {
+        when (state) {
+            BookShelfState.IN_SHELF -> {
+                setImageResource(R.drawable.ic_check)
+                isVisible = true
+            }
+            BookShelfState.SAME_NAME_AUTHOR -> {
+                setImageResource(R.drawable.ic_shuffle)
+                isVisible = true
+            }
+            else -> {
+                isVisible = false
+            }
+        }
+    } else {
+        isVisible = false
+    }
+}
+
+/**
+ * 根据书架状态设置 CircleImageView 的可见性（经典样式）：
+ * - IN_SHELF: 显示小绿点
+ * - SAME_NAME_AUTHOR: 显示小绿点
+ * - NOT_IN_SHELF: 隐藏
+ * 根据配置决定是否显示
+ */
+internal fun CircleImageView.setShelfStateDot(state: BookShelfState) {
+    // 经典样式（小绿点）仅在配置为1时显示
+    if (AppConfig.bookshelfIconStyle == 1) {
+        when (state) {
+            BookShelfState.IN_SHELF, BookShelfState.SAME_NAME_AUTHOR -> {
+                isVisible = true
+            }
+            else -> {
+                isVisible = false
+            }
+        }
+    } else {
+        isVisible = false
     }
 }

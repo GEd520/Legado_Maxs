@@ -42,9 +42,11 @@ import io.legado.app.help.RuleBigDataHelp
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.book.BookshelfMatcher
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.config.NavigationBarConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ThemeConfig.applyDayNightInit
 import io.legado.app.help.config.ThemeConfig.applyTheme
+import io.legado.app.help.config.ThemeConfig.consumeNightModeEcho
 import io.legado.app.help.config.ThemeConfig.notifyRecreate
 import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.help.http.Cronet
@@ -54,12 +56,15 @@ import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.source.SourceRecycleBinHelp
 import io.legado.app.help.storage.Backup
+import io.legado.app.lib.theme.ThemeTransition
 import io.legado.app.model.BookCover
 import io.legado.app.utils.ChineseUtils
 import io.legado.app.utils.LogUtils
 import io.legado.app.utils.defaultSharedPreferences
 import io.legado.app.utils.getPrefBoolean
 import io.legado.app.utils.isDebuggable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.chromium.base.ThreadUtils
 import splitties.init.appCtx
@@ -88,6 +93,19 @@ class App : Application() {
         AppConfig.migrateClipboardImportMode()
         registerActivityLifecycleCallbacks(LifecycleHelp)
         defaultSharedPreferences.registerOnSharedPreferenceChangeListener(AppConfig)
+        // 底栏自定义图标首次应用时要同步解码（实测 10 张合计约 0.6s 主线程阻塞）。
+        // 这里用纯后台调度器直接跑：走 Coroutine.async 会先派发回主线程排队，
+        // 启动期主线程正忙，等排到就已经晚了，主线程该用图标时还是得同步解码。
+        CoroutineScope(Dispatchers.IO).launch {
+            NavigationBarConfig.preloadActiveIcons(appCtx)
+        }
+        // 冷启动最先被抢的是数据库：欢迎页读上次阅读、书架分组与书籍数据、书源列表都要用它，
+        // 而 Room 首次访问会串行化建库/打开/迁移。单独起一个协程先把它开好，
+        // 不和同一段初始化里的其它慢活（Cronet 预下载、Rhino 预热、通知渠道）排在同一条队列上，
+        // 免得主线程稍后读到 appDb 时还要等初始化锁（冷启动与后台恢复的主要等待来源之一）。
+        Coroutine.async {
+            runCatching { appDb.openHelper.writableDatabase }
+        }
         Coroutine.async {
             LogUtils.init(this@App)
             LogUtils.d("App", "onCreate")
@@ -147,12 +165,30 @@ class App : Application() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        // Application 的 Resources 是 attachBaseContext 时包装出的固定快照，不会随系统配置更新；
+        // 先把它同步到新配置，后续按昼夜解析主题资源（AppCompat 的 FOLLOW_SYSTEM 也读它）才是新值
+        AppContextWrapper.syncConfiguration(this, newConfig)
         val diff = newConfig.diff(oldConfig)
         if ((diff and ActivityInfo.CONFIG_UI_MODE) != 0) {
+            val oldNight = oldConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
+            val newNight = newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
+            // App 自己发起的日夜切换（applyDayNight）随后也会把配置变化送来这里，这条回调是它的回声：
+            // 那次的重建请求与过渡标记都已在 applyDayNight 里发过，再发一次就是重复重建窗口
+            // （「重建风暴」的构成之一）。必须无条件消费标记，否则陈旧标记会把后来的系统翻转误判成回声。
+            val echo = consumeNightModeEcho(newNight == Configuration.UI_MODE_NIGHT_YES)
+            // 昼夜位真的翻转（且不是自己的回声）时标记一次主题过渡，供主界面在重建后把背景与底栏
+            // 放进同一条动画时间轴。用昼夜位而非 diff 判定是关键：过渡起点要在主题改动前快照，
+            // 拿不到旧颜色的回调不能再覆盖它。
+            if (oldNight != newNight && !echo) {
+                ThemeTransition.notifyThemeChanged()
+            }
             // 模式此时已生效，不能再次 setDefaultNightMode/applyDayNight，
             // 否则会再次触发配置变化，形成「RECREATE 广播风暴」（见 docs/archive/主题列表应用主题后UI卡死根因分析）
             applyTheme(this)
-            notifyRecreate()
+            if (!echo) {
+                // 系统翻转（跟随系统）同样是一次性动作，与手动切换一样立即重建
+                notifyRecreate(immediate = true)
+            }
         }
         oldConfig = Configuration(newConfig)
     }

@@ -1,12 +1,14 @@
 package io.legado.app.ui.book.read.page
 
-import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.PointF
 import android.graphics.drawable.LayerDrawable
 import android.view.LayoutInflater
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.withTranslation
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isGone
@@ -18,8 +20,10 @@ import io.legado.app.databinding.ViewBookPageBinding
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.ReadBookConfig
 import io.legado.app.help.config.ReadTipConfig
+import io.legado.app.help.config.ReaderInfoValues
 import io.legado.app.model.ReadBook
 import io.legado.app.ui.book.read.ReadBookActivity
+import io.legado.app.ui.book.read.page.entities.PageDirection
 import io.legado.app.ui.book.read.page.entities.TextLine
 import io.legado.app.ui.book.read.page.entities.TextPage
 import io.legado.app.ui.book.read.page.entities.TextPos
@@ -31,7 +35,6 @@ import io.legado.app.utils.applyStatusBarPadding
 import io.legado.app.utils.dpToPx
 import io.legado.app.utils.gone
 import io.legado.app.utils.setOnApplyWindowInsetsListenerCompat
-import io.legado.app.utils.setTextIfNotEqual
 import splitties.views.backgroundColor
 import java.util.Date
 
@@ -43,19 +46,9 @@ class PageView(context: Context) : FrameLayout(context) {
     private val binding = ViewBookPageBinding.inflate(LayoutInflater.from(context), this, true)
     private val readBookActivity get() = activity as? ReadBookActivity
     private var battery = 100
-    private var tvTitle: BatteryView? = null
-    private var tvTime: BatteryView? = null
-    private var tvBattery: BatteryView? = null
-    private var tvBatteryInside: BatteryView? = null
-    private var tvBatteryP: BatteryView? = null
-    private var tvPage: BatteryView? = null
-    private var tvTotalProgress: BatteryView? = null
-    private var tvTotalProgress1: BatteryView? = null
-    private var tvPageAndTotal: BatteryView? = null
-    private var tvBookName: BatteryView? = null
-    private var tvTimeBattery: BatteryView? = null
-    private var tvTimeBatteryIconOnly: BatteryView? = null
-    private var tvTimeBatteryP: BatteryView? = null
+    private var readerInfoValues = ReaderInfoValues(battery = 100)
+    private var readerInfoViews = emptyArray<ReaderInfoView>()
+    private var readerInfoColor = 0
     private var isMainView = false
     var isScroll = false
 
@@ -90,6 +83,8 @@ class PageView(context: Context) : FrameLayout(context) {
             val tipColor = with(ReadTipConfig) {
                 if (tipColor == 0) textColor else tipColor
             }
+            // 电量图标跟随文字颜色，颜色变化后需要重新渲染
+            readerInfoColor = tipColor
             val tipDividerColor = with(ReadTipConfig) {
                 when (tipDividerColor) {
                     -1 -> ContextCompat.getColor(context, R.color.divider)
@@ -162,15 +157,9 @@ class PageView(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * 更新阅读信息
+     * 更新页眉页脚显示开关、字号与各位置模板
      */
     private fun upTipStyle() = binding.run {
-        tvHeaderLeft.tag = null
-        tvHeaderMiddle.tag = null
-        tvHeaderRight.tag = null
-        tvFooterLeft.tag = null
-        tvFooterMiddle.tag = null
-        tvFooterRight.tag = null
         llHeader.isGone = when (ReadTipConfig.headerMode) {
             1 -> false
             2 -> true
@@ -180,138 +169,96 @@ class PageView(context: Context) : FrameLayout(context) {
             1 -> true
             else -> false
         }
-        ReadTipConfig.apply {
-            tvHeaderLeft.isGone = tipHeaderLeft == none
-            tvHeaderRight.isGone = tipHeaderRight == none
-            tvHeaderMiddle.isGone = tipHeaderMiddle == none
-            tvFooterLeft.isInvisible = tipFooterLeft == none
-            tvFooterRight.isGone = tipFooterRight == none
-            tvFooterMiddle.isGone = tipFooterMiddle == none
-        }
-        // 获取页眉页脚字体大小配置
         val headerFontSize = ReadTipConfig.headerFontSize.toFloat()
         val footerFontSize = ReadTipConfig.footerFontSize.toFloat()
-        tvTitle = getTipView(ReadTipConfig.chapterTitle)?.apply {
-            tag = ReadTipConfig.chapterTitle
-            isBattery = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.chapterTitle, headerFontSize, footerFontSize)
+        readerInfoViews = with(ReadTipConfig) {
+            arrayOf(
+                ReaderInfoView(
+                    tvHeaderLeft,
+                    effectiveTemplate(tipHeaderLeftTemplate, tipHeaderLeft),
+                    headerFontSize,
+                ),
+                ReaderInfoView(
+                    tvHeaderMiddle,
+                    effectiveTemplate(tipHeaderMiddleTemplate, tipHeaderMiddle),
+                    headerFontSize,
+                ),
+                ReaderInfoView(
+                    tvHeaderRight,
+                    effectiveTemplate(tipHeaderRightTemplate, tipHeaderRight),
+                    headerFontSize,
+                ),
+                ReaderInfoView(
+                    tvFooterLeft,
+                    effectiveTemplate(tipFooterLeftTemplate, tipFooterLeft),
+                    footerFontSize,
+                ),
+                ReaderInfoView(
+                    tvFooterMiddle,
+                    effectiveTemplate(tipFooterMiddleTemplate, tipFooterMiddle),
+                    footerFontSize,
+                ),
+                ReaderInfoView(
+                    tvFooterRight,
+                    effectiveTemplate(tipFooterRightTemplate, tipFooterRight),
+                    footerFontSize,
+                ),
+            )
         }
-        tvTime = getTipView(ReadTipConfig.time)?.apply {
-            tag = ReadTipConfig.time
-            isBattery = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.time, headerFontSize, footerFontSize)
-        }
-        tvBattery = getTipView(ReadTipConfig.battery)?.apply {
-            tag = ReadTipConfig.battery
-            isBattery = true
-            batteryInnerOnly = false
-            batteryTextWithIconOnly = false
-            textSize = getTipFontSize(ReadTipConfig.battery, headerFontSize, footerFontSize)
-        }
-        tvBatteryInside = getTipView(ReadTipConfig.batteryInside)?.apply {
-            tag = ReadTipConfig.batteryInside
-            isBattery = true
-            batteryInnerOnly = true
-            batteryTextWithIconOnly = false
-            textSize = getTipFontSize(ReadTipConfig.batteryInside, headerFontSize, footerFontSize)
-        }
-        tvPage = getTipView(ReadTipConfig.page)?.apply {
-            tag = ReadTipConfig.page
-            isBattery = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.page, headerFontSize, footerFontSize)
-        }
-        tvTotalProgress = getTipView(ReadTipConfig.totalProgress)?.apply {
-            tag = ReadTipConfig.totalProgress
-            isBattery = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.totalProgress, headerFontSize, footerFontSize)
-        }
-        tvTotalProgress1 = getTipView(ReadTipConfig.totalProgress1)?.apply {
-            tag = ReadTipConfig.totalProgress1
-            isBattery = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.totalProgress1, headerFontSize, footerFontSize)
-        }
-        tvPageAndTotal = getTipView(ReadTipConfig.pageAndTotal)?.apply {
-            tag = ReadTipConfig.pageAndTotal
-            isBattery = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.pageAndTotal, headerFontSize, footerFontSize)
-        }
-        tvBookName = getTipView(ReadTipConfig.bookName)?.apply {
-            tag = ReadTipConfig.bookName
-            isBattery = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.bookName, headerFontSize, footerFontSize)
-        }
-        tvTimeBattery = getTipView(ReadTipConfig.timeBattery)?.apply {
-            tag = ReadTipConfig.timeBattery
-            isBattery = true
-            batteryInnerOnly = false
-            batteryTextWithIconOnly = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.timeBattery, headerFontSize, footerFontSize)
-        }
-        tvTimeBatteryIconOnly = getTipView(ReadTipConfig.timeBatteryIconOnly)?.apply {
-            tag = ReadTipConfig.timeBatteryIconOnly
-            isBattery = true
-            batteryInnerOnly = false
-            batteryTextWithIconOnly = true
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.timeBatteryIconOnly, headerFontSize, footerFontSize)
-        }
-        tvBatteryP = getTipView(ReadTipConfig.batteryPercentage)?.apply {
-            tag = ReadTipConfig.batteryPercentage
-            isBattery = false
-            batteryInnerOnly = false
-            batteryTextWithIconOnly = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.batteryPercentage, headerFontSize, footerFontSize)
-        }
-        tvTimeBatteryP = getTipView(ReadTipConfig.timeBatteryPercentage)?.apply {
-            tag = ReadTipConfig.timeBatteryPercentage
-            isBattery = false
-            batteryInnerOnly = false
-            batteryTextWithIconOnly = false
-            typeface = ChapterProvider.typeface
-            textSize = getTipFontSize(ReadTipConfig.timeBatteryPercentage, headerFontSize, footerFontSize)
+        readerInfoViews.forEach { readerInfoView ->
+            readerInfoView.view.apply {
+                isBattery = false
+                typeface = ChapterProvider.typeface
+                textSize = readerInfoView.textSize
+                // 颜色/字号变化时文本可能没变，清掉缓存保证重新渲染
+                clearText()
+            }
         }
     }
 
     /**
-     * 根据 tip 所在位置获取对应的字体大小
-     * @param tip 信息类型标识
-     * @param headerFontSize 页眉字体大小
-     * @param footerFontSize 页脚字体大小
-     * @return 对应位置的字体大小
+     * 渲染各位置的模板内容，模板为空时隐藏（左页脚用 invisible 保持占位对齐）
      */
-    private fun getTipFontSize(tip: Int, headerFontSize: Float, footerFontSize: Float): Float {
-        return if (tip == ReadTipConfig.tipHeaderLeft ||
-            tip == ReadTipConfig.tipHeaderMiddle ||
-            tip == ReadTipConfig.tipHeaderRight) {
-            headerFontSize
-        } else {
-            footerFontSize
+    private fun renderReaderInfo() {
+        readerInfoViews.forEach { readerInfoView ->
+            val view = readerInfoView.view
+            val template = readerInfoView.template
+            if (view === binding.tvFooterLeft) {
+                view.isInvisible = template.isEmpty()
+            } else {
+                view.isGone = template.isEmpty()
+            }
+            if (template.isNotEmpty()) {
+                // 电量图标画在 Span 的 Drawable 里，纯文本比较看不出电量变化（占位字符始终不变），
+                // 所以指纹必须直接取自渲染输入（含电量），否则电量更新会被当成"内容没变"跳过、
+                // 一直显示首次渲染的旧值；模板本身也要进指纹，{电量图标} 与 {电量图标数字} 的
+                // 渲染文本是一样的。
+                val renderKey =
+                    "$template|$readerInfoValues|${readerInfoView.textSize}|$readerInfoColor"
+                if (readerInfoView.lastRenderKey != renderKey) {
+                    readerInfoView.lastRenderKey = renderKey
+                    // 指纹变了才重设，避免无变化的重复 setText 造成闪烁
+                    view.clearText()
+                    view.setTextIfNotEqual(
+                        ReaderInfoTemplateRenderer.render(
+                            template,
+                            readerInfoValues,
+                            readerInfoView.textSize,
+                            readerInfoColor,
+                        )
+                    )
+                }
+            }
         }
     }
 
-    /**
-     * 获取信息视图
-     * @param tip 信息类型
-     */
-    private fun getTipView(tip: Int): BatteryView? = binding.run {
-        return when (tip) {
-            ReadTipConfig.tipHeaderLeft -> tvHeaderLeft
-            ReadTipConfig.tipHeaderMiddle -> tvHeaderMiddle
-            ReadTipConfig.tipHeaderRight -> tvHeaderRight
-            ReadTipConfig.tipFooterLeft -> tvFooterLeft
-            ReadTipConfig.tipFooterMiddle -> tvFooterMiddle
-            ReadTipConfig.tipFooterRight -> tvFooterRight
-            else -> null
-        }
+    private class ReaderInfoView(
+        val view: BatteryView,
+        val template: String,
+        val textSize: Float,
+    ) {
+        /** 上次渲染内容的指纹（含电量），用于判断是否需要重设文本 */
+        var lastRenderKey: String? = null
     }
 
     /**
@@ -339,31 +286,19 @@ class PageView(context: Context) : FrameLayout(context) {
      * 更新时间信息
      */
     fun upTime() {
-        tvTime?.text = timeFormat.format(Date(System.currentTimeMillis()))
-        upTimeBattery()
+        readerInfoValues = readerInfoValues.copy(
+            time = timeFormat.format(Date(System.currentTimeMillis())),
+        )
+        renderReaderInfo()
     }
 
     /**
      * 更新电池信息
      */
-    @SuppressLint("SetTextI18n")
     fun upBattery(battery: Int) {
-        this.battery = battery
-        tvBattery?.setBattery(battery)
-        tvBatteryInside?.setBattery(battery)
-        tvBatteryP?.text = "$battery%"
-        upTimeBattery()
-    }
-
-    /**
-     * 更新电池信息
-     */
-    @SuppressLint("SetTextI18n")
-    private fun upTimeBattery() {
-        val time = timeFormat.format(Date(System.currentTimeMillis()))
-        tvTimeBattery?.setBattery(battery, time)
-        tvTimeBatteryIconOnly?.setBattery(battery, time)
-        tvTimeBatteryP?.text = "$time $battery%"
+        this.battery = battery.coerceIn(0, 100)
+        readerInfoValues = readerInfoValues.copy(battery = this.battery)
+        renderReaderInfo()
     }
 
     /**
@@ -404,22 +339,24 @@ class PageView(context: Context) : FrameLayout(context) {
     /**
      * 设置进度
      */
-    @SuppressLint("SetTextI18n")
     fun setProgress(textPage: TextPage) = textPage.apply {
-        tvBookName?.setTextIfNotEqual(ReadBook.book?.name)
-        tvTitle?.setTextIfNotEqual(textPage.title)
-        val readProgress = readProgress
-        tvTotalProgress?.setTextIfNotEqual(readProgress)
-        tvTotalProgress1?.setTextIfNotEqual("${chapterIndex.plus(1)}/${chapterSize}")
-        if (textChapter.isCompleted) {
-            tvPageAndTotal?.setTextIfNotEqual("${index.plus(1)}/$pageSize  $readProgress")
-            tvPage?.setTextIfNotEqual("${index.plus(1)}/$pageSize")
+        val progress = readProgress
+        val totalPages = if (textChapter.isCompleted) {
+            pageSize.toString()
         } else {
             val pageSizeInt = pageSize
-            val pageSize = if (pageSizeInt <= 0) "-" else "~$pageSizeInt"
-            tvPageAndTotal?.setTextIfNotEqual("${index.plus(1)}/$pageSize  $readProgress")
-            tvPage?.setTextIfNotEqual("${index.plus(1)}/$pageSize")
+            if (pageSizeInt <= 0) "-" else "~$pageSizeInt"
         }
+        readerInfoValues = readerInfoValues.copy(
+            bookName = ReadBook.book?.name.orEmpty(),
+            chapterTitle = title,
+            page = index.plus(1).toString(),
+            totalPages = totalPages,
+            readProgress = progress,
+            chapter = chapterIndex.plus(1).toString(),
+            totalChapters = chapterSize.toString(),
+        )
+        renderReaderInfo()
     }
 
     fun setAutoPager(autoPager: AutoPager?) {
@@ -512,6 +449,50 @@ class PageView(context: Context) : FrameLayout(context) {
 
     fun selectEndMove(x: Float, y: Float) {
         binding.contentTextView.selectEndMove(x - imgBgPaddingStart, y - headerHeight)
+    }
+
+    /**
+     * 选择端点拖到内容区上下边缘时排队自动翻页（跨页选择）
+     */
+    fun checkSelectAutoPage(x: Float, y: Float, dragStartPoint: Boolean) {
+        binding.contentTextView.checkSelectAutoPage(
+            x - imgBgPaddingStart, y - headerHeight, dragStartPoint
+        )
+    }
+
+    /**
+     * 取消排队中的跨页选择翻页
+     */
+    fun cancelSelectAutoPage() {
+        binding.contentTextView.cancelSelectAutoPage()
+    }
+
+    /**
+     * 选择端点的锚点（本视图坐标）：选区边界 x + 端点所在行的中线 y
+     * 放大镜按这个点取景，气泡里看到的选中状态才能和实际选区一致
+     */
+    fun getSelectEndpointAnchor(textPos: TextPos, startPoint: Boolean): PointF {
+        val anchor = binding.contentTextView.getSelectEndpointAnchor(textPos, startPoint)
+        anchor.x += imgBgPaddingStart
+        anchor.y += headerHeight
+        return anchor
+    }
+
+    /**
+     * 翻页（含翻页动画）导致页窗口位移后，跨页选择的选区两端跟着平移
+     */
+    fun shiftSelectByPageTurn(direction: PageDirection) {
+        binding.contentTextView.shiftSelectByPageTurn(direction)
+    }
+
+    /**
+     * 把正文内容画到画布上（不含页眉页脚与手柄），供自绘放大镜复用
+     */
+    fun drawContentText(canvas: Canvas) {
+        val content = binding.contentTextView
+        canvas.withTranslation(content.left.toFloat(), content.top.toFloat()) {
+            content.draw(this)
+        }
     }
 
     fun selectEndMoveIndex(

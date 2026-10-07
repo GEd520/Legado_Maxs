@@ -290,6 +290,9 @@ class BackupConfigFragment : PreferenceFragment(),
 
     /**
      * 显示备份选择器 - Compose版本
+     *
+     * 选择器内按「本地备份 / WebDAV 云备份」两个选项卡分别选择各自的备份内容，
+     * 备份目标（本地备份路径、WebDAV 设置）仍由本页上方的设置项统一配置。
      */
     private fun showBackupSelector() {
         showDialogFragment(BackupSelectorDialog())
@@ -510,6 +513,9 @@ class BackupConfigFragment : PreferenceFragment(),
      * 从已解压的目录显示恢复文件选择器
      */
     private fun showRestoreSelectorFromPath(tempPath: String) {
+        // 选择器自身有独立的进度弹窗，这里必须收起等待框，
+        // 否则用户取消选择器后「读取备份文件…」会一直留在屏幕上
+        waitDialog.dismiss()
         showDialogFragment(
             RestoreFileSelectorDialogFragment.newInstance(tempPath)
         )

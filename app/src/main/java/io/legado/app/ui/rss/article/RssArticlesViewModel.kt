@@ -36,6 +36,15 @@ class RssArticlesViewModel(application: Application) : BaseViewModel(application
         pageLiveData.value = page
     }
 
+    /** 无 Bundle 入口（新版订阅主界面按源/分类切换时使用） */
+    fun init(sortName: String, sortUrl: String, searchKey: String? = null) {
+        this.sortName = sortName
+        this.sortUrl = sortUrl
+        this.initialSortUrl = sortUrl
+        this.searchKey = searchKey
+        pageLiveData.value = page
+    }
+
     fun loadArticles(rssSource: RssSource, targetPage: Int = 1) {
         isLoading = true
         page = targetPage.coerceAtLeast(1)

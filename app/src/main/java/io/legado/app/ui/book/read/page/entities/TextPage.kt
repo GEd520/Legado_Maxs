@@ -93,7 +93,7 @@ data class TextPage(
 
     fun getLine(index: Int): TextLine {
         return textLines.getOrElse(index) {
-            textLines.last()
+            textLines.lastOrNull() ?: TextLine.emptyTextLine
         }
     }
 
