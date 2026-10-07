@@ -66,13 +66,13 @@ The project has three library modules in `modules/`:
 
 ### Compose Usage
 
-Jetpack Compose (Material3, BOM 2026.08.00) is used for a growing share of UI: standalone pages (Activities extending `BaseComposeActivity`, e.g. theme manage, storage manage, debug tools) and ComposeView surfaces embedded in View-based screens (home page, search, book info). The traditional View system (ViewBinding + XML layouts) remains the base of most existing screens. Both coexist long-term — ComposeViews can be overlaid on View-based Activities.
+Jetpack Compose (Material3) is used for a growing share of UI: standalone pages (Activities extending `BaseComposeActivity`, e.g. theme manage, storage manage, debug tools) and ComposeView surfaces embedded in View-based screens (home page, search, book info). The traditional View system (ViewBinding + XML layouts) remains the base of most existing screens. Both coexist long-term — ComposeViews can be overlaid on View-based Activities.
 
 Compose 规范拆分为 8 个文件，位于 `docs/project-rules/compose/`（目录结构/状态事件/主题样式/性能/导航/无障碍/测试/迁移审查，索引见 [README.md](docs/project-rules/README.md)）。**写 Compose 前先按主题读对应文件**；迁移老代码时重点对照 [`compose/migration-review.md`](docs/project-rules/compose/migration-review.md)。
 
 ## 项目级规范（必读）
 
-项目级强制规范库位于 `docs/project-rules/`，索引与领域覆盖矩阵见 [`docs/project-rules/README.md`](docs/project-rules/README.md)。写代码前先按"什么时候必须读"对照索引；改动代码后主动回看相关规范是否需要同步更新（规范跟着代码走，pre-commit 的 help-doc-sync 钩子会拦截"改了受管代码却没改对应文档"的提交）；规范与实现冲突时以源码为准并回头修规范。
+项目级强制规范库位于 `docs/project-rules/`，索引与领域覆盖矩阵见 [`docs/project-rules/README.md`](docs/project-rules/README.md)。写代码前先按"什么时候必须读"对照索引；改动代码后主动回看相关规范是否需要同步更新（规范跟着代码走，pre-commit 的 help-doc-sync 钩子会拦截"改了受管代码却没改对应文档"的提交）。
 
 - **协程**：本项目使用自研链式协程包装（`BaseViewModel.execute` → `help/coroutine/Coroutine`）。使用协程前必读 [`docs/project-rules/coroutine-rules.md`](docs/project-rules/coroutine-rules.md)，其中包含 `execute` 链的时序坑、Scope 规则、Flow 位置与反面示例。
 - **数据层（Repository）**：[`docs/project-rules/repository-rules.md`](docs/project-rules/repository-rules.md)，新增数据访问逻辑必须遵循。
@@ -98,7 +98,7 @@ Compose 规范拆分为 8 个文件，位于 `docs/project-rules/compose/`（目
 
 - Kotlin 代码风格遵循 Google Android Style Guide
 - 命名规则：Activity `XxxActivity`、ViewModel `XxxViewModel`、Fragment `XxxFragment`
-- 日志 tag 统一 `AppTag.<类名>` 格式（如 `private const val TAG = "AppTag.BookInfo"`），**新代码强制**；存量已有的 TAG 常量不要求回改。此规则为**前瞻目标态**（全库尚无实例），暂不追溯存量
+- 日志 tag 统一 `AppTag.<类名>` 格式（如 `private const val TAG = "AppTag.BookInfo"`），**新代码强制**；此规则为**前瞻目标态**（全库尚无实例），存量已有的 TAG 常量不要求回改。
 
 ## Comments
 
@@ -115,11 +115,11 @@ Compose 规范拆分为 8 个文件，位于 `docs/project-rules/compose/`（目
 
 ## Testing Strategy
 
-单元/集成测试位置、覆盖率约定、Mockk / kotlinx-coroutines-test / LeakCanary 说明见 [docs/project-rules/testing.md](docs/project-rules/testing.md)。测试策略视开发环境情况讨论（有时环境不允许，不强求）。
+单元/集成测试位置、覆盖率约定、Mockk / kotlinx-coroutines-test / LeakCanary 说明见 [docs/project-rules/testing.md](docs/project-rules/testing.md)。
 
 ## Build Variants
 
-三个 product flavors（维度 "app"）：`appLegacy`（`io.legado.app`，与原版同包名）、`appMax`（`io.legado.app.yuedu`，主开发目标）、`appS`（`io.legado.app.yuedu.a`）；debug/release 均带 `applicationIdSuffix`。SDK 版本（minSdk 23 / targetSdk 37 / compileSdk 37 / JVM 17 toolchain）、desugaring、release 混淆等完整配置见 [docs/project-rules/build-commands.md](docs/project-rules/build-commands.md)；API 兼容红线见 [api-compat-rules.md](docs/project-rules/api-compat-rules.md)。
+三个 product flavors（维度 "app"）：`appLegacy`（`io.legado.app`，与原版同包名）、`appMax`（`io.legado.app.yuedu`，主开发目标）、`appS`（`io.legado.app.yuedu.a`）；debug/release 均带 `applicationIdSuffix`。SDK 版本（minSdk 23）、desugaring、release 混淆等完整配置见 [docs/project-rules/build-commands.md](docs/project-rules/build-commands.md)；API 兼容红线见 [api-compat-rules.md](docs/project-rules/api-compat-rules.md)。
 
 ## CI/CD
 
@@ -153,23 +153,20 @@ Conventional Commits 中文适配，husky + commitlint 自动校验不合规提�
 
 ## 核心规则
 
-1. **Check Skills First**: 开始任务前，必须检查是否有匹配的 Skill。
-2. **设计先于编码** — 收到功能需求时，先检查可用的 Skill 并加载匹配项做需求分析（详见「Skill 的使用」）
-3. **测试先于实现** — 写代码前先写测试（TDD）；按开发环境灵活执行，环境不允许就地跑测试时不强求（见 Testing Strategy）
-4. **验证先于完成** — 声称完成前必须运行验证命令
-5. **发现无关 bug/优化 → follow-up 报告**：任务过程中发现的 bug 或优化点，如果与当前 change 无关，不在本次修，而是作为 follow-up 报告单独提出。
-6. **任务有歧义时选最直接的理解**：不要把其他可能的理解也一起做了，只实现最直接的那个理解。
-7. **测试文件只在需要时提交**：任务没有明确要求、仓库惯例也不需要时，不提交测试文件。需要提交时，规模参照旁边已有的测试文件。
-8. **沟通节奏**：开始执行任务之前，用一句话说明即将要做什么；工作过程中给出简短的进度更新；结尾写一段可以独立看懂的简短总结——发现了什么、做了什么、下一步是什么——让只看到最后一条消息的读者也能了解全貌。
-9. **改完代码后走 code-review**：任务完成、代码写完后，自动调用 code-review skill，按 Standards（是否符合项目编码规范）和 Spec（是否符合需求 spec）两个维度审查 diff，两份报告独立输出、不合并不排序。
-10. **复杂 bug/调试直接走诊断技能** — 遇到无法一眼定位的复杂 bug、性能回归或难排查的调试问题时，先加载 `diagnosing-bugs` 技能按流程收窄根因（先写到最小复现、建立「复现 — 修复 — 回归验证」反馈闭环），不要凭感觉直接改代码猜。
-11. **架构改进走架构诊断技能** — 用户想改进架构或要求产出架构诊断报告时，加载 `improve-codebase-architecture` 扫描出深化改进点、产出报告后再动代码。
-12. **学习项目知识走 teach 技能** — 用户明确表示想学习某个概念、模块或技能时，加载 `teach` 组织讲解，不要泛泛而谈或只甩源码。
-13. **术语歧义走 domain-modeling** — 讨论中出现术语含义不一致、概念边界模糊或需要记录架构决策时，加载 `domain-modeling` 统一术语并把结论写进 CONTEXT.md / docs/adr。
-14. **不确定的技术事实走 research** — 涉及外部 API、规范、库行为、版本差异等凭记忆说不准的事实时，先走 `research` 用高置信一手资料查证并落成文档结论，不凭记忆作答。
-15. **合并/重摊冲突走 resolving-merge-conflicts** — 遇到 git merge 或 rebase 冲突时，加载 `resolving-merge-conflicts` 按意图逐个 resolve（**绝不 `--abort`、不随手挑一行**），全部解决后再完成操作。
-
-> **英文对照**：Design First（编码前设计分析）、Test First（TDD）、Verify Before Finish（完成前验证）。
+1. **设计先于编码** — 收到功能需求时，先检查可用的 Skill 并加载匹配项做需求分析（详见「Skill 的使用」）
+2. **测试先于实现** — 写代码前先写测试（TDD）；按开发环境灵活执行，环境不允许就地跑测试时不强求（见 Testing Strategy）
+3. **验证先于完成** — 声称完成前必须运行验证命令
+4. **发现无关 bug/优化 → follow-up 报告**：任务过程中发现的 bug 或优化点，如果与当前 change 无关，不在本次修，而是作为 follow-up 报告单独提出。
+5. **任务有歧义时选最直接的理解**：不要把其他可能的理解也一起做了，只实现最直接的那个理解。
+6. **测试文件只在需要时提交**：任务没有明确要求、仓库惯例也不需要时，不提交测试文件。需要提交时，规模参照旁边已有的测试文件。
+7. **沟通节奏**：开始执行任务之前，用一句话说明即将要做什么；工作过程中给出简短的进度更新；结尾写一段可以独立看懂的简短总结——发现了什么、做了什么、下一步是什么——让只看到最后一条消息的读者也能了解全貌。
+8. **改完代码后走 code-review**：任务完成、代码写完后，自动调用 code-review skill，按 Standards（是否符合项目编码规范）和 Spec（是否符合需求 spec）两个维度审查 diff，两份报告独立输出、不合并不排序。
+9. **复杂 bug/调试直接走诊断技能** — 遇到无法一眼定位的复杂 bug、性能回归或难排查的调试问题时，先加载 `diagnosing-bugs` 技能按流程收窄根因（先写到最小复现、建立「复现 — 修复 — 回归验证」反馈闭环），不要凭感觉直接改代码猜。
+10. **架构改进走架构诊断技能** — 用户想改进架构或要求产出架构诊断报告时，加载 `improve-codebase-architecture` 扫描出深化改进点、产出报告后再动代码。
+11. **学习项目知识走 teach 技能** — 用户明确表示想学习某个概念、模块或技能时，加载 `teach` 组织讲解，不要泛泛而谈或只甩源码。
+12. **术语歧义走 domain-modeling** — 讨论中出现术语含义不一致、概念边界模糊或需要记录架构决策时，加载 `domain-modeling` 统一术语并把结论写进 CONTEXT.md / docs/adr。
+13. **不确定的技术事实走 research** — 涉及外部 API、规范、库行为、版本差异等凭记忆说不准的事实时，先走 `research` 用高置信一手资料查证并落成文档结论，不凭记忆作答。
+14. **合并/重摊冲突走 resolving-merge-conflicts** — 遇到 git merge 或 rebase 冲突时，加载 `resolving-merge-conflicts` 按意图逐个 resolve（**绝不 `--abort`、不随手挑一行**），全部解决后再完成操作。
 
 ## Skill 的使用
 
