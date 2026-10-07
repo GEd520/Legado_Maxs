@@ -183,18 +183,9 @@ Conventional Commits 中文适配，husky + commitlint 自动校验不合规提�
 
 仓库内置技能镜像位于 `.claude/skills/`（含 `legado-*` 项目专属技能，清单与更新策略见该目录 README）；运行时以当前环境可加载的技能注册表为准。
 
-## AI 探索项目的方式
-
-1. 先看本文件了解模块结构
-2. 定位目标模块，读项目模块的 build.gradle 确认依赖
-3. 找该模块的对外接口（api/ 目录或 interface），而不是直接钻进实现
-4. 找一个同类型的现有实现作为参考模板，新代码保持风格一致
-
 ## 代码搜索（优先用 rg）
 
 搜索代码优先用 `rg`（ripgrep）：
 
 - 默认尊重 `.gitignore`，不会把 `build/` / `.gradle/` / `node_modules/` 的生成物卷进结果，速度也快得多
-- 常见用法：`rg "关键词" app/src/main/java`（只列文件名加 `-l`，带上下文加 `-C 3`）
 - 环境里没有 rg 时退回 `grep -rn` / `find ... | grep`，不必强装；Windows 上可顺手装：`winget install BurntSushi.ripgrep` 或 `scoop install ripgrep`
-- 搜索文件或文本优先使用 `rg`、`rg --files`； 独立的读取和查询尽量批量执行
