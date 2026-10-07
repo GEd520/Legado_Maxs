@@ -141,6 +141,8 @@ object CodeEditLauncher {
 
 前置：`adb` 连接模拟器，安装 appMax debug 包（`gradlew installAppMaxDebug`），导入搬山人大源（jsLib 259,609 字符）。
 
+- **直启通道**：`CodeEditActivity` 已在 debug 构建导出（`app/src/debug/AndroidManifest.xml`），可 `adb shell am start -n io.legado.app.yuedu.debug/io.legado.app.ui.code.CodeEditActivity --es title 测试 --es text "<文本>"` 免 UI 直起编辑器；但 shell 单参数上限约 128KB 且多行文本转义繁琐，jsLib 级大文本的完整验证仍走下方 UI 路径；
+
 - **入口路径**（实测记录）：我的 → 书源管理 → 搬山人大条目「编辑」→ 基本页下滑到 jsLib 截断预览 → 点击预览文本进入全屏编辑；
 - **坐标不要照抄截图**：控件位置会变，用 `adb shell uiautomator dump /sdcard/window.xml` 拿 bounds 后取中心点点击（Git Bash 下 adb 参数路径加 `MSYS_NO_PATHCONV=1` 防 `/sdcard/...` 被转成本地路径）；
 - **进程存活断言**：点击前后各跑一次 `adb shell pidof io.legado.app.yuedu.debug`，两者相同才算过；
