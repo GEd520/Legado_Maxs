@@ -165,5 +165,5 @@ object CodeEditLauncher {
 
 ### 8.2 follow-up（与本次修复无关，登记不改）
 
-- **`ExploreShowItems.kt` 的 2 个 lint error**（`LocalContextGetResourceValueCall`，225/235 行）：`gradlew :app:lintAppMaxDebug` 因此 FAILED。属既有问题，与本次 Intent 修复无关（未触碰该文件），按核心规则 #4 不在本次修，单独提出。另注意 `lint-baseline.xml` 有 10 条已消失项，baseline 存在漂移。
+- **`ExploreShowItems.kt` 的 2 个 lint error**（`LocalContextGetResourceValueCall`，225/235 行）：`gradlew :app:lintAppMaxDebug` 因此 FAILED。属既有问题，与本次 Intent 修复无关（未触碰该文件），按核心规则 #4 不在本次修，单独提出。—— **已修复（2026-10-07，commit `ac620fed4`）**：`context.getString(…)` 改为 `stringResource(…)`（configuration-aware），`latestChapterTitle` 因 `stringResource` 的 `vararg formatArgs: Any` 要求非空补 `.orEmpty()`；重跑 `:app:lintAppMaxDebug` 已 0 error、BUILD SUCCESSFUL，CI 门禁恢复。另注意 `lint-baseline.xml` 仍有 10 条已消失项，baseline 存在漂移（不阻断，待后续 `updateLintBaseline` 整理）。
 - **`singleTask` 复用实例时的大文本缓存滞留**：`CodeEditActivity` 为 `singleTask` 且无 `onNewIntent` 重读（§3.5 声明不动其存量语义）。编辑器已在栈顶被再次拉起时不重读新参，导致新写入的 `textCacheKey` 内存条目不被读后即删，最多 260KB/次滞留在 50MB LRU 内。本次新增的中转放大了该存量代价，但仍在 LRU 可回收范围内，暂不处理。
