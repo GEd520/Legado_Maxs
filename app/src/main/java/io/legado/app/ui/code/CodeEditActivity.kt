@@ -164,7 +164,7 @@ class CodeEditActivity :
             // 保存内容并返回
             else -> {
                 val result = Intent().apply {
-                    putExtra("text", text)               // 编辑后的文本
+                    CodeEditLauncher.putText(this, text) // 编辑后的文本(超阈值走内存中转,小文本直传)
                     putExtra("cursorPosition", cursorPos) // 光标位置
                     putExtra("fieldKey", fieldKey)       // 字段标识，用于定位要更新的字段
                     putExtra("tabKey", tabKey)           // 板块标识，用于定位要更新的列表

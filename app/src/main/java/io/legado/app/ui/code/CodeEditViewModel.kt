@@ -81,11 +81,14 @@ class CodeEditViewModel(application: Application) : BaseViewModel(application) {
         execute {
             val cacheKey = intent.getStringExtra("cacheKey")
             if (cacheKey != null) {
+                // 只读预览（TextDialog 等）:从内存取,保持 writable = false;读后即删防滞留
                 val cacheText = CacheManager.getFromMemory(cacheKey) as? String ?: throw Exception("未获取到查看文本")
+                CacheManager.deleteMemory(cacheKey)
                 writable = false
                 initialText = cacheText
             } else {
-                initialText = intent.getStringExtra("text") ?: throw Exception("未获取到待编辑文本")
+                // 可编辑文本:小文本走 "text" 直传,大文本走 CodeEditLauncher 内存中转(读后即删)
+                initialText = CodeEditLauncher.readText(intent) ?: throw Exception("未获取到待编辑文本")
             }
             if (isHtmlStr(initialText)) {
                 languageName = "text.html.basic"

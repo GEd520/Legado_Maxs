@@ -38,6 +38,7 @@ import io.legado.app.ui.book.search.SearchActivity
 import io.legado.app.ui.book.source.debug.BookSourceDebugActivity
 import io.legado.app.ui.book.source.usedapi.SourceUsedApiActivity
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
@@ -208,7 +209,7 @@ class BookSourceEditActivity :
         if (result.resultCode == RESULT_OK) {
             val data = result.data
             // 编辑后的文本内容
-            val text = data?.getStringExtra("text")
+            val text = CodeEditLauncher.readText(data)
             // 字段标识，如 "author" 表示作者字段
             val fieldKey = data?.getStringExtra("fieldKey")
             // 板块标识，如 "info" 表示详情板块
@@ -366,7 +367,7 @@ class BookSourceEditActivity :
      */
     private fun openFullEdit(editEntity: EditEntity) {
         val intent = Intent(this, CodeEditActivity::class.java).apply {
-            putExtra("text", editEntity.value ?: "")
+            CodeEditLauncher.putText(this, editEntity.value ?: "")
             putExtra("title", editEntity.hint)
             putExtra("cursorPosition", 0)
             putExtra("sourceType", "bookSource")
@@ -392,7 +393,7 @@ class BookSourceEditActivity :
             lastFocusedFieldKey = fieldKey
             lastFocusedTabKey = tabKey
             val intent = Intent(this, CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
+                CodeEditLauncher.putText(this, currentText)
                 putExtra("title", hint)
                 putExtra("cursorPosition", view.selectionStart)
                 putExtra("sourceType", "bookSource")

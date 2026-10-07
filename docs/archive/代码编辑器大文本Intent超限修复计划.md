@@ -1,6 +1,6 @@
 # 代码编辑器大文本 Intent 超限修复计划
 
-> **状态：待实施**。根因已于 2026-10-07 在模拟器（emulator-5554，API 35）实测定位并 100% 复现，本文档可直接作为实施依据。实施完成后把状态行改为「已实施（日期 + 验证结论一句话）」。
+> **状态：已实施（2026-10-07）**。模拟器（emulator-5554，1920x1080，appMax debug）端到端验证通过：打开搬山人大源 259,609 字符 jsLib 全屏编辑，`pidof` 前后一致、`Displayed CodeEditActivity +207ms`、logcat 无 `TransactionTooLargeException`；编辑后保存回传同样存活，字段预览字符数 259609→259620（+11，与插入的 `TESTSAVE123` 一致），数据回写正确。实施时相对本计划有一处必要修正——见 §3.1 与文末「实施偏差与 follow-up」。
 > 现象描述：打开大书源（搬山人）的 jsLib 全屏编辑时，应用白屏/黑屏后整体重启，看起来像"内存占用过高被杀"，实际与内存无关。
 
 ## 一、根因结论（已实测，勿再从内存方向排查）
@@ -156,3 +156,14 @@ object CodeEditLauncher {
 - 关键日志：`TransactionTooLargeException: data parcel size 523180 bytes`（去程，出现两次——系统重启进程后重试拉起编辑器再次失败）；`Process ... has died: fg TOP` + `signal 9`；旧版源（238,209 字符）同路径 `Displayed +208ms` 正常；
 - 内存证据：编辑器打开成功 PSS 283MB → 309MB（+26MB），死亡时系统 `MemFree 3.6GB`，内核无 OOM 记录；
 - jsLib 形态：259,609 字符 / 13,603 行 / 最长行 190 字符（中文 Markdown 文档，非压缩单行 JS），排除"超长单行渲染"假设。
+
+## 八、实施偏差与 follow-up
+
+### 8.1 相对计划的一处必要修正（已实现）
+
+计划 §3.1 伪码拟让可编辑大文本复用现有 `CodeEditViewModel` 的 `cacheKey` 分支。但实测发现该分支会强制 `writable = false`（是 `TextDialog` 只读预览在用的语义），直接复用会把大文本编辑器变成只读、无法保存回传，与验收标准 §二.1/§二.2 冲突。故实现改为：可编辑大文本走 `CodeEditLauncher` 的独立 key `textCacheKey`（保持 `writable = true`），只读 `cacheKey` 路径原样保留（并顺手补上读后即删）。行为以 §二验收标准为准，机制比字面计划更正确。
+
+### 8.2 follow-up（与本次修复无关，登记不改）
+
+- **`ExploreShowItems.kt` 的 2 个 lint error**（`LocalContextGetResourceValueCall`，225/235 行）：`gradlew :app:lintAppMaxDebug` 因此 FAILED。属既有问题，与本次 Intent 修复无关（未触碰该文件），按核心规则 #4 不在本次修，单独提出。另注意 `lint-baseline.xml` 有 10 条已消失项，baseline 存在漂移。
+- **`singleTask` 复用实例时的大文本缓存滞留**：`CodeEditActivity` 为 `singleTask` 且无 `onNewIntent` 重读（§3.5 声明不动其存量语义）。编辑器已在栈顶被再次拉起时不重读新参，导致新写入的 `textCacheKey` 内存条目不被读后即删，最多 260KB/次滞留在 50MB LRU 内。本次新增的中转放大了该存量代价，但仍在 LRU 可回收范围内，暂不处理。

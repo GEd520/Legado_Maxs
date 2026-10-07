@@ -48,6 +48,7 @@ import io.legado.app.model.ImageProvider
 import io.legado.app.ui.association.ImportUrlDialogHelper
 import io.legado.app.ui.browser.WebViewActivity
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.number.NumberPickerDialog
 import io.legado.app.utils.ACache
@@ -107,7 +108,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
     }
     private val svgEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
-            result.data?.getStringExtra("text")?.let { text ->
+            CodeEditLauncher.readText(result.data)?.let { text ->
                 editingConfig = editingConfig?.copy(svgTemplate = text)
                 svgCursorPosition = result.data?.getIntExtra("cursorPosition", text.length) ?: text.length
                 refreshEditDialog()
@@ -375,7 +376,7 @@ class BubbleManageActivity : BaseActivity<ActivityThemeManageBinding>(), ColorPi
         captureEditFields()
         val svg = editingConfig?.svgTemplate.orEmpty()
         svgEditLauncher.launch(Intent(this, CodeEditActivity::class.java).apply {
-            putExtra("text", svg)
+            CodeEditLauncher.putText(this, svg)
             putExtra("title", getString(R.string.bubble_svg_template_title))
             putExtra("cursorPosition", svgCursorPosition.coerceIn(0, svg.length))
         })

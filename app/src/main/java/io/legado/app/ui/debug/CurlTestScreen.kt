@@ -409,7 +409,7 @@ fun CurlTestScreen(
                                         onClick = {
                                             expanded = false
                                             val intent = android.content.Intent(context, io.legado.app.ui.code.CodeEditActivity::class.java).apply {
-                                                putExtra("text", responseBody)
+                                                io.legado.app.ui.code.CodeEditLauncher.putText(this, responseBody)
                                                 putExtra("title", context.getString(R.string.debug_response_body))
                                             }
                                             context.startActivity(intent)
