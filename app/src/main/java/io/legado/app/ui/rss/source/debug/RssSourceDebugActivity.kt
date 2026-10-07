@@ -2,9 +2,11 @@ package io.legado.app.ui.rss.source.debug
 
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.text.StaticLayout
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.core.view.isVisible
@@ -13,11 +15,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivityRssSourceDebugBinding
+import io.legado.app.databinding.ItemLogBinding
 import io.legado.app.help.source.sortUrls
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.Selector
 import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.ui.widget.FindOccurrence
 import io.legado.app.ui.widget.dialog.BottomWebViewDialog
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.ColorUtils
@@ -43,7 +47,7 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
     private val searchView: androidx.appcompat.widget.SearchView by lazy {
         binding.titleBar.findViewById(R.id.search_view)
     }
-    private var findMatches: List<Int> = emptyList()
+    private var findMatches: List<FindOccurrence> = emptyList()
     private var findIndex = -1
     private lateinit var findBackCallback: OnBackPressedCallback
 
@@ -268,14 +272,14 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
             adapter.setSearch(null)
             return
         }
-        val currentLine = findMatches.getOrNull(findIndex) ?: -1
-        findMatches = findMatchLines(query)
+        val current = findMatches.getOrNull(findIndex)
+        findMatches = findOccurrences(query)
         findIndex = when {
             findMatches.isEmpty() -> -1
-            currentLine in findMatches -> findMatches.indexOf(currentLine)
+            current != null && current in findMatches -> findMatches.indexOf(current)
             else -> 0
         }
-        adapter.setSearch(query, findMatches.getOrNull(findIndex) ?: -1)
+        adapter.setSearch(query, findMatches.getOrNull(findIndex))
         scrollToCurrentFind()
         binding.findBar.setCount(findIndex + 1, findMatches.size)
     }
@@ -285,13 +289,13 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
             return
         }
         findIndex = (findIndex + step + findMatches.size) % findMatches.size
-        adapter.setCurrentLine(findMatches[findIndex])
+        adapter.setCurrentOccurrence(findMatches[findIndex])
         scrollToCurrentFind()
         binding.findBar.setCount(findIndex + 1, findMatches.size)
     }
 
     /**
-     * 调试中新日志到达时重算匹配；保持当前定位行不变，不自动滚动
+     * 调试中新日志到达时重算匹配；保持当前定位处不变，不自动滚动
      */
     private fun refreshFindCount() {
         if (!binding.findBar.isVisible) {
@@ -301,25 +305,54 @@ class RssSourceDebugActivity : VMBaseActivity<ActivityRssSourceDebugBinding, Rss
         if (query.isBlank()) {
             return
         }
-        val currentLine = findMatches.getOrNull(findIndex) ?: -1
-        findMatches = findMatchLines(query)
-        findIndex = findMatches.indexOf(currentLine).takeIf { it >= 0 }
+        val current = findMatches.getOrNull(findIndex)
+        findMatches = findOccurrences(query)
+        findIndex = current?.let { findMatches.indexOf(it) }?.takeIf { it >= 0 }
             ?: if (findMatches.isEmpty()) -1 else findMatches.lastIndex
-        val newLine = findMatches.getOrNull(findIndex) ?: -1
-        if (newLine != currentLine) {
-            adapter.setCurrentLine(newLine)
+        val newCurrent = findMatches.getOrNull(findIndex)
+        if (newCurrent != current) {
+            adapter.setCurrentOccurrence(newCurrent)
         }
         binding.findBar.setCount(findIndex + 1, findMatches.size)
     }
 
-    private fun findMatchLines(query: String): List<Int> =
-        adapter.getItems().withIndex()
-            .filter { it.value.contains(query, ignoreCase = true) }
-            .map { it.index }
+    private fun findOccurrences(query: String): List<FindOccurrence> {
+        val result = mutableListOf<FindOccurrence>()
+        adapter.getItems().forEachIndexed { itemIndex, text ->
+            var start = text.indexOf(query, ignoreCase = true)
+            while (start >= 0) {
+                result.add(FindOccurrence(itemIndex, start))
+                start = text.indexOf(query, start + query.length, ignoreCase = true)
+            }
+        }
+        return result
+    }
+
+    /**
+     * 复用同款日志条目布局的 TextView 画笔，供静态排版测量匹配行位置
+     */
+    private val findMeasureView: TextView by lazy {
+        ItemLogBinding.inflate(layoutInflater, binding.recyclerView, false).textView
+    }
 
     private fun scrollToCurrentFind() {
-        val line = findMatches.getOrNull(findIndex) ?: return
+        val occurrence = findMatches.getOrNull(findIndex) ?: return
         val layoutManager = binding.recyclerView.layoutManager as? LinearLayoutManager ?: return
-        layoutManager.scrollToPositionWithOffset(line, binding.recyclerView.height / 4)
+        val text = adapter.getItems().getOrNull(occurrence.item) ?: return
+        val width = binding.recyclerView.width -
+            binding.recyclerView.paddingLeft - binding.recyclerView.paddingRight
+        if (width <= 0) {
+            return
+        }
+        // 长日志条目（如整段异常堆栈）会跨屏，用同款 TextView 的画笔静态排版，
+        // 算出匹配所在行相对条目顶部的像素位置，把该行精确滚到可视区
+        val layout = StaticLayout.Builder
+            .obtain(text, 0, text.length, findMeasureView.paint, width)
+            .build()
+        val matchY = layout.getLineTop(layout.getLineForOffset(occurrence.start))
+        layoutManager.scrollToPositionWithOffset(
+            occurrence.item,
+            binding.recyclerView.height / 4 - matchY
+        )
     }
 }

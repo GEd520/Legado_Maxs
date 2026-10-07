@@ -87,27 +87,34 @@ class LogFindBar @JvmOverloads constructor(
 }
 
 /**
- * 为日志行生成高亮文本：每个匹配子串加背景色，当前定位行用更深的背景色。
+ * 一个匹配出现处：所在日志条目号 + 条目内字符偏移。
+ * 计数与跳转按出现次数进行——一段多行堆栈属于同一日志条目，但可能包含多个匹配。
+ */
+data class FindOccurrence(val item: Int, val start: Int)
+
+/**
+ * 为日志行生成高亮文本：每个匹配子串加背景色；
+ * [currentStart] 指向当前定位的匹配处，用更深的背景色区分。
  */
 fun highlightLogLine(
     text: String,
     query: String?,
-    isCurrentLine: Boolean,
+    currentStart: Int?,
     accentColor: Int
 ): CharSequence {
-    if (query.isNullOrEmpty() || !text.contains(query, ignoreCase = true)) {
+    if (query.isNullOrEmpty()) {
         return text
     }
-    val alpha = if (isCurrentLine) 140 else 60
-    val color = Color.argb(
-        alpha,
-        Color.red(accentColor),
-        Color.green(accentColor),
-        Color.blue(accentColor)
-    )
     val builder = SpannableStringBuilder(text)
     var index = text.indexOf(query, ignoreCase = true)
     while (index >= 0) {
+        val alpha = if (index == currentStart) 140 else 60
+        val color = Color.argb(
+            alpha,
+            Color.red(accentColor),
+            Color.green(accentColor),
+            Color.blue(accentColor)
+        )
         builder.setSpan(
             BackgroundColorSpan(color),
             index,
