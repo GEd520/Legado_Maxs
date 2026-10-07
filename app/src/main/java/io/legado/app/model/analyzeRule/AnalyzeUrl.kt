@@ -504,7 +504,8 @@ class AnalyzeUrl(
 
     /**
      * 本地调试：URL 规则在构造时已在本地执行完毕，这里不再发起流水线网络请求。
-     * 规则结果是内容则直接作为本阶段网页内容返回，是网址（或为空）则打印请求摘要后终止链路。
+     * 规则结果是内容则直接作为本阶段网页内容返回；是网址则打印请求摘要后以空内容继续跑解析规则
+     * （纯 JS 规则不依赖网页内容，照常执行）；为空则终止链路。
      * 规则内部发起的取内容请求（如 JS 里的 java.ajax）走 JsExtensions 自建的 AnalyzeUrl，不经过本分支。
      */
     private fun localDebugStrResponse(): StrResponse {
@@ -526,7 +527,10 @@ class AnalyzeUrl(
                     Debug.log(sourceKey, "├$key: $value")
                 }
                 body?.let { Debug.log(sourceKey, "├body: $it") }
-                throw NoStackTraceException("本地调试：未取网页内容，调试结束")
+                // 不联网，以空内容继续跑解析规则：纯 JS 规则（不使用网页内容）照常执行打印，
+                // 依赖网页内容的规则解析结果为空——这是"不联网"的如实语义
+                Debug.log(sourceKey, "≡本地调试：未取网页内容，以空内容继续解析")
+                StrResponse(sourceKey ?: url, "")
             }
         }
     }
