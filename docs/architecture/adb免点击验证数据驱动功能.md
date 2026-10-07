@@ -51,7 +51,7 @@ pwsh -File scripts/book-source-debug-e2e.ps1 -Serial emulator-5554
 - **`run-as` 只对 debug 包有效**：release 包不可调试，`run-as` 直接 permission denied。
 - **写库前必 `force-stop`**：App 持有 DB 连接 + WAL 时外部写会打架 / 改了不生效。
 - **内联 SQL 的引号会被 PowerShell 与设备 shell 双重拆解**报错；一律 `push` 一个 `.sql` 文件再 `sqlite3 < 文件`。
-- **`am start` 启动未导出页抛 `SecurityException`**（`not exported from uid`）：本项目靠 `app/src/debug/AndroidManifest.xml` 给 `BookSourceDebugActivity` / `RssSourceDebugActivity` 标 `exported=true` 解决，release 不含该文件、对外仍不可启动。
+- **`am start` 启动未导出页抛 `SecurityException`**（`not exported from uid`）：本项目靠 `app/src/debug/AndroidManifest.xml` 给免点击验证相关的内部页标 `exported=true` 解决（书源/订阅源调试、代码编辑器、词典规则调试、TTS 调试、源 API 扫描、模块状态、URL 确认，extra 形态见该文件注释），release 不含该文件、对外仍不可启动。
 - **logcat 中文乱码**：PowerShell 用 GBK 解码 adb 子进程 stdout。脚本开头设 `[Console]::OutputEncoding = UTF8` 且改用**同步 `logcat -d`**（后台 `Start-Job` 的子宿主不继承该编码，写出的文件仍是乱码）。
 - **`input text` 需要目标输入框已聚焦**：调试页 `SearchView` 在 `onActionViewExpanded` 后自动聚焦，可直接喂字；换成别的页不保证。
 
