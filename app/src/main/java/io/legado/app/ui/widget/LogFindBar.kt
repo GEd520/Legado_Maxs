@@ -39,6 +39,9 @@ class LogFindBar @JvmOverloads constructor(
         get() = binding.etFindInput.text?.toString().orEmpty()
 
     init {
+        // 查找栏是临时态且默认关闭，禁止框架恢复其输入状态，
+        // 避免 App 重建后栏已隐藏但关键词被恢复触发搜索、高亮与界面不同步
+        isSaveEnabled = false
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setBackgroundColor(context.getCompatColor(R.color.background_menu))
