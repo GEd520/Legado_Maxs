@@ -20,6 +20,7 @@ import io.legado.app.help.source.SourceHelp
 import io.legado.app.model.RuleUpdate
 import io.legado.app.utils.GSON
 import io.legado.app.utils.fromJsonArray
+import io.legado.app.utils.fromJsonArrayOrObject
 import io.legado.app.utils.inputStream
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
@@ -124,7 +125,7 @@ class ImportRssSourceViewModel(app: Application) : BaseViewModel(app) {
                     }
                 }
             }.onFailure {
-                GSON.fromJsonArray<RssSource>(mText).getOrThrow().let {
+                GSON.fromJsonArrayOrObject<RssSource>(mText).getOrThrow().let {
                     val source = it.firstOrNull() ?: return@let
                     if (source.sourceUrl.isEmpty()) {
                         throw NoStackTraceException("不是订阅源")
@@ -149,7 +150,8 @@ class ImportRssSourceViewModel(app: Application) : BaseViewModel(app) {
 
             mText.isUri() -> {
                 mText.toUri().inputStream(context).getOrThrow().use { inputS ->
-                    GSON.fromJsonArray<RssSource>(inputS).getOrThrow().let {
+                    val text = inputS.reader().readText()
+                    GSON.fromJsonArrayOrObject<RssSource>(text).getOrThrow().let {
                         val source = it.firstOrNull() ?: return@let
                         if (source.sourceUrl.isEmpty()) {
                             throw NoStackTraceException("不是订阅源")
@@ -177,7 +179,8 @@ class ImportRssSourceViewModel(app: Application) : BaseViewModel(app) {
                 url(url)
             }
         }.decompressed().byteStream().use { body ->
-            GSON.fromJsonArray<RssSource>(body).getOrThrow().let { list ->
+            val text = body.reader().readText()
+            GSON.fromJsonArrayOrObject<RssSource>(text).getOrThrow().let { list ->
                 val source = list.firstOrNull() ?: return@let
                 if (source.sourceUrl.isEmpty()) {
                     throw NoStackTraceException("不是订阅源")

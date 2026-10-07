@@ -114,6 +114,26 @@ inline fun <reified T> Gson.fromJsonArray(inputStream: InputStream?): Result<Lis
     }
 }
 
+/**
+ * 兼容顶层为数组或单对象两种形态的列表解析：
+ * 以 [ 开头的按数组解析返回全部元素，否则按单对象包装为单元素列表返回。
+ * 供网络/本地导入、编辑页粘贴等"一份内容可能是一个源也可能是一批源"的场景统一使用。
+ */
+inline fun <reified T> Gson.fromJsonArrayOrObject(json: String?): Result<List<T>> {
+    return kotlin.runCatching {
+        if (json == null) {
+            throw JsonSyntaxException("解析字符串为空")
+        }
+        // 先剥掉前导空白与 UTF-8 BOM，避免带 BOM 的数组被误判为单对象
+        val content = json.trimStart().removePrefix("\uFEFF")
+        if (content.isJsonArray()) {
+            fromJsonArray<T>(content).getOrThrow()
+        } else {
+            listOf(fromJsonObject<T>(content).getOrThrow())
+        }
+    }
+}
+
 fun Gson.writeToOutputStream(out: OutputStream, any: Any) {
     val writer = JsonWriter(OutputStreamWriter(out, "UTF-8"))
     writer.setIndent("  ")
