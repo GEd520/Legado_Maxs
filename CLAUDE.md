@@ -79,7 +79,7 @@ Compose 规范拆分为 8 个文件，位于 `docs/project-rules/compose/`（目
 - **API 兼容**：[`docs/project-rules/api-compat-rules.md`](docs/project-rules/api-compat-rules.md)。调用高于 minSdk 23 的 API、引入新依赖、发版前必读（SDK 分支写法、desugaring 边界、16KB 对齐等 targetSdk 37 红线）。
 - **事件总线**：[`docs/project-rules/live-event-bus-rules.md`](docs/project-rules/live-event-bus-rules.md)。新增跨组件事件、在 LiveEventBus 与 Compose `Channel<Event>` 之间选型时必读。
 - **更新日志规范**：[`docs/project-rules/update-log-rules.md`](docs/project-rules/update-log-rules.md)。提交 app 用户可见改动（bug/界面/功能）后，按其中时机与收录范围维护 `app/src/main/assets/web/help/md/updateLog.md`；发版前必须更新到位。
-- **架构与设计说明**：[`docs/architecture/`](docs/architecture/) 存放长期有效的模块架构、设计方案、技术笔记（Web 服务架构、高亮规则架构、Cookie 管理设计等）。想了解某个模块"现在是怎么设计的"先翻这里；一次性改造方案在 `docs/archive/`，两者不要混。
+- **架构与设计说明**：[`docs/architecture/`](docs/architecture/) 存放长期有效的模块架构、设计方案、技术笔记与测试/验证方法论，**全部文档的分组索引见 [`docs/architecture/README.md`](docs/architecture/README.md)**（新增文档必须登记，别让它躺在目录里没人知道——与 `docs/project-rules/README.md` 同理）。想了解某个模块"现在是怎么设计的"先查该索引；一次性改造方案在 `docs/archive/`，两者不要混。
 
 ### 计划/方案文档的收尾
 
@@ -116,6 +116,13 @@ Compose 规范拆分为 8 个文件，位于 `docs/project-rules/compose/`（目
 ## Testing Strategy
 
 单元/集成测试位置、覆盖率约定、Mockk / kotlinx-coroutines-test / LeakCanary 说明见 [docs/project-rules/testing.md](docs/project-rules/testing.md)。
+
+真机 / 端到端验证方法论（按需选用，完整分组见 [`docs/architecture/README.md`](docs/architecture/README.md) 第二节）：
+
+- **Web 服务三层验证**：强制规范 [docs/project-rules/e2e-testing-rules.md](docs/project-rules/e2e-testing-rules.md) + 操作手册 [`docs/architecture/Web服务端到端测试方法.md`](docs/architecture/Web服务端到端测试方法.md)。
+- **数据驱动功能免点击 adb 验证**（非 Web：书源 / JS 调试页等，靠 logcat 锚点 + run-as 注数据 + am start 直启调试页）：[`docs/architecture/adb免点击验证数据驱动功能.md`](docs/architecture/adb免点击验证数据驱动功能.md)。
+- **E2E 概念与自动化框架选型**：[`docs/architecture/E2E测试概念与自动化框架选型.md`](docs/architecture/E2E测试概念与自动化框架选型.md)。
+- **本地 JVM 探针“量尺”测试**（不装 APK，跑两段候选代码快速量化差距并断言等价）：[`docs/architecture/JVM探针测试方法.md`](docs/architecture/JVM探针测试方法.md)。
 
 ## Build Variants
 
