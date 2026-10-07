@@ -1643,6 +1643,7 @@
     <string name="query_hint">Enter content to query</string>
     <string name="find_prev_match">Previous Match</string>
     <string name="find_next_match">Next Match</string>
+    <string name="find_text">Find Text</string>
     <string name="query_result">Found %1$d matches</string>
     <string name="query_no_result">No matches found</string>
     <string name="please_focus_cursor_on_textbox">Please focus cursor on textbox</string>

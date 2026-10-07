@@ -50,6 +50,7 @@
     <string name="update_log">更新日誌</string>
     <string name="bookshelf_empty">書架還空著，先去搜尋書籍或從發現裡新增吧！</string>
     <string name="action_search">搜尋</string>
+    <string name="find_text">搜尋文字</string>
     <string name="action_download">下載</string>
     <string name="layout_list">列表</string>
     <string name="layout_grid3">網格三列</string>

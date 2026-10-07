@@ -5,9 +5,12 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.viewModels
 import androidx.appcompat.widget.SearchView
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.databinding.ActivitySourceDebugBinding
@@ -48,16 +51,21 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
             startSearch(it)
         }
     }
+    private var findMatches: List<Int> = emptyList()
+    private var findIndex = -1
+    private lateinit var findBackCallback: OnBackPressedCallback
 
     override fun onActivityCreated(savedInstanceState: Bundle?) {
         initRecyclerView()
         initSearchView()
+        initFindBar()
         viewModel.init(intent.getStringExtra("key")) {
             initHelpView()
         }
         viewModel.observe { state, msg ->
             lifecycleScope.launch {
                 adapter.addItem(msg)
+                refreshFindCount()
                 if (state == -1 || state == 1000) {
                     binding.rotateLoading.gone()
                     binding.fbStop.invisible()
@@ -209,6 +217,105 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
         adapter.addItem("■ 已手动停止调试")
     }
 
+    /**
+     * 初始化日志文本查找栏（默认关闭，由菜单开关控制）
+     */
+    private fun initFindBar() {
+        binding.findBar.onSearch = { query ->
+            performFind(query)
+        }
+        binding.findBar.onNext = { moveFind(1) }
+        binding.findBar.onPrev = { moveFind(-1) }
+        binding.findBar.onClose = { closeFindBar() }
+        findBackCallback = object : OnBackPressedCallback(false) {
+            override fun handleOnBackPressed() {
+                closeFindBar()
+            }
+        }
+        onBackPressedDispatcher.addCallback(this, findBackCallback)
+    }
+
+    private fun toggleFindBar() {
+        if (binding.findBar.isVisible) {
+            closeFindBar()
+        } else {
+            binding.findBar.show()
+            findBackCallback.isEnabled = true
+        }
+    }
+
+    private fun closeFindBar() {
+        findMatches = emptyList()
+        findIndex = -1
+        binding.findBar.hide()
+        binding.findBar.clearCount()
+        findBackCallback.isEnabled = false
+        adapter.setSearch(null)
+    }
+
+    private fun performFind(query: String) {
+        if (query.isBlank()) {
+            findMatches = emptyList()
+            findIndex = -1
+            binding.findBar.clearCount()
+            adapter.setSearch(null)
+            return
+        }
+        val currentLine = findMatches.getOrNull(findIndex) ?: -1
+        findMatches = findMatchLines(query)
+        findIndex = when {
+            findMatches.isEmpty() -> -1
+            currentLine in findMatches -> findMatches.indexOf(currentLine)
+            else -> 0
+        }
+        adapter.setSearch(query, findMatches.getOrNull(findIndex) ?: -1)
+        scrollToCurrentFind()
+        binding.findBar.setCount(findIndex + 1, findMatches.size)
+    }
+
+    private fun moveFind(step: Int) {
+        if (findMatches.isEmpty()) {
+            return
+        }
+        findIndex = (findIndex + step + findMatches.size) % findMatches.size
+        adapter.setCurrentLine(findMatches[findIndex])
+        scrollToCurrentFind()
+        binding.findBar.setCount(findIndex + 1, findMatches.size)
+    }
+
+    /**
+     * 调试中新日志到达时重算匹配；保持当前定位行不变，不自动滚动
+     */
+    private fun refreshFindCount() {
+        if (!binding.findBar.isVisible) {
+            return
+        }
+        val query = binding.findBar.query
+        if (query.isBlank()) {
+            return
+        }
+        val currentLine = findMatches.getOrNull(findIndex) ?: -1
+        findMatches = findMatchLines(query)
+        findIndex = findMatches.indexOf(currentLine).takeIf { it >= 0 }
+            ?: if (findMatches.isEmpty()) -1 else findMatches.lastIndex
+        val newLine = findMatches.getOrNull(findIndex) ?: -1
+        if (newLine != currentLine) {
+            adapter.setCurrentLine(newLine)
+        }
+        binding.findBar.setCount(findIndex + 1, findMatches.size)
+    }
+
+    private fun findMatchLines(query: String): List<Int> =
+        adapter.getItems().withIndex()
+            .filter { it.value.contains(query, ignoreCase = true) }
+            .map { it.index }
+
+    private fun scrollToCurrentFind() {
+        val line = findMatches.getOrNull(findIndex) ?: return
+        val layoutManager = binding.recyclerView.layoutManager as? LinearLayoutManager ?: return
+        layoutManager.scrollToPositionWithOffset(line, binding.recyclerView.height / 4)
+    }
+
     override fun onCompatCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.book_source_debug, menu)
         return super.onCompatCreateOptionsMenu(menu)
@@ -217,6 +324,7 @@ class BookSourceDebugActivity : VMBaseActivity<ActivitySourceDebugBinding, BookS
     override fun onCompatOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_scan -> qrCodeResult.launch()
+            R.id.menu_find_text -> toggleFindBar()
             R.id.menu_search_src -> showDialogFragment(TextDialog("html", viewModel.searchSrc))
             R.id.menu_book_src -> showDialogFragment(TextDialog("html", viewModel.bookSrc))
             R.id.menu_toc_src -> showDialogFragment(TextDialog("html", viewModel.tocSrc))

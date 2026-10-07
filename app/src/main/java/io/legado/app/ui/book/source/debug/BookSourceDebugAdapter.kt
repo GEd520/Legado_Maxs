@@ -7,9 +7,31 @@ import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.databinding.ItemLogBinding
+import io.legado.app.lib.theme.accentColor
+import io.legado.app.ui.widget.highlightLogLine
 
 class BookSourceDebugAdapter(context: Context) :
     RecyclerAdapter<String, ItemLogBinding>(context) {
+
+    private var searchQuery: String? = null
+    private var currentLine = -1
+
+    /**
+     * 设置查找关键词并刷新高亮；query 为空时退出查找状态
+     */
+    fun setSearch(query: String?, line: Int = -1) {
+        searchQuery = query?.takeIf { it.isNotEmpty() }
+        currentLine = line
+        notifyDataSetChanged()
+    }
+
+    /**
+     * 更新当前定位的匹配行（不改变关键词）
+     */
+    fun setCurrentLine(line: Int) {
+        currentLine = line
+        notifyDataSetChanged()
+    }
 
     override fun getViewBinding(parent: ViewGroup): ItemLogBinding {
         return ItemLogBinding.inflate(inflater, parent, false)
@@ -34,7 +56,13 @@ class BookSourceDebugAdapter(context: Context) :
                 textView.addOnAttachStateChangeListener(listener)
                 textView.setTag(R.id.tag1, listener)
             }
-            textView.text = item
+            val position = holder.bindingAdapterPosition
+            textView.text = highlightLogLine(
+                item,
+                searchQuery,
+                position == currentLine,
+                context.accentColor
+            )
         }
     }
 

@@ -11,6 +11,12 @@
         app:showAsAction="always" />
 
     <item
+        android:id="@+id/menu_find_text"
+        android:icon="@drawable/ic_search"
+        android:title="@string/find_text"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/menu_search_src"
         android:title="@string/search_src"
         app:showAsAction="never" />
