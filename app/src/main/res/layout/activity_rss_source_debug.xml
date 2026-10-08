@@ -16,6 +16,13 @@
         app:layout_constraintTop_toTopOf="parent"
         app:title="@string/debug_source" />
 
+    <io.legado.app.ui.widget.LogFindBar
+        android:id="@+id/find_bar"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@+id/title_bar" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recycler_view"
         android:layout_width="match_parent"
@@ -23,7 +30,7 @@
         android:clipToPadding="false"
         app:layoutManager="io.legado.app.ui.widget.recycler.NoChildScrollLinearLayoutManager"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/title_bar" />
+        app:layout_constraintTop_toBottomOf="@+id/find_bar" />
 
     <io.legado.app.ui.widget.anima.RotateLoading
         android:id="@+id/rotate_loading"
@@ -33,15 +40,27 @@
         android:visibility="gone"
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/title_bar"
+        app:layout_constraintTop_toBottomOf="@+id/find_bar"
         app:loading_width="2dp" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/fb_stop"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:contentDescription="@string/stop_debug"
+        android:src="@drawable/ic_stop_black_24dp"
+        android:visibility="invisible"
+        app:fabSize="mini"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintRight_toRightOf="parent" />
 
     <io.legado.app.ui.widget.NoChildScrollNestedScrollView
         android:id="@+id/help"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@+id/title_bar"
+        app:layout_constraintTop_toBottomOf="@+id/find_bar"
         tools:visibility="visible">
 
         <LinearLayout

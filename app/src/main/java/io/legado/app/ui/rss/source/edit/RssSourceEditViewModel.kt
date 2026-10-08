@@ -14,10 +14,9 @@ import io.legado.app.help.http.CookieStore
 import io.legado.app.help.source.removeSortCache
 import io.legado.app.model.SharedJsScope
 import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.fromJsonArrayOrObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.printOnDebug
-import io.legado.app.utils.stackTraceStr
 import io.legado.app.utils.toastOnUi
 import kotlinx.coroutines.Dispatchers
 
@@ -105,7 +104,7 @@ class RssSourceEditViewModel(application: Application) : BaseViewModel(applicati
         execute(context = Dispatchers.Main) {
             var source: RssSource? = null
             context.getClipText()?.let { json ->
-                source = GSON.fromJsonObject<RssSource>(json).getOrThrow()
+                source = GSON.fromJsonArrayOrObject<RssSource>(json).getOrThrow().firstOrNull()
             }
             source
         }.onError {
@@ -122,11 +121,11 @@ class RssSourceEditViewModel(application: Application) : BaseViewModel(applicati
     fun importSource(text: String, finally: (source: RssSource) -> Unit) {
         execute {
             val text1 = text.trim()
-            GSON.fromJsonObject<RssSource>(text1).getOrThrow().let {
-                finally.invoke(it)
+            GSON.fromJsonArrayOrObject<RssSource>(text1).getOrThrow().let {
+                finally.invoke(it.firstOrNull() ?: throw NoStackTraceException("格式不对"))
             }
         }.onError {
-            context.toastOnUi(it.stackTraceStr)
+            context.toastOnUi(it.localizedMessage)
         }
     }
 

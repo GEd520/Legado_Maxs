@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -39,6 +40,7 @@ enum class CacheType {
     TEMP_CACHE,
     TTS_CACHE,
     ACACHE_DISK,
+    INTERNAL_CACHE,
     DB_CACHE,
     LOG_CACHE,
     WEBVIEW_CACHE
@@ -137,6 +139,7 @@ class StorageManageViewModel(
                     val ttsCount = async { dataProvider.ttsEngineCount() }
                     val aCacheSize = async { dataProvider.aCacheSize() }
                     val aCacheCount = async { dataProvider.aCacheItemCount() }
+                    val internalSize = async { dataProvider.internalCacheSize() }
                     val dbSize = async { dataProvider.dbCacheSize() }
                     val dbCacheCount = async { dataProvider.dbCacheItemCount() }
                     val logSize = async { dataProvider.logCacheSize() }
@@ -158,6 +161,7 @@ class StorageManageViewModel(
                             CacheType.ACACHE_DISK, aCacheSize.await(), true,
                             dataProvider.itemCountBadge(aCacheCount.await())
                         ),
+                        createCacheItem(CacheType.INTERNAL_CACHE, internalSize.await(), false, null),
                         createCacheItem(
                             CacheType.DB_CACHE, dbSize.await(), true,
                             dataProvider.itemCountBadge(dbCacheCount.await())
@@ -253,6 +257,7 @@ class StorageManageViewModel(
             CacheType.TEMP_CACHE -> Icons.Filled.Folder
             CacheType.TTS_CACHE -> Icons.Filled.Settings
             CacheType.ACACHE_DISK -> Icons.Filled.Save
+            CacheType.INTERNAL_CACHE -> Icons.Filled.PhoneAndroid
             CacheType.DB_CACHE -> Icons.Filled.List
             CacheType.LOG_CACHE -> Icons.Filled.Info
             CacheType.WEBVIEW_CACHE -> Icons.Filled.Description
@@ -266,6 +271,7 @@ class StorageManageViewModel(
             CacheType.TEMP_CACHE -> 0xFFF59E0B
             CacheType.TTS_CACHE -> 0xFFEC4899
             CacheType.ACACHE_DISK -> 0xFF10B981
+            CacheType.INTERNAL_CACHE -> 0xFF14B8A6
             CacheType.DB_CACHE -> 0xFF6366F1
             CacheType.LOG_CACHE -> 0xFF64748B
             CacheType.WEBVIEW_CACHE -> 0xFF0EA5E9

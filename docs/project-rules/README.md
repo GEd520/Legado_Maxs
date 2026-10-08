@@ -9,13 +9,14 @@
 
 ### 全局（不分 UI 技术栈）
 
-| 文件                                                 | 管什么                                                                                                                                                                                     | 什么时候必须读                                                                                                         |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| [coroutine-rules.md](./coroutine-rules.md)           | 自研链式协程包装 `Coroutine<T>` / `execute` 的用法与红线、Flow 使用位置、Compose 场景红线、反面示例、测试                                                                                  | **写任何异步代码前**。核心内容：`execute` 回调时序坑、禁止 GlobalScope/runBlocking、View 系 vs Compose 系的 scope 边界 |
-| [repository-rules.md](./repository-rules.md)         | Room 数据层三层架构（Entity → DAO → Repository）、Entity 禁止 Active Record、新代码标准写法、迁移策略                                                                                      | 碰 DB / 新建 Repository 前                                                                                             |
-| [api-compat-rules.md](./api-compat-rules.md)         | minSdk 23 / targetSdk 37 红线、`Build.VERSION.SDK_INT` 分支写法、Desugaring 覆盖边界、依赖 minSdk 红线（禁 overrideLibrary）、16KB 对齐 / Edge-to-Edge / FGS type 等 targetSdk 37 行为收紧 | 调用高版本 API、引入新依赖、发版前必查                                                                                 |
-| [live-event-bus-rules.md](./live-event-bus-rules.md) | LiveEventBus 全局配置语义（`autoClear(false)` 粘性默认开）、tag 必须走 `EventBus` 常量 + reified 封装、高频事件节流红线、与 Compose `Channel<Event>` 的选型边界                            | 跨组件通信 / 新增事件 / View↔Compose 事件选型时                                                                        |
-| [e2e-testing-rules.md](./e2e-testing-rules.md)       | 内置 Web 服务改动的强制 E2E 三层验证：触发时机、接口/网页/App 端验收标准、失败路径要求、环境降级策略；操作命令在 architecture 手册                                                         | 改动 `web/`、`api/` 或网页前端（assets / modules/web）的行为后、声称完成前必读                                         |
+| 文件                                                 | 管什么                                                                                                                                                                                          | 什么时候必须读                                                                                                         |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| [coroutine-rules.md](./coroutine-rules.md)           | 自研链式协程包装 `Coroutine<T>` / `execute` 的用法与红线、Flow 使用位置、Compose 场景红线、反面示例、测试                                                                                       | **写任何异步代码前**。核心内容：`execute` 回调时序坑、禁止 GlobalScope/runBlocking、View 系 vs Compose 系的 scope 边界 |
+| [repository-rules.md](./repository-rules.md)         | Room 数据层三层架构（Entity → DAO → Repository）、Entity 禁止 Active Record、新代码标准写法、迁移策略                                                                                           | 碰 DB / 新建 Repository 前                                                                                             |
+| [api-compat-rules.md](./api-compat-rules.md)         | minSdk 23 / targetSdk 37 红线、`Build.VERSION.SDK_INT` 分支写法、Desugaring 覆盖边界、依赖 minSdk 红线（禁 overrideLibrary）、16KB 对齐 / Edge-to-Edge / FGS type 等 targetSdk 37 行为收紧      | 调用高版本 API、引入新依赖、发版前必查                                                                                 |
+| [live-event-bus-rules.md](./live-event-bus-rules.md) | LiveEventBus 全局配置语义（`autoClear(false)` 粘性默认开）、tag 必须走 `EventBus` 常量 + reified 封装、高频事件节流红线、与 Compose `Channel<Event>` 的选型边界                                 | 跨组件通信 / 新增事件 / View↔Compose 事件选型时                                                                        |
+| [e2e-testing-rules.md](./e2e-testing-rules.md)       | 内置 Web 服务改动的强制 E2E 三层验证：触发时机、接口/网页/App 端验收标准、失败路径要求、环境降级策略；操作命令在 architecture 手册                                                              | 改动 `web/`、`api/` 或网页前端（assets / modules/web）的行为后、声称完成前必读                                         |
+| [intent-payload-rules.md](./intent-payload-rules.md) | Intent/Bundle 大载荷 Binder 事务超限红线：超约 3.2 万字符禁止直传、`TransactionTooLargeException` 会 SIGKILL 前台进程（易被误当内存问题）、大文本走 `CodeEditLauncher` 内存中转、去回程都要收口 | 往 `putExtra` 放可能很大的文本/对象（编辑器、整源 JSON、调试响应、SVG/HTML）、排查"打开大内容就黑屏重启"时             |
 
 ### 工程配置参考（手册，非红线）
 
@@ -64,6 +65,7 @@
 | 日志与 PII 脱敏                                      | ❌ 缺                                                                           |
 | 对外发布日志（updateLog.md）                         | ✅ update-log-rules.md                                                          |
 | API 兼容 / minSdk 23 红线                            | ✅ api-compat-rules.md                                                          |
+| Intent/Bundle 跨组件传大载荷                         | ✅ intent-payload-rules.md（Binder 事务超限红线）                               |
 
 ## 三、跨文件规则速查（高频冲突点，已对齐）
 

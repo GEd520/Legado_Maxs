@@ -18,8 +18,7 @@ import io.legado.app.help.source.clearExploreKindsCache
 import io.legado.app.help.storage.ImportOldData
 import io.legado.app.model.SharedJsScope
 import io.legado.app.utils.GSON
-import io.legado.app.utils.fromJsonArray
-import io.legado.app.utils.fromJsonObject
+import io.legado.app.utils.fromJsonArrayOrObject
 import io.legado.app.utils.getClipText
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isJsonArray
@@ -160,7 +159,7 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
                     val jsonItem = jsonPath.parse(items[0])
                     ImportOldData.fromOldBookSource(jsonItem)
                 } else {
-                    GSON.fromJsonArray<BookSource>(text).getOrThrow()[0]
+                    GSON.fromJsonArrayOrObject<BookSource>(text).getOrThrow()[0]
                 }
             }
 
@@ -169,7 +168,7 @@ class BookSourceEditViewModel(application: Application) : BaseViewModel(applicat
                     val jsonItem = jsonPath.parse(text)
                     ImportOldData.fromOldBookSource(jsonItem)
                 } else {
-                    GSON.fromJsonObject<BookSource>(text).getOrThrow()
+                    GSON.fromJsonArrayOrObject<BookSource>(text).getOrThrow()[0]
                 }
             }
 

@@ -15,6 +15,7 @@ import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.ui.book.read.ShareNoteImageRenderer
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.utils.readBytes
 import io.legado.app.utils.readText
@@ -76,7 +77,7 @@ class ShareNoteTemplateManageActivity : BaseComposeActivity() {
 
     private val editTemplateLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val text = result.data?.getStringExtra("text") ?: return@registerForActivityResult
+            val text = CodeEditLauncher.readText(result.data) ?: return@registerForActivityResult
             lifecycleScope.launch {
                 kotlin.runCatching {
                     withContext(Dispatchers.IO) {
@@ -283,7 +284,7 @@ class ShareNoteTemplateManageActivity : BaseComposeActivity() {
         editingEntry = editable
         editTemplateLauncher.launch(Intent(this, CodeEditActivity::class.java).apply {
             putExtra("title", editable.meta.name)
-            putExtra("text", ShareNoteTemplateManager.readTemplateHtml(editable))
+            CodeEditLauncher.putText(this, ShareNoteTemplateManager.readTemplateHtml(editable))
             putExtra("languageName", "text.html.basic")
         })
     }

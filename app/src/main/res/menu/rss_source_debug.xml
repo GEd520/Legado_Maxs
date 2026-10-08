@@ -5,6 +5,12 @@
     tools:ignore="AlwaysShowAction">
 
     <item
+        android:id="@+id/menu_find_text"
+        android:icon="@drawable/ic_search"
+        android:title="@string/find_text"
+        app:showAsAction="always" />
+
+    <item
         android:id="@+id/menu_list_src"
         android:title="@string/list_src"
         app:showAsAction="never" />
@@ -32,6 +38,12 @@
     <item
         android:id="@+id/menu_preview_content"
         android:title="@string/preview_content"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_local_debug"
+        android:checkable="true"
+        android:title="@string/local_debug"
         app:showAsAction="never" />
 
 </menu>

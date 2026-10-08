@@ -31,19 +31,19 @@ class StorageManageViewModelTest {
     }
 
     @Test
-    fun `加载完成后汇总八类缓存并统计总大小`() = runTest(mainDispatcherRule.dispatcher) {
+    fun `加载完成后汇总九类缓存并统计总大小`() = runTest(mainDispatcherRule.dispatcher) {
         val viewModel = newLoadedViewModel()
 
         viewModel.cacheItems.test {
             val items = awaitItem()
-            assertEquals(8, items.size)
+            assertEquals(9, items.size)
             assertEquals(CacheType.BOOK_CACHE.name, items.first().id)
             // Fake 每类固定 100 字节
-            assertEquals(800L, items.sumOf { it.size })
+            assertEquals(900L, items.sumOf { it.size })
             cancelAndIgnoreRemainingEvents()
         }
         viewModel.totalSize.test {
-            assertEquals(800L, awaitItem())
+            assertEquals(900L, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
         viewModel.uiState.test {
@@ -169,6 +169,7 @@ private class FakeStorageDataProvider : StorageDataProvider {
     override suspend fun ttsEngineCount(): Int = 1
     override suspend fun aCacheSize(): Long = size()
     override suspend fun aCacheItemCount(): Int = 1
+    override suspend fun internalCacheSize(): Long = size()
     override suspend fun dbCacheSize(): Long = size()
     override suspend fun dbCacheItemCount(): Int = 1
     override suspend fun logCacheSize(): Long = size()

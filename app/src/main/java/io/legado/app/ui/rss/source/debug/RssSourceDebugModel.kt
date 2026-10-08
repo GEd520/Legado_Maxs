@@ -27,15 +27,27 @@ class RssSourceDebugModel(application: Application) : BaseViewModel(application)
         this.callback = callback
     }
 
-    fun startDebug(key: String, start: (() -> Unit)? = null, error: (() -> Unit)? = null) {
+    fun startDebug(
+        key: String,
+        start: (() -> Unit)? = null,
+        error: (() -> Unit)? = null,
+        localDebug: Boolean = false
+    ) {
         execute {
             Debug.callback = this@RssSourceDebugModel
-            Debug.startDebug(this, rssSource!!, key)
+            Debug.startDebug(this, rssSource!!, key, localDebug)
         }.onStart {
             start?.invoke()
         }.onError {
             error?.invoke()
         }
+    }
+
+    /**
+     * 手动停止调试，保留 callback 以便停止后仍能收到收尾日志
+     */
+    fun stopDebug() {
+        Debug.cancelDebug(false)
     }
 
     override fun printLog(state: Int, msg: String) {

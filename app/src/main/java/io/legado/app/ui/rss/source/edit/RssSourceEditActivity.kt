@@ -30,6 +30,7 @@ import io.legado.app.lib.theme.backgroundColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.about.AppLogDialog
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.login.SourceLoginActivity
 import io.legado.app.ui.qrcode.QrCodeResult
@@ -190,7 +191,7 @@ class RssSourceEditActivity :
     private val textEditLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
             val data = result.data
-            val text = data?.getStringExtra("text")
+            val text = CodeEditLauncher.readText(data)
             val fieldKey = data?.getStringExtra("fieldKey")
             val cursorPosition = data?.getIntExtra("cursorPosition", -1) ?: -1
 
@@ -221,7 +222,7 @@ class RssSourceEditActivity :
             val currentText = view.text.toString()
             val fieldKey = view.getTag(R.id.tag) as? String ?: ""
             val intent = Intent(this, CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
+                CodeEditLauncher.putText(this, currentText)
                 putExtra("title", hint)
                 putExtra("cursorPosition", view.selectionStart)
                 putExtra("sourceType", "rssSource")
@@ -255,7 +256,7 @@ class RssSourceEditActivity :
      */
     private fun openFullEdit(editEntity: EditEntity) {
         val intent = Intent(this, CodeEditActivity::class.java).apply {
-            putExtra("text", editEntity.value ?: "")
+            CodeEditLauncher.putText(this, editEntity.value ?: "")
             putExtra("title", editEntity.hint)
             putExtra("cursorPosition", 0)
             putExtra("sourceType", "rssSource")

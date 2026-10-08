@@ -10,7 +10,8 @@ import androidx.compose.ui.unit.dp
  * 原先分散在各 Feature 的 `PageDimens`（精准管理、下载管理等页面就近定义）已并入此处，
  * 新增尺寸一律追加到本对象，不要再另起一个平行对象。
  *
- * 字号不在此定义：文本一律走 `MaterialTheme.typography` 语义样式（theme-styles.md §7.4）。
+ * 字号不在此定义：文本一律走 `MaterialTheme.typography` 语义样式（选档对照见 theme-styles.md §7.4，
+ * 界面字体织入见 AppTypography.kt）。
  */
 object AppDimens {
 

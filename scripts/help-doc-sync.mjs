@@ -61,7 +61,10 @@ function loadMap() {
 // ---------- 获取暂存文件列表 ----------
 function getStagedFiles() {
   try {
+    // core.quotePath=false：中文等非 ASCII 文件名不转义成八进制，否则与映射表路径比对不上
     const out = execFileSync('git', [
+      '-c',
+      'core.quotePath=false',
       'diff',
       '--cached',
       '--name-only',

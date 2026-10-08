@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -222,7 +223,7 @@ fun ExploreShowListItem(
             }
             Spacer(Modifier.height(AppDimens.exploreShowRowSpacing))
             Text(
-                text = context.getString(R.string.author_show, book.author),
+                text = stringResource(R.string.author_show, book.author),
                 color = MaterialTheme.colorScheme.onBackground,
                 fontSize = 12.sp,
                 lineHeight = EXPLORE_META_LINE_HEIGHT.sp,
@@ -232,7 +233,7 @@ fun ExploreShowListItem(
             ExploreKindLabels(book.getKindList())
             if (!book.latestChapterTitle.isNullOrEmpty()) {
                 Text(
-                    text = context.getString(R.string.lasted_show, book.latestChapterTitle),
+                    text = stringResource(R.string.lasted_show, book.latestChapterTitle.orEmpty()),
                     color = MaterialTheme.colorScheme.onBackground,
                     fontSize = 12.sp,
                     lineHeight = EXPLORE_META_LINE_HEIGHT.sp,

@@ -14,6 +14,7 @@ import io.legado.app.databinding.DialogCoverRuleConfigBinding
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.model.BookCover
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setLayout
@@ -41,7 +42,7 @@ class CoverRuleConfigDialog : BaseDialogFragment(R.layout.dialog_cover_rule_conf
     private val fullScreenEditResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             val data = result.data
-            val text = data?.getStringExtra("text")
+            val text = CodeEditLauncher.readText(data)
             val cursorPosition = data?.getIntExtra("cursorPosition", -1) ?: -1
             lastFocusedEditText?.let { editText ->
                 if (text != null) {
@@ -106,7 +107,7 @@ class CoverRuleConfigDialog : BaseDialogFragment(R.layout.dialog_cover_rule_conf
             lastFocusedEditText = view
             val currentText = view.text.toString()
             val intent = Intent(requireContext(), CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
+                CodeEditLauncher.putText(this, currentText)
                 putExtra("cursorPosition", view.selectionStart)
             }
             fullScreenEditResult.launch(intent)
@@ -115,7 +116,7 @@ class CoverRuleConfigDialog : BaseDialogFragment(R.layout.dialog_cover_rule_conf
             lastFocusedEditText = binding.editCoverUrlRule
             val currentText = binding.editCoverUrlRule.text.toString()
             val intent = Intent(requireContext(), CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
+                CodeEditLauncher.putText(this, currentText)
                 putExtra("cursorPosition", binding.editCoverUrlRule.selectionStart)
             }
             fullScreenEditResult.launch(intent)

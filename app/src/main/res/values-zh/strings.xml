@@ -516,6 +516,7 @@
 
     <string name="source_http_header">请求头（header）</string>
     <string name="debug_source">调试源</string>
+    <string name="stop_debug">停止调试</string>
     <string name="import_by_qr_code">二维码导入</string>
     <string name="share_selected_source">分享选中源</string>
     <string name="scan_qr_code">扫描二维码</string>
@@ -1454,6 +1455,7 @@
     <string name="query_hint">输入要查询的内容</string>
     <string name="find_prev_match">上一个匹配</string>
     <string name="find_next_match">下一个匹配</string>
+    <string name="find_text">查找文本</string>
     <string name="query_result">找到 %1$d 个匹配项</string>
     <string name="query_no_result">未找到匹配内容</string>
     <string name="please_focus_cursor_on_textbox">请将光标聚焦在文本框</string>
@@ -1652,6 +1654,7 @@
     <string name="manga_color_filter">滤镜</string>
     <string name="hide_manga_title">隐藏漫画列表标题</string>
     <string name="refresh_explore">刷新发现</string>
+    <string name="local_debug">本地调试</string>
     <string name="padding_display_cutouts">填充刘海区域</string>
     <string name="read_aloud_pause_resume">朗读暂停/继续</string>
     <string name="manga_epaper">墨水屏</string>
@@ -2597,6 +2600,7 @@
     <string name="storage_cache_temp_name">临时文件缓存</string>
     <string name="storage_cache_tts_name">TTS 语音缓存</string>
     <string name="storage_cache_acache_name">ACache 磁盘缓存</string>
+    <string name="storage_cache_internal_name">内部缓存</string>
     <string name="storage_cache_db_name">数据库缓存</string>
     <string name="storage_cache_log_name">日志文件</string>
     <string name="storage_cache_webview_name">WebView 缓存</string>
@@ -2605,6 +2609,7 @@
     <string name="storage_cache_temp_desc">下载临时文件、解压临时目录等</string>
     <string name="storage_cache_tts_desc">在线朗读引擎下载的语音文件</string>
     <string name="storage_cache_acache_desc">书源变量、用户信息等运行时缓存</string>
+    <string name="storage_cache_internal_desc">Cronet 下载临时文件、导出临时文件、WebView 网络缓存等</string>
     <string name="storage_cache_db_desc">CacheDao 存储的临时数据记录</string>
     <string name="storage_cache_log_desc">应用运行日志、错误日志等</string>
     <string name="storage_cache_webview_desc">WebView 页面数据、本地缓存、Cookie 等持久化内容</string>

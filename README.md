@@ -15,7 +15,6 @@
 阅读继承自阅读Sigma，在其基础上新增更多实用和强大功能。
 </div>
 
-
 ## ⚠️ 重要声明
 
 **关于本分支的说明**
@@ -27,15 +26,21 @@
 3. **代码质量**：鉴于上述背景，代码在架构设计、规范性和性能优化方面可能存在不足，请知悉。
 
 4. **使用须知**：
-    - 本项目为开发者个人自用阅读器，开源仅供学习与技术交流。
-    - 开发者不对任何用户的使用体验、数据安全或设备兼容性作任何形式的保证或承诺。
-    - 如您对代码质量有较高要求，或介意上述情况，建议谨慎评估后再决定是否使用。
+   - 本项目为开发者个人自用阅读器，开源仅供学习与技术交流。
+   - 开发者不对任何用户的使用体验、数据安全或设备兼容性作任何形式的保证或承诺。
+   - 如您对代码质量有较高要求，或介意上述情况，建议谨慎评估后再决定是否使用。
 
 ## 版本说明
+
 - 本项目基于 [lyc版](https://gitee.com/lyc486/legado) 持续开发，在此基础上有更多实用和强大功能
 - **appLegacy版**：包名 `io.legado.app`，与原版相同，可覆盖更新
 - **appMax版**：包名 `io.legado.app.yuedu`，共存包名，不会覆盖原版
 - **appS版**：包名 `io.legado.app.yuedu.a`，另一个共存包名
+
+## 参与贡献 / 安全
+
+- 想提 PR / 了解开发环境与提交规范：见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+- 本工程规则、架构、构建命令的总纲（同时是给 AI 的项目契约）见 [CLAUDE.md](CLAUDE.md)，强制编码规范库见 [`docs/project-rules/`](docs/project-rules/README.md)。
 
 # 覆盖安装注意事项 [![](https://img.shields.io/badge/-覆盖安装注意事项-F5F5F5.svg)](#覆盖安装注意事项-)
 
@@ -55,6 +60,7 @@
 ⚠️ 此时使用WebDAV恢复和本地恢复都无法正常工作！
 
 **解决方案**：
+
 - 将软件完全卸载后重新安装
 - 再进行数据恢复操作，此时即可正常恢复
 
@@ -81,6 +87,7 @@
 </a>
 
 # Function-主要功能 [![](https://img.shields.io/badge/-Function-F5F5F5.svg)](#Function-主要功能-)
+
 [English](English.md)
 
 <details><summary>中文</summary>
@@ -102,11 +109,12 @@
 
 # Community-交流社区 [![](https://img.shields.io/badge/-Community-F5F5F5.svg)](#Community-交流社区-)
 
-
 #### Discord
+
 [![Discord](https://img.shields.io/discord/560731361414086666?color=%235865f2&label=Discord)](https://discord.gg/VtUfRyzRXn)
 
 #### Other
+
 https://www.yuque.com/legado/wiki/community
 
 <a href="#readme">
@@ -114,50 +122,57 @@ https://www.yuque.com/legado/wiki/community
 </a>
 
 # API [![](https://img.shields.io/badge/-API-F5F5F5.svg)](#API-)
-* 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。您可以在[这里](api.md)根据需要自行调用。 
-* 可通过url唤起阅读进行一键导入,url格式: legado://import/{path}?src={url}
-* path类型: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,[addToBookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
-* path类型解释: 书源,订阅源,替换规则,本地txt小说目录规则,在线朗读引擎,主题,阅读排版,添加到书架
+
+- 阅读3.0 提供了2种方式的API：`Web方式`和`Content Provider方式`。您可以在[这里](api.md)根据需要自行调用。
+- 可通过url唤起阅读进行一键导入,url格式: legado://import/{path}?src={url}
+- path类型: bookSource,rssSource,replaceRule,textTocRule,httpTTS,theme,readConfig,dictRule,[addToBookshelf](/app/src/main/java/io/legado/app/ui/association/AddToBookshelfDialog.kt)
+- path类型解释: 书源,订阅源,替换规则,本地txt小说目录规则,在线朗读引擎,主题,阅读排版,添加到书架
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
 
 # Other-其他 [![](https://img.shields.io/badge/-Other-F5F5F5.svg)](#Other-其他-)
+
 ##### 免责声明
+
 https://gedoor.github.io/Disclaimer
 
 ##### 阅读3.0
-* [书源规则](https://mgz0227.github.io/The-tutorial-of-Legado/)
-* [更新日志](/app/src/main/assets/updateLog.md)
-* [帮助文档](/app/src/main/assets/web/help/md/appHelp.md)
-* [web端书架](https://github.com/gedoor/legado_web_bookshelf)
-* [web端源编辑](https://github.com/gedoor/legado_web_source_editor)
+
+- [书源规则](https://mgz0227.github.io/The-tutorial-of-Legado/)
+- [更新日志](/app/src/main/assets/updateLog.md)
+- [帮助文档](/app/src/main/assets/web/help/md/appHelp.md)
+- [web端书架](https://github.com/gedoor/legado_web_bookshelf)
+- [web端源编辑](https://github.com/gedoor/legado_web_source_editor)
 
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>
 
 # Grateful-感谢 [![](https://img.shields.io/badge/-Grateful-F5F5F5.svg)](#Grateful-感谢-)
-> * org.jsoup:jsoup
-> * cn.wanghaomiao:JsoupXpath
-> * com.jayway.jsonpath:json-path
-> * com.github.gedoor:rhino-android
-> * com.squareup.okhttp3:okhttp
-> * com.github.bumptech.glide:glide
-> * org.nanohttpd:nanohttpd
-> * org.nanohttpd:nanohttpd-websocket
-> * cn.bingoogolapple:bga-qrcode-zxing
-> * com.jaredrummler:colorpicker
-> * org.apache.commons:commons-text
-> * io.noties.markwon:core
-> * io.noties.markwon:image-glide
-> * com.hankcs:hanlp
-> * com.positiondev.epublib:epublib-core
-> * com.github.Moriafly:LyricViewX
-> * io.github.rosemoe:editor
-<a href="#readme">
+
+> - org.jsoup:jsoup
+> - cn.wanghaomiao:JsoupXpath
+> - com.jayway.jsonpath:json-path
+> - com.github.gedoor:rhino-android
+> - com.squareup.okhttp3:okhttp
+> - com.github.bumptech.glide:glide
+> - org.nanohttpd:nanohttpd
+> - org.nanohttpd:nanohttpd-websocket
+> - cn.bingoogolapple:bga-qrcode-zxing
+> - com.jaredrummler:colorpicker
+> - org.apache.commons:commons-text
+> - io.noties.markwon:core
+> - io.noties.markwon:image-glide
+> - com.hankcs:hanlp
+> - com.positiondev.epublib:epublib-core
+> - com.github.Moriafly:LyricViewX
+> - io.github.rosemoe:editor
+> <a href="#readme">
+
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
+
 </a>
 
 # Interface-界面 [![](https://img.shields.io/badge/-Interface-F5F5F5.svg)](#Interface-界面-)

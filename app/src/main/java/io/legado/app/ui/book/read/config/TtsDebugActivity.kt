@@ -15,6 +15,7 @@ import io.legado.app.lib.theme.accentColor
 import io.legado.app.lib.theme.primaryColor
 import io.legado.app.ui.book.source.debug.BookSourceDebugAdapter
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.widget.dialog.TextDialog
 import io.legado.app.utils.applyNavigationBarPadding
 import io.legado.app.utils.setEdgeEffectColor
@@ -218,7 +219,7 @@ class TtsDebugActivity : VMBaseActivity<ActivityTtsDebugBinding, TtsDebugModel>(
                     viewModel.resultData?.let { append("=== result参数 ===\n$it") }
                 }
                 val intent = android.content.Intent(this, CodeEditActivity::class.java).apply {
-                    putExtra("text", sourceCode)
+                    CodeEditLauncher.putText(this, sourceCode)
                     putExtra("title", "TTS调试源码")
                 }
                 startActivity(intent)

@@ -17,6 +17,7 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.databinding.ActivityReplaceEditBinding
 import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.ui.code.CodeEditActivity
+import io.legado.app.ui.code.CodeEditLauncher
 import io.legado.app.ui.widget.keyboard.KeyboardToolPop
 import io.legado.app.utils.GSON
 import io.legado.app.utils.imeHeight
@@ -77,7 +78,7 @@ class ReplaceEditActivity :
         if (result.resultCode == RESULT_OK) {
             val view = window.decorView.findFocus()
             if (view is EditText) {
-                result.data?.getStringExtra("text")?.let {
+                CodeEditLauncher.readText(result.data)?.let {
                     view.setText(it)
                 }
                 result.data?.getIntExtra("cursorPosition", -1)?.takeIf { it in 0 ..< view.text.length }?.let {
@@ -94,7 +95,7 @@ class ReplaceEditActivity :
             val hint = findParentTextInputLayout(view)?.hint?.toString()
             val currentText = view.text.toString()
             val intent = Intent(this, CodeEditActivity::class.java).apply {
-                putExtra("text", currentText)
+                CodeEditLauncher.putText(this, currentText)
                 putExtra("title", hint)
                 putExtra("cursorPosition", view.selectionStart)
             }

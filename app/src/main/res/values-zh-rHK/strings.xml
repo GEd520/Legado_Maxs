@@ -48,6 +48,7 @@
     <string name="update_log">更新日誌</string>
     <string name="bookshelf_empty">書架還空著，先去搜索書籍或從發現裏添加吧！</string>
     <string name="action_search">搜尋</string>
+    <string name="find_text">搜尋文字</string>
     <string name="action_download">下載</string>
     <string name="layout_list">列表</string>
     <string name="layout_grid3">網格三列</string>
@@ -481,6 +482,7 @@
 
     <string name="source_http_header">請求頭 (header)</string>
     <string name="debug_source">調試源</string>
+    <string name="stop_debug">停止調試</string>
     <string name="import_by_qr_code">二維碼導入</string>
     <string name="scan_qr_code">掃描二維碼</string>
     <string name="click_on_selected_show_menu">選中時點擊可彈出菜單</string>
@@ -1340,6 +1342,7 @@
     <string name="manga_color_filter">滤镜</string>
     <string name="hide_manga_title">隐藏漫画列表标题</string>
     <string name="refresh_explore">刷新发现</string>
+    <string name="local_debug">本地調試</string>
     <string name="padding_display_cutouts">填充刘海区域</string>
     <string name="read_aloud_pause_resume">朗讀暫停/繼續</string>
     <string name="manga_epaper">墨水屏</string>
@@ -2141,4 +2144,6 @@
     <string name="cache_manage_batch_empty">沒有可操作的緩存</string>
     <string name="cache_manage_batch_upload_done">批量上傳完成：成功 %1$d 個，失敗 %2$d 個</string>
     <string name="delete_success">已刪除</string>
+    <string name="storage_cache_internal_name">內部緩存</string>
+    <string name="storage_cache_internal_desc">Cronet 下載臨時檔案、匯出臨時檔案、WebView 網絡緩存等</string>
 </resources>
